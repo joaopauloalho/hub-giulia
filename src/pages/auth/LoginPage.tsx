@@ -1,11 +1,13 @@
 import { useState, FormEvent } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import { Input } from '../../components/ui/Input';
 import { Button } from '../../components/ui/Button';
 
 export function LoginPage() {
+  const navigate = useNavigate();
   const [email, setEmail] = useState('');
-  const [sent, setSent] = useState(false);
+  const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -13,15 +15,12 @@ export function LoginPage() {
     e.preventDefault();
     setError('');
     setLoading(true);
-    const { error } = await supabase.auth.signInWithOtp({
-      email,
-      options: { emailRedirectTo: window.location.origin },
-    });
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) {
-      setError(error.message);
+      setError('Email ou senha incorretos.');
       setLoading(false);
     } else {
-      setSent(true);
+      navigate('/dashboard');
     }
   };
 
@@ -32,34 +31,30 @@ export function LoginPage() {
           <span className="logo-text">hub</span>
           <span className="logo-accent">giulia</span>
         </div>
-
-        {sent ? (
-          <>
-            <p className="login-sub" style={{ marginTop: '8px' }}>Link enviado!</p>
-            <p style={{ color: 'var(--text-3)', fontSize: '0.875rem', marginTop: '12px', lineHeight: '1.6' }}>
-              Verifique o email <strong style={{ color: 'var(--text-2)' }}>{email}</strong> e clique no link para entrar.
-            </p>
-          </>
-        ) : (
-          <>
-            <p className="login-sub">Digite seu email para receber o link de acesso</p>
-            <form onSubmit={handleSubmit} className="login-form">
-              <Input
-                label="Email"
-                type="email"
-                placeholder="seu@email.com"
-                value={email}
-                onChange={e => setEmail(e.target.value)}
-                required
-                autoFocus
-              />
-              {error && <p className="login-error">{error}</p>}
-              <Button type="submit" disabled={loading} className="w-full">
-                {loading ? 'Enviando...' : 'Enviar link de acesso'}
-              </Button>
-            </form>
-          </>
-        )}
+        <p className="login-sub">Faça login para continuar</p>
+        <form onSubmit={handleSubmit} className="login-form">
+          <Input
+            label="Email"
+            type="email"
+            placeholder="seu@email.com"
+            value={email}
+            onChange={e => setEmail(e.target.value)}
+            required
+            autoFocus
+          />
+          <Input
+            label="Senha"
+            type="password"
+            placeholder="••••••••"
+            value={password}
+            onChange={e => setPassword(e.target.value)}
+            required
+          />
+          {error && <p className="login-error">{error}</p>}
+          <Button type="submit" disabled={loading} className="w-full">
+            {loading ? 'Entrando...' : 'Entrar'}
+          </Button>
+        </form>
       </div>
     </div>
   );
