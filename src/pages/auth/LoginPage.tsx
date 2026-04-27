@@ -18,7 +18,7 @@ export function LoginPage() {
       options: { emailRedirectTo: window.location.origin },
     });
     if (error) {
-      setError('Não foi possível enviar o link. Tente novamente.');
+      setError(error.message);
       setLoading(false);
     } else {
       setSent(true);
