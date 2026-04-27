@@ -1,9 +1,10 @@
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, Users, Briefcase, LogOut } from 'lucide-react';
+import { LayoutDashboard, Users, Briefcase, LogOut, UserRound } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 
 const nav = [
   { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
+  { to: '/pacientes', icon: UserRound, label: 'Pacientes' },
   { to: '/contacts', icon: Users, label: 'Contatos' },
   { to: '/deals', icon: Briefcase, label: 'Negócios' },
 ];

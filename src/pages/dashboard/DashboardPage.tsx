@@ -1,27 +1,27 @@
+import { useNavigate } from 'react-router-dom';
 import { useContacts } from '../../hooks/useContacts';
 import { useDeals } from '../../hooks/useDeals';
-import { Users, Briefcase, TrendingUp, Award } from 'lucide-react';
+import { usePacientes } from '../../hooks/usePacientes';
+import { Users, Briefcase, Award, UserRound, Plus } from 'lucide-react';
 
 export function DashboardPage() {
+  const navigate = useNavigate();
   const { contacts } = useContacts();
   const { deals } = useDeals();
+  const { pacientes } = usePacientes();
 
   const totalRevenue = deals
     .filter(d => d.stage === 'won')
     .reduce((sum, d) => sum + (d.value ?? 0), 0);
 
-  const pipeline = deals
-    .filter(d => !['won', 'lost'].includes(d.stage))
-    .reduce((sum, d) => sum + (d.value ?? 0), 0);
-
   const stats = [
+    { label: 'Pacientes', value: pacientes.length, icon: UserRound, color: 'stat--gold' },
     { label: 'Contatos', value: contacts.length, icon: Users, color: 'stat--blue' },
     { label: 'Negócios ativos', value: deals.filter(d => !['won', 'lost'].includes(d.stage)).length, icon: Briefcase, color: 'stat--amber' },
-    { label: 'Pipeline', value: `R$ ${pipeline.toLocaleString('pt-BR')}`, icon: TrendingUp, color: 'stat--green' },
-    { label: 'Ganhos', value: `R$ ${totalRevenue.toLocaleString('pt-BR')}`, icon: Award, color: 'stat--gold' },
+    { label: 'Ganhos', value: `R$ ${totalRevenue.toLocaleString('pt-BR')}`, icon: Award, color: 'stat--green' },
   ];
 
-  const recentContacts = contacts.slice(0, 5);
+  const recentPacientes = pacientes.slice(0, 5);
   const recentDeals = deals.slice(0, 5);
 
   const stageLabel: Record<string, string> = {
@@ -31,11 +31,24 @@ export function DashboardPage() {
     lead: 'badge--gray', qualified: 'badge--blue', proposal: 'badge--amber', won: 'badge--green', lost: 'badge--red',
   };
 
+  const fmtDate = (iso: string) =>
+    iso ? new Date(iso + 'T12:00:00').toLocaleDateString('pt-BR') : '';
+
   return (
     <div className="page">
       <div className="page-header">
-        <h1 className="page-title">Dashboard</h1>
-        <p className="page-sub">Visão geral do seu CRM</p>
+        <div>
+          <h1 className="page-title">Dashboard</h1>
+          <p className="page-sub">Visão geral do hub</p>
+        </div>
+        <button
+          className="btn btn--primary btn--md"
+          onClick={() => navigate('/pacientes')}
+          style={{ gap: 8 }}
+        >
+          <Plus size={16} strokeWidth={2} />
+          Nova Cliente
+        </button>
       </div>
 
       <div className="stats-grid">
@@ -52,18 +65,31 @@ export function DashboardPage() {
 
       <div className="dash-grid">
         <div className="card">
-          <h2 className="card-title">Contatos recentes</h2>
-          {recentContacts.length === 0 ? (
-            <p className="empty-text">Nenhum contato ainda.</p>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+            <h2 className="card-title" style={{ marginBottom: 0 }}>Pacientes recentes</h2>
+            <button className="btn btn--ghost btn--sm" onClick={() => navigate('/pacientes')}>
+              Ver todas
+            </button>
+          </div>
+          {recentPacientes.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '20px 0' }}>
+              <p className="empty-text">Nenhuma paciente cadastrada ainda.</p>
+              <button className="btn btn--primary btn--sm" style={{ marginTop: 10 }} onClick={() => navigate('/pacientes')}>
+                <Plus size={14} /> Cadastrar
+              </button>
+            </div>
           ) : (
             <ul className="list">
-              {recentContacts.map(c => (
-                <li key={c.id} className="list-item">
-                  <div className="avatar">{c.name[0].toUpperCase()}</div>
-                  <div>
-                    <p className="list-item-name">{c.name}</p>
-                    <p className="list-item-sub">{c.company ?? c.email ?? '—'}</p>
+              {recentPacientes.map(p => (
+                <li key={p.id} className="list-item">
+                  <div className="avatar">{p.nome[0]?.toUpperCase() ?? '?'}</div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <p className="list-item-name">{p.nome}</p>
+                    <p className="list-item-sub">{p.motivoConsulta || p.profissao || '—'}</p>
                   </div>
+                  {p.dataConsulta && (
+                    <span className="badge badge--gray">{fmtDate(p.dataConsulta)}</span>
+                  )}
                 </li>
               ))}
             </ul>

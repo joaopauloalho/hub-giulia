@@ -36,3 +36,99 @@ export interface Activity {
 
 export type DealStage = Deal['stage'];
 export type ActivityType = Activity['type'];
+
+export interface Paciente {
+  id: string;
+  createdAt: string;
+
+  // Informações Pessoais
+  dataConsulta: string;
+  dataNascimento: string;
+  nome: string;
+  idade: string;
+  estadoCivil: string;
+  celular: string;
+  profissao: string;
+  email: string;
+  peso: string;
+  altura: string;
+  instagram: string;
+  emergenciaNome: string;
+  emergenciaCelular: string;
+  convenio: string;
+  motivoConsulta: string;
+
+  // Condições médicas
+  hipertensao: boolean;
+  hipotensao: boolean;
+  cancer: boolean;
+  diabetes: boolean;
+  problemasCardiacos: boolean;
+  disfuncaoRenal: boolean;
+  fumante: boolean;
+  marcapasso: boolean;
+  problemasVasculares: boolean;
+  epilepsia: boolean;
+  problemasRespiratorios: boolean;
+  problemasTireoide: boolean;
+  problemasCoagulacao: boolean;
+  hivAids: boolean;
+  hepatite: boolean;
+
+  // Histórico médico
+  cirurgiasRecentes: boolean;
+  cirurgiasRecentesDetalhe: string;
+  proteseMetalica: boolean;
+  proteseMetalicaRegiao: string;
+  desmaios: boolean;
+  desmaioPorque: string;
+  herpes: string;
+  alergiaAnestesia: string;
+  alergiaAbelha: string;
+  tratamentoMedico: string;
+  usaMedicacao: boolean;
+  medicacaoDetalhe: string;
+  gestante: string;
+  quantasGestacoes: string;
+  tipoParto: string;
+  menstruacaoRegular: boolean;
+  metodoContraceptivo: string;
+  tpm: boolean;
+  tpmOQueFaz: string;
+  alergias: string;
+  enxaqueca: boolean;
+  intestinoRegular: boolean;
+  quantidadeAgua: string;
+  outrosProblemas: string;
+  ansioso: boolean;
+  estressado: boolean;
+
+  // Hábitos Alimentares
+  habitoRefrigerante: boolean;
+  habitoFastFood: boolean;
+  habitoDoces: boolean;
+  habitoFrituras: boolean;
+  habitoCigarros: boolean;
+  habitoBebidasAlcoolicas: boolean;
+  alimentacaoEspecial: boolean;
+  alimentacaoEspecialQual: string;
+  suplemento: boolean;
+  suplementoQuais: string;
+  atividadeFisica: string;
+
+  // Rotina de Cuidado Pessoal
+  cuidadosDiarios: string;
+  produtosEmUso: string;
+  produtoComAcido: string;
+  limpezaPele: string;
+  microagulhamento: string;
+  peeling: string;
+  toxinaBotulinica: string;
+  fiosSustentacao: string;
+  preenchimentoHialuronico: string;
+  bioestimulador: string;
+  plasticaFacial: string;
+  pmma: string;
+  outrosTratamentos: string;
+  alteracoesRecentes: string;
+}
