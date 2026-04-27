@@ -58,7 +58,7 @@ export interface Paciente {
   convenio: string;
   motivoConsulta: string;
 
-  // Condições médicas
+  // Condições médicas (checkboxes)
   hipertensao: boolean;
   hipotensao: boolean;
   cancer: boolean;
@@ -75,19 +75,27 @@ export interface Paciente {
   hivAids: boolean;
   hepatite: boolean;
 
-  // Histórico médico
+  // Histórico médico — closed questions (boolean + detail)
   cirurgiasRecentes: boolean;
   cirurgiasRecentesDetalhe: string;
   proteseMetalica: boolean;
   proteseMetalicaRegiao: string;
   desmaios: boolean;
   desmaioPorque: string;
-  herpes: string;
-  alergiaAnestesia: string;
-  alergiaAbelha: string;
-  tratamentoMedico: string;
+  herpes: boolean;
+  herpesDetalhe: string;
+  alergiaAnestesia: boolean;
+  alergiaAnestesiaDetalhe: string;
+  alergiaAbelha: boolean;
+  alergiaAbelhaDetalhe: string;
+  tratamentoMedico: boolean;
+  tratamentoMedicoDetalhe: string;
   usaMedicacao: boolean;
   medicacaoDetalhe: string;
+  alergias: boolean;
+  alergiasDetalhe: string;
+
+  // Saúde feminina
   gestante: string;
   quantasGestacoes: string;
   tipoParto: string;
@@ -95,7 +103,8 @@ export interface Paciente {
   metodoContraceptivo: string;
   tpm: boolean;
   tpmOQueFaz: string;
-  alergias: string;
+
+  // Bem-estar
   enxaqueca: boolean;
   intestinoRegular: boolean;
   quantidadeAgua: string;
@@ -114,21 +123,34 @@ export interface Paciente {
   alimentacaoEspecialQual: string;
   suplemento: boolean;
   suplementoQuais: string;
-  atividadeFisica: string;
+  atividadeFisica: boolean;
+  atividadeFisicaDetalhe: string;
 
-  // Rotina de Cuidado Pessoal
+  // Rotina de Cuidado Pessoal — closed questions
   cuidadosDiarios: string;
   produtosEmUso: string;
-  produtoComAcido: string;
-  limpezaPele: string;
-  microagulhamento: string;
-  peeling: string;
-  toxinaBotulinica: string;
-  fiosSustentacao: string;
-  preenchimentoHialuronico: string;
-  bioestimulador: string;
-  plasticaFacial: string;
-  pmma: string;
-  outrosTratamentos: string;
-  alteracoesRecentes: string;
+  produtoComAcido: boolean;
+  produtoComAcidoDetalhe: string;
+  limpezaPele: boolean;
+  limpezaPeleData: string;
+  microagulhamento: boolean;
+  microagulhamentoData: string;
+  peeling: boolean;
+  peelingDetalhe: string;
+  toxinaBotulinica: boolean;
+  toxinaBotulinicaData: string;
+  fiosSustentacao: boolean;
+  fiosSustentacaoData: string;
+  preenchimentoHialuronico: boolean;
+  preenchimentoHialuronicoData: string;
+  bioestimulador: boolean;
+  bioestimuladorData: string;
+  plasticaFacial: boolean;
+  plasticaFacialDetalhe: string;
+  pmma: boolean;
+  pmmaRegiao: string;
+  outrosTratamentos: boolean;
+  outrosTratamentosDetalhe: string;
+  alteracoesRecentes: boolean;
+  alteracoesRecentesDetalhe: string;
 }
