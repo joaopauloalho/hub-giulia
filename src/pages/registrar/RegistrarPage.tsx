@@ -5,7 +5,7 @@ import { usePacientes } from '../../hooks/usePacientes';
 import { useServicos } from '../../hooks/useServicos';
 import { useProcedures } from '../../hooks/useProcedures';
 import { useMaquininhaConfig } from '../../hooks/useMaquininhaConfig';
-import type { Patient, Service, PaymentMethod, MaquininhaConfig } from '../../types';
+import type { Patient, Service, PaymentMethod, MaquininhaConfig, CardBrand } from '../../types';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
@@ -191,6 +191,8 @@ function StepPagamento({
   setPaymentMethod,
   installments,
   setInstallments,
+  cardBrand,
+  setCardBrand,
   maq,
 }: {
   services: Service[];
@@ -198,15 +200,21 @@ function StepPagamento({
   setPaymentMethod: (m: PaymentMethod) => void;
   installments: number;
   setInstallments: (n: number) => void;
+  cardBrand: CardBrand;
+  setCardBrand: (b: CardBrand) => void;
   maq: MaquininhaConfig;
 }) {
   const totalCobrado = services.reduce((s, x) => s + x.price, 0);
   const totalCusto = services.reduce((s, x) => s + x.cost_per_unit, 0);
 
+  const isCard = paymentMethod === 'cartao_credito' || paymentMethod === 'cartao_debito';
+  const creditPct = cardBrand === 'elo' ? maq.elo_credito_pct : maq.credito_pct;
+  const debitoPct = cardBrand === 'elo' ? maq.elo_debito_pct : maq.debito_pct;
+
   let feePct = 0;
   let feeValue = 0;
-  if (paymentMethod === 'cartao_credito') { feePct = maq.credito_pct; feeValue = totalCobrado * feePct / 100; }
-  if (paymentMethod === 'cartao_debito')  { feePct = maq.debito_pct;  feeValue = totalCobrado * feePct / 100; }
+  if (paymentMethod === 'cartao_credito') { feePct = creditPct; feeValue = totalCobrado * feePct / 100; }
+  if (paymentMethod === 'cartao_debito')  { feePct = debitoPct; feeValue = totalCobrado * feePct / 100; }
   const lucro = totalCobrado - totalCusto - feeValue;
 
   const methods: PaymentMethod[] = ['dinheiro', 'pix', 'pix_parcelado', 'cartao_credito', 'cartao_debito'];
@@ -252,12 +260,40 @@ function StepPagamento({
             <span style={{ fontWeight: 500, color: 'var(--text)' }}>{PAYMENT_LABELS[m]}</span>
             {(m === 'cartao_credito' || m === 'cartao_debito') && (
               <span style={{ marginLeft: 'auto', fontSize: '0.78rem', color: 'var(--text-3)' }}>
-                {m === 'cartao_credito' ? maq.credito_pct : maq.debito_pct}% taxa
+                {m === 'cartao_credito' ? creditPct : debitoPct}% taxa
               </span>
             )}
           </button>
         ))}
       </div>
+
+      {isCard && (
+        <div style={{ marginBottom: 16 }}>
+          <label style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-2)', marginBottom: 8, display: 'block' }}>
+            Bandeira do cartão
+          </label>
+          <div style={{ display: 'flex', gap: 8 }}>
+            {([
+              { value: 'master_visa' as CardBrand, label: 'Mastercard / Visa' },
+              { value: 'elo' as CardBrand, label: 'Elo' },
+            ]).map(({ value, label }) => (
+              <button
+                key={value}
+                onClick={() => setCardBrand(value)}
+                style={{
+                  flex: 1, padding: '10px 12px',
+                  background: cardBrand === value ? '#fdf2f8' : 'var(--bg-2)',
+                  border: `1.5px solid ${cardBrand === value ? 'var(--primary)' : 'var(--border)'}`,
+                  borderRadius: 8, cursor: 'pointer',
+                  fontWeight: cardBrand === value ? 600 : 400,
+                  color: cardBrand === value ? 'var(--primary)' : 'var(--text)',
+                  fontSize: '0.88rem',
+                }}
+              >{label}</button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {feeValue > 0 && (
         <div style={{
@@ -308,6 +344,7 @@ function StepConfirmar({
   installments,
   saving,
   onConfirm,
+  cardBrand,
   maq,
 }: {
   patient: Patient;
@@ -316,15 +353,19 @@ function StepConfirmar({
   installments: number;
   saving: boolean;
   onConfirm: () => void;
+  cardBrand: CardBrand;
   maq: MaquininhaConfig;
 }) {
   const totalCobrado = services.reduce((s, x) => s + x.price, 0);
   const totalCusto = services.reduce((s, x) => s + x.cost_per_unit, 0);
 
+  const creditPct = cardBrand === 'elo' ? maq.elo_credito_pct : maq.credito_pct;
+  const debitoPct = cardBrand === 'elo' ? maq.elo_debito_pct : maq.debito_pct;
+
   let feePct = 0;
   let feeValue = 0;
-  if (paymentMethod === 'cartao_credito') { feePct = maq.credito_pct; feeValue = totalCobrado * feePct / 100; }
-  if (paymentMethod === 'cartao_debito')  { feePct = maq.debito_pct;  feeValue = totalCobrado * feePct / 100; }
+  if (paymentMethod === 'cartao_credito') { feePct = creditPct; feeValue = totalCobrado * feePct / 100; }
+  if (paymentMethod === 'cartao_debito')  { feePct = debitoPct; feeValue = totalCobrado * feePct / 100; }
   const netValue = totalCobrado - feeValue;
   const lucro = netValue - totalCusto;
 
@@ -406,6 +447,7 @@ export function RegistrarPage() {
   const [services, setServices] = useState<Service[]>([]);
   const [appointmentId, setAppointmentId] = useState<string | null>(null);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('dinheiro');
+  const [cardBrand, setCardBrand] = useState<CardBrand>('master_visa');
   const [installments, setInstallments] = useState(2);
   const [saving, setSaving] = useState(false);
   const [done, setDone] = useState(false);
@@ -456,6 +498,7 @@ export function RegistrarPage() {
     setServices([]);
     setAppointmentId(null);
     setPaymentMethod('dinheiro');
+    setCardBrand('master_visa');
     setInstallments(2);
     setDone(false);
   };
@@ -467,10 +510,13 @@ export function RegistrarPage() {
       const totalCobrado = services.reduce((s, x) => s + x.price, 0);
       const totalCusto = services.reduce((s, x) => s + x.cost_per_unit, 0);
 
+      const creditPct = cardBrand === 'elo' ? maqConfig.elo_credito_pct : maqConfig.credito_pct;
+      const debitoPct = cardBrand === 'elo' ? maqConfig.elo_debito_pct : maqConfig.debito_pct;
+
       let feePct: number | null = null;
       let feeValue: number | null = null;
-      if (paymentMethod === 'cartao_credito') { feePct = maqConfig.credito_pct; feeValue = totalCobrado * feePct / 100; }
-      if (paymentMethod === 'cartao_debito')  { feePct = maqConfig.debito_pct;  feeValue = totalCobrado * feePct / 100; }
+      if (paymentMethod === 'cartao_credito') { feePct = creditPct; feeValue = totalCobrado * feePct / 100; }
+      if (paymentMethod === 'cartao_debito')  { feePct = debitoPct; feeValue = totalCobrado * feePct / 100; }
       const netValue = totalCobrado - (feeValue ?? 0);
 
       await create({
@@ -576,6 +622,8 @@ export function RegistrarPage() {
               setPaymentMethod={m => { setPaymentMethod(m); }}
               installments={installments}
               setInstallments={setInstallments}
+              cardBrand={cardBrand}
+              setCardBrand={setCardBrand}
               maq={maqConfig}
             />
           </>
@@ -588,6 +636,7 @@ export function RegistrarPage() {
             installments={installments}
             saving={saving}
             onConfirm={confirm}
+            cardBrand={cardBrand}
             maq={maqConfig}
           />
         )}

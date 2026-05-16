@@ -188,9 +188,13 @@ export interface Appointment {
   service?: Pick<Service, 'id' | 'name' | 'duration_minutes'>;
 }
 
+export type CardBrand = 'master_visa' | 'elo';
+
 export interface MaquininhaConfig {
   credito_pct: number;
   debito_pct: number;
+  elo_credito_pct: number;
+  elo_debito_pct: number;
 }
 
 export type PaymentMethod = 'dinheiro' | 'cartao_credito' | 'cartao_debito' | 'pix' | 'pix_parcelado';

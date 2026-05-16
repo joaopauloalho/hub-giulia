@@ -501,7 +501,8 @@ export function CatalogoPage() {
             {maqError && (
               <p style={{ color: 'var(--red)', fontSize: '13px', marginBottom: 12 }}>{maqError}</p>
             )}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '16px' }}>
+            <p style={{ fontSize: '12px', color: 'var(--text-3)', marginBottom: 8, fontWeight: 600 }}>Mastercard / Visa</p>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '16px', marginBottom: 16 }}>
               <div>
                 <label className="field-label">Crédito (%)</label>
                 <input className="field-input" type="number" min="0" max="100" step="0.01"
@@ -517,8 +518,25 @@ export function CatalogoPage() {
                   onChange={e => setMaqConfig(c => ({ ...c, debito_pct: parseFloat(e.target.value) || 0 }))} />
               </div>
             </div>
+            <p style={{ fontSize: '12px', color: 'var(--text-3)', marginBottom: 8, fontWeight: 600 }}>Elo</p>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '16px' }}>
+              <div>
+                <label className="field-label">Crédito Elo (%)</label>
+                <input className="field-input" type="number" min="0" max="100" step="0.01"
+                  value={maqConfig.elo_credito_pct}
+                  disabled={loadingMaq}
+                  onChange={e => setMaqConfig(c => ({ ...c, elo_credito_pct: parseFloat(e.target.value) || 0 }))} />
+              </div>
+              <div>
+                <label className="field-label">Débito Elo (%)</label>
+                <input className="field-input" type="number" min="0" max="100" step="0.01"
+                  value={maqConfig.elo_debito_pct}
+                  disabled={loadingMaq}
+                  onChange={e => setMaqConfig(c => ({ ...c, elo_debito_pct: parseFloat(e.target.value) || 0 }))} />
+              </div>
+            </div>
             <div style={{ marginTop: '12px', padding: '10px 12px', background: 'var(--bg-2)', borderRadius: '8px', fontSize: '13px', color: 'var(--text-2)' }}>
-              Ex: R$ 200 no crédito → taxa R$ {(200 * maqConfig.credito_pct / 100).toFixed(2)} → líquido R$ {(200 - 200 * maqConfig.credito_pct / 100).toFixed(2)}
+              Ex: R$ 200 crédito Master/Visa → líquido R$ {(200 - 200 * maqConfig.credito_pct / 100).toFixed(2)} · Elo → líquido R$ {(200 - 200 * maqConfig.elo_credito_pct / 100).toFixed(2)}
             </div>
             <button className="btn-primary" style={{ marginTop: '16px', width: '100%' }} onClick={handleSaveMaq} disabled={savingMaq || loadingMaq}>
               {savingMaq ? 'Salvando...' : maqSaved ? 'Salvo!' : 'Salvar configuração'}

@@ -2,7 +2,12 @@ import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import type { MaquininhaConfig } from '../types';
 
-const DEFAULT_CONFIG: MaquininhaConfig = { credito_pct: 3, debito_pct: 1.5 };
+const DEFAULT_CONFIG: MaquininhaConfig = {
+  credito_pct: 2.93,
+  debito_pct: 1.39,
+  elo_credito_pct: 3.24,
+  elo_debito_pct: 1.45,
+};
 
 export function useMaquininhaConfig() {
   const [config, setConfig] = useState<MaquininhaConfig>(DEFAULT_CONFIG);
@@ -21,7 +26,7 @@ export function useMaquininhaConfig() {
 
       const { data, error: configError } = await supabase
         .from('maquininha_configs')
-        .select('credito_pct, debito_pct')
+        .select('credito_pct, debito_pct, elo_credito_pct, elo_debito_pct')
         .eq('user_id', user.id)
         .maybeSingle();
 
@@ -29,6 +34,8 @@ export function useMaquininhaConfig() {
       setConfig(data ? {
         credito_pct: Number(data.credito_pct),
         debito_pct: Number(data.debito_pct),
+        elo_credito_pct: Number(data.elo_credito_pct),
+        elo_debito_pct: Number(data.elo_debito_pct),
       } : DEFAULT_CONFIG);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erro ao carregar taxas da maquininha.');
@@ -54,6 +61,8 @@ export function useMaquininhaConfig() {
           user_id: user.id,
           credito_pct: nextConfig.credito_pct,
           debito_pct: nextConfig.debito_pct,
+          elo_credito_pct: nextConfig.elo_credito_pct,
+          elo_debito_pct: nextConfig.elo_debito_pct,
           updated_at: new Date().toISOString(),
         });
 
