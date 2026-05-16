@@ -116,9 +116,8 @@ export function SignatureScreen({ patient, onClose, onDone }: Props) {
         .upload(pdfPath, pdfBlob, { contentType: 'application/pdf', upsert: true });
       if (uploadErr) throw uploadErr;
 
-      const { data: urlData } = supabase.storage.from('contracts').getPublicUrl(pdfPath);
-
-      await supabase.from('contracts').update({ pdf_url: urlData.publicUrl }).eq('id', contractId);
+      const { error: updateErr } = await supabase.from('contracts').update({ pdf_url: pdfPath }).eq('id', contractId);
+      if (updateErr) throw updateErr;
 
       onDone();
     } catch (err) {
@@ -131,13 +130,13 @@ export function SignatureScreen({ patient, onClose, onDone }: Props) {
 
   return (
     <div className="drawer-overlay" onClick={onClose}>
-      <aside className="drawer" onClick={e => e.stopPropagation()}>
+      <aside className="drawer" role="dialog" aria-modal="true" aria-labelledby="signature-title" onClick={e => e.stopPropagation()}>
         <div className="drawer-header">
-          <button className="drawer-back" onClick={onClose}>
+          <button className="drawer-back" onClick={onClose} aria-label="Fechar assinatura">
             <ChevronLeft size={18} />
           </button>
           <div style={{ flex: 1 }}>
-            <div className="drawer-title">Assinar Contrato</div>
+            <div className="drawer-title" id="signature-title">Assinar Contrato</div>
             <div className="drawer-sub">{patient.name}</div>
           </div>
         </div>

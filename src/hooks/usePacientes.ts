@@ -5,15 +5,26 @@ import type { Patient } from '../types';
 export function usePacientes() {
   const [pacientes, setPacientes] = useState<Patient[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     setLoading(true);
-    const { data } = await supabase
-      .from('patients')
-      .select('*')
-      .order('created_at', { ascending: false });
-    setPacientes(data ?? []);
-    setLoading(false);
+    setError(null);
+
+    try {
+      const { data, error: patientsError } = await supabase
+        .from('patients')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (patientsError) throw patientsError;
+      setPacientes(data ?? []);
+    } catch (err) {
+      setPacientes([]);
+      setError(err instanceof Error ? err.message : 'Erro ao carregar pacientes.');
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => { refresh(); }, [refresh]);
@@ -42,5 +53,5 @@ export function usePacientes() {
     await refresh();
   };
 
-  return { pacientes, loading, create, update, remove, refresh };
+  return { pacientes, loading, error, create, update, remove, refresh };
 }

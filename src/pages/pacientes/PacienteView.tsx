@@ -1,15 +1,17 @@
-import { useState } from 'react';
-import { X, Phone, Mail, Instagram, PenLine } from 'lucide-react';
+import { lazy, Suspense, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { X, Phone, Mail, Instagram, PenLine, ClipboardPlus } from 'lucide-react';
 import type { Patient } from '../../types';
 import { DadosTab } from './tabs/DadosTab';
 import { AnamneseTab } from './tabs/AnamneseTab';
 import { FotosTab } from './tabs/FotosTab';
 import { HistoricoTab } from './tabs/HistoricoTab';
 import { ContratosTab } from './tabs/ContratosTab';
-import { SignatureScreen } from './SignatureScreen';
+const SignatureScreen = lazy(() => import('./SignatureScreen').then(module => ({ default: module.SignatureScreen })));
 
 interface Props {
   patient: Patient;
+  sourceAppointmentId?: string | null;
   onClose: () => void;
   onUpdate: (data: Partial<Patient>) => Promise<void>;
   onDelete: () => Promise<void>;
@@ -21,7 +23,8 @@ type Tab = typeof TABS[number];
 const initials = (name: string) =>
   name.split(' ').slice(0, 2).map(w => w[0]).join('').toUpperCase();
 
-export function PacienteView({ patient, onClose, onUpdate, onDelete }: Props) {
+export function PacienteView({ patient, sourceAppointmentId, onClose, onUpdate, onDelete }: Props) {
+  const navigate = useNavigate();
   const [tab, setTab] = useState<Tab>('Dados');
   const [showSignature, setShowSignature] = useState(false);
 
@@ -30,19 +33,34 @@ export function PacienteView({ patient, onClose, onUpdate, onDelete }: Props) {
     await onDelete();
   };
 
+  const handleRegisterProcedure = () => {
+    const query = new URLSearchParams({ patient_id: patient.id });
+    if (sourceAppointmentId) query.set('appointment_id', sourceAppointmentId);
+
+    navigate(`/registrar?${query.toString()}`, {
+      state: {
+        patient,
+        patientId: patient.id,
+        appointmentId: sourceAppointmentId,
+      },
+    });
+  };
+
   if (showSignature) {
     return (
-      <SignatureScreen
-        patient={patient}
-        onClose={() => setShowSignature(false)}
-        onDone={() => { setShowSignature(false); setTab('Contratos'); }}
-      />
+      <Suspense fallback={<div className="full-loader">Carregando assinatura...</div>}>
+        <SignatureScreen
+          patient={patient}
+          onClose={() => setShowSignature(false)}
+          onDone={() => { setShowSignature(false); setTab('Contratos'); }}
+        />
+      </Suspense>
     );
   }
 
   return (
     <div className="drawer-overlay" onClick={onClose}>
-      <aside className="drawer" onClick={e => e.stopPropagation()}>
+      <aside className="drawer" role="dialog" aria-modal="true" aria-labelledby="paciente-view-title" onClick={e => e.stopPropagation()}>
 
         {/* Header */}
         <div className="drawer-header">
@@ -51,7 +69,7 @@ export function PacienteView({ patient, onClose, onUpdate, onDelete }: Props) {
           </button>
           <div className="avatar">{initials(patient.name)}</div>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div className="drawer-title">{patient.name}</div>
+            <div className="drawer-title" id="paciente-view-title">{patient.name}</div>
             <div className="drawer-sub" style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 12px', marginTop: 2 }}>
               {patient.phone && (
                 <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
@@ -80,6 +98,13 @@ export function PacienteView({ patient, onClose, onUpdate, onDelete }: Props) {
           borderBottom: '1px solid var(--border)',
           background: 'var(--bg-2)',
         }}>
+          <button
+            className="btn btn--secondary btn--sm"
+            style={{ flex: 1 }}
+            onClick={handleRegisterProcedure}
+          >
+            <ClipboardPlus size={15} /> Registrar atendimento
+          </button>
           <button
             className="btn btn--secondary btn--sm"
             style={{ flex: 1 }}

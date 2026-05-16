@@ -17,8 +17,8 @@ import type { PixInstallment, Procedure, Service } from '../../types';
 
 const PAYMENT_LABELS: Record<string, string> = {
   dinheiro: 'Dinheiro',
-  cartao_credito: 'Cartao Credito',
-  cartao_debito: 'Cartao Debito',
+  cartao_credito: 'Cartão Crédito',
+  cartao_debito: 'Cartão Débito',
   pix: 'PIX',
   pix_parcelado: 'PIX Parcelado',
 };
@@ -36,16 +36,38 @@ function serviceNames(proc: Procedure, services: Service[]) {
     .map(id => services.find(service => service.id === id)?.name)
     .filter(Boolean);
 
-  return names.length > 0 ? names.join(', ') : 'Servicos registrados';
+  return names.length > 0 ? names.join(', ') : 'Serviços registrados';
 }
 
-function SummaryCards({ receita, custos, lucro }: { receita: number; custos: number; lucro: number }) {
+function SummaryCards({
+  receitaTotal,
+  recebido,
+  pendente,
+  custos,
+  lucro,
+}: {
+  receitaTotal: number;
+  recebido: number;
+  pendente: number;
+  custos: number;
+  lucro: number;
+}) {
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginBottom: 28 }}>
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(132px, 1fr))', gap: 10, marginBottom: 28 }}>
       <div style={{ padding: '14px 10px', background: 'var(--bg-2)', borderRadius: 12, border: '1px solid var(--border)', textAlign: 'center' }}>
         <Wallet size={18} style={{ color: 'var(--primary)', marginBottom: 6 }} />
-        <div style={{ fontSize: '0.68rem', color: 'var(--text-3)', marginBottom: 4 }}>Receita</div>
-        <div style={{ fontWeight: 700, color: 'var(--text)', fontSize: '0.95rem' }}>{currency(receita)}</div>
+        <div style={{ fontSize: '0.68rem', color: 'var(--text-3)', marginBottom: 4 }}>Receita total</div>
+        <div style={{ fontWeight: 700, color: 'var(--text)', fontSize: '0.95rem' }}>{currency(receitaTotal)}</div>
+      </div>
+      <div style={{ padding: '14px 10px', background: '#f0fdf4', borderRadius: 12, border: '1px solid #bbf7d0', textAlign: 'center' }}>
+        <CheckCircle size={18} style={{ color: 'var(--green)', marginBottom: 6 }} />
+        <div style={{ fontSize: '0.68rem', color: 'var(--text-3)', marginBottom: 4 }}>Recebido</div>
+        <div style={{ fontWeight: 700, color: 'var(--green)', fontSize: '0.95rem' }}>{currency(recebido)}</div>
+      </div>
+      <div style={{ padding: '14px 10px', background: '#fffbf0', borderRadius: 12, border: '1px solid #fde68a', textAlign: 'center' }}>
+        <Clock size={18} style={{ color: 'var(--amber)', marginBottom: 6 }} />
+        <div style={{ fontSize: '0.68rem', color: 'var(--text-3)', marginBottom: 4 }}>Pendente</div>
+        <div style={{ fontWeight: 700, color: 'var(--amber)', fontSize: '0.95rem' }}>{currency(pendente)}</div>
       </div>
       <div style={{ padding: '14px 10px', background: 'var(--bg-2)', borderRadius: 12, border: '1px solid var(--border)', textAlign: 'center' }}>
         <TrendingDown size={18} style={{ color: 'var(--red)', marginBottom: 6 }} />
@@ -233,8 +255,8 @@ function ProcedureRow({ proc, services }: { proc: Procedure; services: Service[]
 
 export function FinanceiroPage() {
   const [month, setMonth] = useState(new Date());
-  const { procedures, pixPendentes, summary, loading, markPixPago } = useFinanceiro(month);
-  const { servicos, loading: loadingServices } = useServicos();
+  const { procedures, pixPendentes, summary, loading, error, markPixPago } = useFinanceiro(month);
+  const { servicos, loading: loadingServices, error: servicesError } = useServicos();
   const monthLabel = format(month, 'MMMM yyyy', { locale: ptBR });
 
   return (
@@ -259,7 +281,7 @@ export function FinanceiroPage() {
           <button
             onClick={() => setMonth(value => subMonths(value, 1))}
             style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 6, color: 'var(--primary)' }}
-            aria-label="Mes anterior"
+            aria-label="Mês anterior"
           >
             <ChevronLeft size={20} />
           </button>
@@ -269,19 +291,29 @@ export function FinanceiroPage() {
           <button
             onClick={() => setMonth(value => addMonths(value, 1))}
             style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 6, color: 'var(--primary)' }}
-            aria-label="Proximo mes"
+            aria-label="Próximo mês"
           >
             <ChevronRight size={20} />
           </button>
         </div>
 
-        {loading || loadingServices ? (
+        {error || servicesError ? (
+          <div className="empty-state">
+            <p>{error ?? servicesError}</p>
+          </div>
+        ) : loading || loadingServices ? (
           <div style={{ textAlign: 'center', padding: 48 }}>
             <Loader2 size={28} className="spin" style={{ color: 'var(--primary)' }} />
           </div>
         ) : (
           <>
-            <SummaryCards receita={summary.receita} custos={summary.custos} lucro={summary.lucro} />
+            <SummaryCards
+              receitaTotal={summary.receitaTotal}
+              recebido={summary.recebido}
+              pendente={summary.pendente}
+              custos={summary.custos}
+              lucro={summary.lucro}
+            />
 
             <section style={{ marginBottom: 28 }}>
               <h2 style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--text)', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -302,11 +334,11 @@ export function FinanceiroPage() {
 
             <section>
               <h2 style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--text)', marginBottom: 12 }}>
-                Historico - {procedures.length} atendimento{procedures.length !== 1 ? 's' : ''}
+                Histórico - {procedures.length} atendimento{procedures.length !== 1 ? 's' : ''}
               </h2>
               {procedures.length === 0 ? (
                 <div style={{ textAlign: 'center', color: 'var(--text-3)', fontSize: '0.85rem', padding: '24px 0' }}>
-                  Nenhum atendimento neste mes.
+                  Nenhum atendimento neste mês.
                 </div>
               ) : (
                 procedures.map(proc => <ProcedureRow key={proc.id} proc={proc} services={servicos} />)

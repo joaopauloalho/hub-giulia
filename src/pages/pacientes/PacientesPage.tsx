@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Plus, Search, UserRound } from 'lucide-react';
 import { usePacientes } from '../../hooks/usePacientes';
 import { NovaClienteDrawer } from './NovaClienteDrawer';
@@ -6,10 +7,25 @@ import { PacienteView } from './PacienteView';
 import type { Patient } from '../../types';
 
 export function PacientesPage() {
-  const { pacientes, loading, create, update, remove } = usePacientes();
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const { pacientes, loading, error, create, update, remove } = usePacientes();
   const [search, setSearch] = useState('');
   const [showCreate, setShowCreate] = useState(false);
   const [viewing, setViewing] = useState<Patient | null>(null);
+  const [sourceAppointmentId, setSourceAppointmentId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (loading || viewing) return;
+    const patientId = searchParams.get('patient_id');
+    if (!patientId) return;
+
+    const found = pacientes.find(patient => patient.id === patientId);
+    if (found) {
+      setViewing(found);
+      setSourceAppointmentId(searchParams.get('appointment_id'));
+    }
+  }, [loading, pacientes, searchParams, viewing]);
 
   const filtered = pacientes.filter(p =>
     [p.name, p.phone, p.email]
@@ -43,7 +59,11 @@ export function PacientesPage() {
         />
       </div>
 
-      {loading ? (
+      {error ? (
+        <div className="empty-state">
+          <p>{error}</p>
+        </div>
+      ) : loading ? (
         <div className="loading-state">Carregando...</div>
       ) : filtered.length === 0 ? (
         <div className="empty-state">
@@ -62,7 +82,7 @@ export function PacientesPage() {
       ) : (
         <div className="patient-list">
           {filtered.map(p => (
-            <div key={p.id} className="patient-item" onClick={() => setViewing(p)}>
+            <div key={p.id} className="patient-item" onClick={() => { setViewing(p); setSourceAppointmentId(null); }}>
               <div className="avatar">{initials(p.name)}</div>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontWeight: 600, fontSize: '0.95rem', color: 'var(--text)' }}>
@@ -98,7 +118,12 @@ export function PacientesPage() {
       {viewing && (
         <PacienteView
           patient={viewing}
-          onClose={() => setViewing(null)}
+          sourceAppointmentId={sourceAppointmentId}
+          onClose={() => {
+            setViewing(null);
+            setSourceAppointmentId(null);
+            if (searchParams.has('patient_id')) navigate('/pacientes', { replace: true });
+          }}
           onUpdate={async (data) => { await update(viewing.id, data); }}
           onDelete={async () => { await remove(viewing.id); setViewing(null); }}
         />

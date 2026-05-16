@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Plus, X, Clock, User, ChevronRight, Calendar } from 'lucide-react';
 import { format, addDays, isSameDay, startOfDay } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -79,13 +80,13 @@ function NovoAgendamentoModal({
 
   return (
     <div className="drawer-overlay" onClick={onClose}>
-      <div className="drawer" onClick={e => e.stopPropagation()}>
+      <div className="drawer" role="dialog" aria-modal="true" aria-labelledby="novo-agendamento-title" onClick={e => e.stopPropagation()}>
         <div className="drawer-header">
-          <h2 className="drawer-title">Novo agendamento</h2>
-          <button className="icon-btn" onClick={onClose}><X size={20} /></button>
+          <h2 className="drawer-title" id="novo-agendamento-title">Novo agendamento</h2>
+          <button className="icon-btn" onClick={onClose} aria-label="Fechar agendamento"><X size={20} /></button>
         </div>
         <div className="drawer-body">
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '12px' }}>
             <div>
               <label className="field-label">Data</label>
               <input className="field-input" type="date" value={date} onChange={e => setDate(e.target.value)} />
@@ -144,19 +145,23 @@ function NovoAgendamentoModal({
 // ─── Appointment card ─────────────────────────────────────────
 function AppointmentCard({
   apt,
-  onStatusChange,
+  onOpenPatient,
 }: {
   apt: Appointment;
-  onStatusChange: (id: string, status: AppointmentStatus) => void;
+  onOpenPatient: (apt: Appointment) => void;
 }) {
-  const [expanded, setExpanded] = useState(false);
   const timeStr = format(new Date(apt.scheduled_at), 'HH:mm');
 
   return (
     <div
       className="card"
       style={{ borderLeft: `4px solid ${STATUS_BAR[apt.status]}`, cursor: 'pointer', padding: '12px 14px' }}
-      onClick={() => setExpanded(e => !e)}
+      onClick={() => onOpenPatient(apt)}
+      role="button"
+      tabIndex={0}
+      onKeyDown={event => {
+        if (event.key === 'Enter' || event.key === ' ') onOpenPatient(apt);
+      }}
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
         <div style={{ textAlign: 'center', minWidth: '44px', flexShrink: 0 }}>
@@ -181,35 +186,9 @@ function AppointmentCard({
           <span style={{ ...STATUS_STYLE[apt.status], padding: '3px 10px', borderRadius: '10px', fontSize: '11px', fontWeight: 600 }}>
             {STATUS_LABEL[apt.status]}
           </span>
-          <ChevronRight size={16} style={{ color: 'var(--text-3)', transform: expanded ? 'rotate(90deg)' : 'none', transition: 'transform 0.2s' }} />
+          <ChevronRight size={16} style={{ color: 'var(--text-3)' }} />
         </div>
       </div>
-
-      {expanded && (
-        <div style={{ marginTop: '12px', paddingTop: '12px', borderTop: '1px solid var(--border)' }} onClick={e => e.stopPropagation()}>
-          {apt.notes && (
-            <p style={{ fontSize: '13px', color: 'var(--text-2)', marginBottom: '10px' }}>{apt.notes}</p>
-          )}
-          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-            <p style={{ fontSize: '12px', color: 'var(--text-3)', width: '100%', marginBottom: '4px' }}>Alterar status:</p>
-            {(Object.keys(STATUS_LABEL) as AppointmentStatus[])
-              .filter(s => s !== apt.status)
-              .map(s => (
-                <button
-                  key={s}
-                  onClick={() => onStatusChange(apt.id, s)}
-                  style={{
-                    ...STATUS_STYLE[s],
-                    padding: '5px 12px', borderRadius: '10px', fontSize: '12px', fontWeight: 600,
-                    border: 'none', cursor: 'pointer',
-                  }}
-                >
-                  {STATUS_LABEL[s]}
-                </button>
-              ))}
-          </div>
-        </div>
-      )}
     </div>
   );
 }
@@ -271,12 +250,19 @@ function DateStrip({ selected, onSelect }: { selected: Date; onSelect: (d: Date)
 
 // ─── Main ─────────────────────────────────────────────────────
 export function AgendaPage() {
+  const navigate = useNavigate();
   const [selectedDate, setSelectedDate] = useState(startOfDay(new Date()));
-  const { agendamentos, loading, update, create } = useAgenda(selectedDate);
+  const { agendamentos, loading, error, create } = useAgenda(selectedDate);
   const [showModal, setShowModal] = useState(false);
 
-  const handleStatusChange = async (id: string, status: AppointmentStatus) => {
-    await update(id, { status });
+  const handleOpenPatient = (apt: Appointment) => {
+    navigate(`/pacientes?patient_id=${apt.patient_id}&appointment_id=${apt.id}`, {
+      state: {
+        patientId: apt.patient_id,
+        appointmentId: apt.id,
+        serviceId: apt.service_id,
+      },
+    });
   };
 
   const dateLabel = isSameDay(selectedDate, startOfDay(new Date()))
@@ -297,7 +283,11 @@ export function AgendaPage() {
       <DateStrip selected={selectedDate} onSelect={setSelectedDate} />
 
       <div style={{ padding: '16px' }}>
-        {loading ? (
+        {error ? (
+          <div className="empty-state">
+            <p>{error}</p>
+          </div>
+        ) : loading ? (
           <p style={{ color: 'var(--text-3)', textAlign: 'center', padding: '48px 0' }}>Carregando...</p>
         ) : agendamentos.length === 0 ? (
           <div className="empty-state">
@@ -313,7 +303,7 @@ export function AgendaPage() {
               <AppointmentCard
                 key={apt.id}
                 apt={apt}
-                onStatusChange={handleStatusChange}
+                onOpenPatient={handleOpenPatient}
               />
             ))}
           </div>

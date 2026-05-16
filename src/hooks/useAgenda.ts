@@ -5,22 +5,33 @@ import type { Appointment } from '../types';
 export function useAgenda(date: Date) {
   const [agendamentos, setAgendamentos] = useState<Appointment[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     setLoading(true);
-    const dayStart = new Date(date);
-    dayStart.setHours(0, 0, 0, 0);
-    const dayEnd = new Date(date);
-    dayEnd.setHours(23, 59, 59, 999);
+    setError(null);
 
-    const { data } = await supabase
-      .from('appointments')
-      .select('*, patient:patients(id,name,phone), service:services(id,name,duration_minutes)')
-      .gte('scheduled_at', dayStart.toISOString())
-      .lte('scheduled_at', dayEnd.toISOString())
-      .order('scheduled_at');
-    setAgendamentos(data ?? []);
-    setLoading(false);
+    try {
+      const dayStart = new Date(date);
+      dayStart.setHours(0, 0, 0, 0);
+      const dayEnd = new Date(date);
+      dayEnd.setHours(23, 59, 59, 999);
+
+      const { data, error: agendaError } = await supabase
+        .from('appointments')
+        .select('*, patient:patients(id,name,phone), service:services(id,name,duration_minutes)')
+        .gte('scheduled_at', dayStart.toISOString())
+        .lte('scheduled_at', dayEnd.toISOString())
+        .order('scheduled_at');
+
+      if (agendaError) throw agendaError;
+      setAgendamentos(data ?? []);
+    } catch (err) {
+      setAgendamentos([]);
+      setError(err instanceof Error ? err.message : 'Erro ao carregar agenda.');
+    } finally {
+      setLoading(false);
+    }
   }, [date]);
 
   useEffect(() => { refresh(); }, [refresh]);
@@ -49,5 +60,5 @@ export function useAgenda(date: Date) {
     await refresh();
   };
 
-  return { agendamentos, loading, create, update, remove, refresh };
+  return { agendamentos, loading, error, create, update, remove, refresh };
 }

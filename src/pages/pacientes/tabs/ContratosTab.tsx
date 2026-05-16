@@ -10,7 +10,7 @@ interface Props {
 }
 
 export function ContratosTab({ patientId, onSignNew }: Props) {
-  const { contracts, loading, load } = useContracts(patientId);
+  const { contracts, loading, error, load } = useContracts(patientId);
 
   useEffect(() => { load(); }, [load]);
 
@@ -28,7 +28,11 @@ export function ContratosTab({ patientId, onSignNew }: Props) {
         </button>
       </div>
 
-      {loading ? (
+      {error ? (
+        <div className="empty-state" style={{ padding: '32px 0' }}>
+          <p>{error}</p>
+        </div>
+      ) : loading ? (
         <div className="loading-state">Carregando contratos...</div>
       ) : contracts.length === 0 ? (
         <div className="empty-state" style={{ padding: '32px 0' }}>
@@ -61,6 +65,7 @@ export function ContratosTab({ patientId, onSignNew }: Props) {
               </div>
               {c.pdf_url && (
                 <a href={c.pdf_url} target="_blank" rel="noopener noreferrer"
+                  aria-label="Abrir contrato assinado"
                   style={{ color: 'var(--primary)', flexShrink: 0 }}>
                   <Download size={18} />
                 </a>

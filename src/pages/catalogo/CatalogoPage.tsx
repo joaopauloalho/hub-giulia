@@ -2,22 +2,8 @@ import { useState, useEffect, useCallback } from 'react';
 import { Plus, Pencil, Trash2, ToggleLeft, ToggleRight, X, BookOpen, FileText, Settings } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useServicos } from '../../hooks/useServicos';
+import { useMaquininhaConfig } from '../../hooks/useMaquininhaConfig';
 import type { Service, ServiceType, ContractTemplate, MaquininhaConfig } from '../../types';
-
-// ─── Maquininha config (localStorage) ────────────────────────
-const MAQUININHA_KEY = 'maquininha_config';
-function loadMaquininha(): MaquininhaConfig {
-  try {
-    const raw = localStorage.getItem(MAQUININHA_KEY);
-    if (raw) return JSON.parse(raw);
-  } catch {
-    return { credito_pct: 3, debito_pct: 1.5 };
-  }
-  return { credito_pct: 3, debito_pct: 1.5 };
-}
-function saveMaquininha(cfg: MaquininhaConfig) {
-  localStorage.setItem(MAQUININHA_KEY, JSON.stringify(cfg));
-}
 
 type Section = 'servicos' | 'contratos' | 'config';
 
@@ -92,10 +78,10 @@ function ServiceDrawer({
 
   return (
     <div className="drawer-overlay" onClick={onClose}>
-      <div className="drawer" onClick={e => e.stopPropagation()}>
+      <div className="drawer" role="dialog" aria-modal="true" aria-labelledby="service-drawer-title" onClick={e => e.stopPropagation()}>
         <div className="drawer-header">
-          <h2 className="drawer-title">{initial ? 'Editar' : 'Novo'} item</h2>
-          <button className="icon-btn" onClick={onClose}><X size={20} /></button>
+          <h2 className="drawer-title" id="service-drawer-title">{initial ? 'Editar' : 'Novo'} item</h2>
+          <button className="icon-btn" onClick={onClose} aria-label="Fechar item"><X size={20} /></button>
         </div>
         <div className="drawer-body">
           <label className="field-label">Nome *</label>
@@ -108,7 +94,7 @@ function ServiceDrawer({
             ))}
           </select>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px' }}>
             <div>
               <label className="field-label">Preço (R$)</label>
               <input className="field-input" type="number" min="0" step="0.01" value={form.price}
@@ -127,7 +113,7 @@ function ServiceDrawer({
             onChange={e => set('duration_minutes', e.target.value ? parseInt(e.target.value) : null)}
             placeholder="Ex: 60" />
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px' }}>
             <div>
               <label className="field-label">Retorno mínimo (dias)</label>
               <input className="field-input" type="number" min="0"
@@ -208,10 +194,10 @@ function TemplateDrawer({
 
   return (
     <div className="drawer-overlay" onClick={onClose}>
-      <div className="drawer" onClick={e => e.stopPropagation()}>
+      <div className="drawer" role="dialog" aria-modal="true" aria-labelledby="template-drawer-title" onClick={e => e.stopPropagation()}>
         <div className="drawer-header">
-          <h2 className="drawer-title">{initial ? 'Editar' : 'Novo'} template</h2>
-          <button className="icon-btn" onClick={onClose}><X size={20} /></button>
+          <h2 className="drawer-title" id="template-drawer-title">{initial ? 'Editar' : 'Novo'} template</h2>
+          <button className="icon-btn" onClick={onClose} aria-label="Fechar template"><X size={20} /></button>
         </div>
         <div className="drawer-body">
           <label className="field-label">Nome do template *</label>
@@ -297,23 +283,33 @@ function ServiceCard({ s, onEdit, onDelete, onToggle }: {
 // ─── Main ─────────────────────────────────────────────────────
 export function CatalogoPage() {
   const [section, setSection] = useState<Section>('servicos');
-  const { servicos, loading: loadingServicos, create, update, remove, toggle } = useServicos();
+  const { servicos, loading: loadingServicos, error: servicosError, create, update, remove, toggle } = useServicos();
   const [filterType, setFilterType] = useState<ServiceType | 'todos'>('todos');
   const [serviceDrawer, setServiceDrawer] = useState<{ open: boolean; item?: Service }>({ open: false });
 
   // Contract templates
   const [templates, setTemplates] = useState<ContractTemplate[]>([]);
   const [loadingTemplates, setLoadingTemplates] = useState(false);
+  const [templatesError, setTemplatesError] = useState<string | null>(null);
   const [templateDrawer, setTemplateDrawer] = useState<{ open: boolean; item?: ContractTemplate }>({ open: false });
 
   const loadTemplates = useCallback(async () => {
     setLoadingTemplates(true);
-    const { data } = await supabase
-      .from('contract_templates')
-      .select('*')
-      .order('created_at', { ascending: false });
-    setTemplates((data as ContractTemplate[]) ?? []);
-    setLoadingTemplates(false);
+    setTemplatesError(null);
+
+    try {
+      const { data, error } = await supabase
+        .from('contract_templates')
+        .select('*')
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      setTemplates((data as ContractTemplate[]) ?? []);
+    } catch (err) {
+      setTemplates([]);
+      setTemplatesError(err instanceof Error ? err.message : 'Erro ao carregar contratos.');
+    } finally {
+      setLoadingTemplates(false);
+    }
   }, []);
 
   useEffect(() => { if (section === 'contratos') loadTemplates(); }, [section, loadTemplates]);
@@ -337,13 +333,28 @@ export function CatalogoPage() {
   };
 
   // Maquininha config
-  const [maqConfig, setMaqConfig] = useState<MaquininhaConfig>(loadMaquininha);
+  const {
+    config: loadedMaqConfig,
+    loading: loadingMaq,
+    saving: savingMaq,
+    error: maqError,
+    save: saveMaq,
+  } = useMaquininhaConfig();
+  const [maqConfig, setMaqConfig] = useState<MaquininhaConfig>(loadedMaqConfig);
   const [maqSaved, setMaqSaved] = useState(false);
 
-  const handleSaveMaq = () => {
-    saveMaquininha(maqConfig);
-    setMaqSaved(true);
-    setTimeout(() => setMaqSaved(false), 2000);
+  useEffect(() => {
+    setMaqConfig(loadedMaqConfig);
+  }, [loadedMaqConfig]);
+
+  const handleSaveMaq = async () => {
+    try {
+      await saveMaq(maqConfig);
+      setMaqSaved(true);
+      setTimeout(() => setMaqSaved(false), 2000);
+    } catch {
+      setMaqSaved(false);
+    }
   };
 
   const filtered = filterType === 'todos' ? servicos : servicos.filter(s => s.type === filterType);
@@ -411,7 +422,11 @@ export function CatalogoPage() {
             ))}
           </div>
 
-          {loadingServicos ? (
+          {servicosError ? (
+            <div className="empty-state">
+              <p>{servicosError}</p>
+            </div>
+          ) : loadingServicos ? (
             <p style={{ color: 'var(--text-3)', textAlign: 'center', padding: '48px 0' }}>Carregando...</p>
           ) : filtered.length === 0 ? (
             <div className="empty-state">
@@ -440,7 +455,11 @@ export function CatalogoPage() {
       {/* ── Contratos ─────────────────────────────────────────── */}
       {section === 'contratos' && (
         <div style={{ padding: '16px' }}>
-          {loadingTemplates ? (
+          {templatesError ? (
+            <div className="empty-state">
+              <p>{templatesError}</p>
+            </div>
+          ) : loadingTemplates ? (
             <p style={{ color: 'var(--text-3)', textAlign: 'center', padding: '48px 0' }}>Carregando...</p>
           ) : templates.length === 0 ? (
             <div className="empty-state">
@@ -479,25 +498,30 @@ export function CatalogoPage() {
             <h3 style={{ fontWeight: 600, fontSize: '15px', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
               <Settings size={18} style={{ color: 'var(--primary)' }} /> Taxas da maquininha
             </h3>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+            {maqError && (
+              <p style={{ color: 'var(--red)', fontSize: '13px', marginBottom: 12 }}>{maqError}</p>
+            )}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '16px' }}>
               <div>
                 <label className="field-label">Crédito (%)</label>
                 <input className="field-input" type="number" min="0" max="100" step="0.01"
                   value={maqConfig.credito_pct}
+                  disabled={loadingMaq}
                   onChange={e => setMaqConfig(c => ({ ...c, credito_pct: parseFloat(e.target.value) || 0 }))} />
               </div>
               <div>
                 <label className="field-label">Débito (%)</label>
                 <input className="field-input" type="number" min="0" max="100" step="0.01"
                   value={maqConfig.debito_pct}
+                  disabled={loadingMaq}
                   onChange={e => setMaqConfig(c => ({ ...c, debito_pct: parseFloat(e.target.value) || 0 }))} />
               </div>
             </div>
             <div style={{ marginTop: '12px', padding: '10px 12px', background: 'var(--bg-2)', borderRadius: '8px', fontSize: '13px', color: 'var(--text-2)' }}>
               Ex: R$ 200 no crédito → taxa R$ {(200 * maqConfig.credito_pct / 100).toFixed(2)} → líquido R$ {(200 - 200 * maqConfig.credito_pct / 100).toFixed(2)}
             </div>
-            <button className="btn-primary" style={{ marginTop: '16px', width: '100%' }} onClick={handleSaveMaq}>
-              {maqSaved ? '✓ Salvo!' : 'Salvar configuração'}
+            <button className="btn-primary" style={{ marginTop: '16px', width: '100%' }} onClick={handleSaveMaq} disabled={savingMaq || loadingMaq}>
+              {savingMaq ? 'Salvando...' : maqSaved ? 'Salvo!' : 'Salvar configuração'}
             </button>
           </div>
 

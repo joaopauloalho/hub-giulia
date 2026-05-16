@@ -5,15 +5,26 @@ import type { Service } from '../types';
 export function useServicos() {
   const [servicos, setServicos] = useState<Service[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     setLoading(true);
-    const { data } = await supabase
-      .from('services')
-      .select('*')
-      .order('name');
-    setServicos(data ?? []);
-    setLoading(false);
+    setError(null);
+
+    try {
+      const { data, error: servicesError } = await supabase
+        .from('services')
+        .select('*')
+        .order('name');
+
+      if (servicesError) throw servicesError;
+      setServicos(data ?? []);
+    } catch (err) {
+      setServicos([]);
+      setError(err instanceof Error ? err.message : 'Erro ao carregar serviços.');
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => { refresh(); }, [refresh]);
@@ -46,5 +57,5 @@ export function useServicos() {
     await update(id, { active });
   };
 
-  return { servicos, loading, create, update, remove, toggle, refresh };
+  return { servicos, loading, error, create, update, remove, toggle, refresh };
 }

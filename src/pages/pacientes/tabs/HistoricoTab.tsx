@@ -10,8 +10,8 @@ interface Props { patientId: string; }
 
 const PAYMENT_LABELS: Record<string, string> = {
   dinheiro: 'Dinheiro',
-  cartao_credito: 'Cartao Credito',
-  cartao_debito: 'Cartao Debito',
+  cartao_credito: 'Cartão Crédito',
+  cartao_debito: 'Cartão Débito',
   pix: 'PIX',
   pix_parcelado: 'PIX Parcelado',
 };
@@ -25,7 +25,7 @@ function serviceNames(proc: Procedure, services: Service[]) {
     .map(id => services.find(service => service.id === id)?.name)
     .filter(Boolean);
 
-  return names.length > 0 ? names.join(', ') : 'Servicos registrados';
+  return names.length > 0 ? names.join(', ') : 'Serviços registrados';
 }
 
 function ProcedureCard({ proc, services }: { proc: Procedure; services: Service[] }) {
@@ -126,13 +126,21 @@ function ProcedureCard({ proc, services }: { proc: Procedure; services: Service[
 }
 
 export function HistoricoTab({ patientId }: Props) {
-  const { procedures, loading } = useProcedures(patientId);
-  const { servicos, loading: loadingServices } = useServicos();
+  const { procedures, loading, error } = useProcedures(patientId);
+  const { servicos, loading: loadingServices, error: servicesError } = useServicos();
 
   const total = useMemo(
     () => procedures.reduce((sum, proc) => sum + proc.total_value, 0),
     [procedures]
   );
+
+  if (error || servicesError) {
+    return (
+      <div className="empty-state" style={{ padding: '48px 20px' }}>
+        <p>{error ?? servicesError}</p>
+      </div>
+    );
+  }
 
   if (loading || loadingServices) {
     return (

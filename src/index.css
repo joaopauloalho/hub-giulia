@@ -241,6 +241,52 @@ body {
 .btn--danger { background: #fee2e2; color: var(--red); }
 .btn--danger:hover:not(:disabled) { background: #fecaca; }
 
+.btn-primary,
+.btn-secondary {
+  min-height: 44px;
+  border-radius: var(--radius);
+  border: none;
+  padding: 10px 16px;
+  font-family: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+.btn-primary {
+  background: linear-gradient(135deg, #f9a8d4, #be185d);
+  color: #fff;
+  box-shadow: 0 2px 12px rgba(190, 24, 93, 0.25);
+}
+
+.btn-secondary {
+  background: var(--bg-2);
+  color: var(--primary);
+  border: 1.5px solid var(--border);
+}
+
+.btn-primary:disabled,
+.btn-secondary:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.icon-btn {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: none;
+  background: var(--bg-2);
+  color: var(--text-2);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
 .w-full { width: 100%; }
 
 /* ─── FAB ────────────────────────────────────────────────────── */
@@ -511,6 +557,15 @@ select.field-input { cursor: pointer; }
   flex: 1;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
+}
+
+.drawer-footer {
+  display: flex;
+  gap: 10px;
+  padding: 14px 20px;
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+  padding-bottom: max(14px, env(safe-area-inset-bottom));
 }
 
 /* ─── Conditional toggle (Não/Sim) ──────────────────────────── */

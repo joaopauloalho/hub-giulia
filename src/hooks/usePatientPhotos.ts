@@ -1,20 +1,40 @@
 import { useState, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import type { PatientPhoto } from '../types';
+import { createSignedStorageUrl, storagePathFromValue } from '../lib/storage';
 
 export function usePatientPhotos(patientId: string) {
   const [photos, setPhotos] = useState<PatientPhoto[]>([]);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
-    const { data } = await supabase
-      .from('patient_photos')
-      .select('*')
-      .eq('patient_id', patientId)
-      .order('taken_at', { ascending: false });
-    setPhotos(data ?? []);
-    setLoading(false);
+    setError(null);
+
+    try {
+      const { data, error: photosError } = await supabase
+        .from('patient_photos')
+        .select('*')
+        .eq('patient_id', patientId)
+        .order('taken_at', { ascending: false });
+
+      if (photosError) throw photosError;
+
+      const signedPhotos = await Promise.all(
+        ((data ?? []) as PatientPhoto[]).map(async photo => ({
+          ...photo,
+          photo_url: await createSignedStorageUrl('patient-photos', photo.photo_url) ?? '',
+        }))
+      );
+
+      setPhotos(signedPhotos);
+    } catch (err) {
+      setPhotos([]);
+      setError(err instanceof Error ? err.message : 'Erro ao carregar fotos.');
+    } finally {
+      setLoading(false);
+    }
   }, [patientId]);
 
   const upload = async (file: File, label: string) => {
@@ -27,14 +47,10 @@ export function usePatientPhotos(patientId: string) {
       .upload(path, file, { upsert: false });
     if (uploadError) throw uploadError;
 
-    const { data: urlData } = supabase.storage
-      .from('patient-photos')
-      .getPublicUrl(path);
-
     const { error: insertError } = await supabase.from('patient_photos').insert({
       patient_id: patientId,
       user_id: user!.id,
-      photo_url: urlData.publicUrl,
+      photo_url: path,
       label: label || null,
       taken_at: new Date().toISOString(),
     });
@@ -43,8 +59,7 @@ export function usePatientPhotos(patientId: string) {
   };
 
   const remove = async (photo: PatientPhoto) => {
-    const url = new URL(photo.photo_url);
-    const path = url.pathname.split('/patient-photos/')[1];
+    const path = storagePathFromValue(photo.photo_url, 'patient-photos');
     if (path) {
       await supabase.storage.from('patient-photos').remove([path]);
     }
@@ -52,5 +67,5 @@ export function usePatientPhotos(patientId: string) {
     await load();
   };
 
-  return { photos, loading, load, upload, remove };
+  return { photos, loading, error, load, upload, remove };
 }

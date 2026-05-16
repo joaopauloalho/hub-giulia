@@ -1,21 +1,15 @@
-import { useState, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { useLocation, useSearchParams } from 'react-router-dom';
 import { Search, Check, ChevronRight, ChevronLeft, Loader2, X } from 'lucide-react';
 import { usePacientes } from '../../hooks/usePacientes';
 import { useServicos } from '../../hooks/useServicos';
 import { useProcedures } from '../../hooks/useProcedures';
+import { useMaquininhaConfig } from '../../hooks/useMaquininhaConfig';
 import type { Patient, Service, PaymentMethod, MaquininhaConfig } from '../../types';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-function getMaquininha(): MaquininhaConfig {
-  try {
-    return JSON.parse(localStorage.getItem('maquininha_config') ?? '') as MaquininhaConfig;
-  } catch {
-    return { credito_pct: 3, debito_pct: 1.5 };
-  }
-}
-
 const PAYMENT_LABELS: Record<PaymentMethod, string> = {
   dinheiro: 'Dinheiro',
   cartao_credito: 'Cartão Crédito',
@@ -197,14 +191,15 @@ function StepPagamento({
   setPaymentMethod,
   installments,
   setInstallments,
+  maq,
 }: {
   services: Service[];
   paymentMethod: PaymentMethod;
   setPaymentMethod: (m: PaymentMethod) => void;
   installments: number;
   setInstallments: (n: number) => void;
+  maq: MaquininhaConfig;
 }) {
-  const maq = getMaquininha();
   const totalCobrado = services.reduce((s, x) => s + x.price, 0);
   const totalCusto = services.reduce((s, x) => s + x.cost_per_unit, 0);
 
@@ -220,7 +215,7 @@ function StepPagamento({
     <div>
       <h2 style={{ fontSize: '1.1rem', fontWeight: 600, marginBottom: 16 }}>Forma de pagamento</h2>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 24 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(112px, 1fr))', gap: 8, marginBottom: 24 }}>
         {[
           { label: 'Cobrado', value: totalCobrado, color: 'var(--text)' },
           { label: 'Custo', value: totalCusto, color: 'var(--red)' },
@@ -313,6 +308,7 @@ function StepConfirmar({
   installments,
   saving,
   onConfirm,
+  maq,
 }: {
   patient: Patient;
   services: Service[];
@@ -320,8 +316,8 @@ function StepConfirmar({
   installments: number;
   saving: boolean;
   onConfirm: () => void;
+  maq: MaquininhaConfig;
 }) {
-  const maq = getMaquininha();
   const totalCobrado = services.reduce((s, x) => s + x.price, 0);
   const totalCusto = services.reduce((s, x) => s + x.cost_per_unit, 0);
 
@@ -399,14 +395,54 @@ function StepConfirmar({
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 export function RegistrarPage() {
+  const location = useLocation();
+  const [searchParams] = useSearchParams();
   const { create } = useProcedures();
+  const { pacientes, loading: loadingPacientes } = usePacientes();
+  const { servicos, loading: loadingServicos } = useServicos();
+  const { config: maqConfig, loading: loadingMaq, error: maqError } = useMaquininhaConfig();
   const [step, setStep] = useState(0);
   const [patient, setPatient] = useState<Patient | null>(null);
   const [services, setServices] = useState<Service[]>([]);
+  const [appointmentId, setAppointmentId] = useState<string | null>(null);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('dinheiro');
   const [installments, setInstallments] = useState(2);
   const [saving, setSaving] = useState(false);
   const [done, setDone] = useState(false);
+
+  const routeState = (location.state ?? {}) as {
+    patient?: Patient;
+    patientId?: string;
+    appointmentId?: string;
+    serviceId?: string | null;
+  };
+
+  useEffect(() => {
+    const requestedPatient = routeState.patient;
+    const patientId = searchParams.get('patient_id') ?? routeState.patientId ?? requestedPatient?.id;
+    const nextAppointmentId = searchParams.get('appointment_id') ?? routeState.appointmentId ?? null;
+    const serviceId = searchParams.get('service_id') ?? routeState.serviceId ?? null;
+
+    if (!patient && requestedPatient) {
+      setPatient(requestedPatient);
+      setStep(1);
+    } else if (!patient && patientId && !loadingPacientes) {
+      const foundPatient = pacientes.find(item => item.id === patientId);
+      if (foundPatient) {
+        setPatient(foundPatient);
+        setStep(1);
+      }
+    }
+
+    if (nextAppointmentId) {
+      setAppointmentId(nextAppointmentId);
+    }
+
+    if (serviceId && !loadingServicos && services.length === 0) {
+      const foundService = servicos.find(item => item.id === serviceId);
+      if (foundService) setServices([foundService]);
+    }
+  }, [loadingPacientes, loadingServicos, pacientes, patient, routeState.appointmentId, routeState.patient, routeState.patientId, routeState.serviceId, searchParams, services.length, servicos]);
 
   const toggleService = (s: Service) => {
     setServices(prev =>
@@ -418,6 +454,7 @@ export function RegistrarPage() {
     setStep(0);
     setPatient(null);
     setServices([]);
+    setAppointmentId(null);
     setPaymentMethod('dinheiro');
     setInstallments(2);
     setDone(false);
@@ -427,18 +464,18 @@ export function RegistrarPage() {
     if (!patient || services.length === 0) return;
     setSaving(true);
     try {
-      const maq = getMaquininha();
       const totalCobrado = services.reduce((s, x) => s + x.price, 0);
       const totalCusto = services.reduce((s, x) => s + x.cost_per_unit, 0);
 
       let feePct: number | null = null;
       let feeValue: number | null = null;
-      if (paymentMethod === 'cartao_credito') { feePct = maq.credito_pct; feeValue = totalCobrado * feePct / 100; }
-      if (paymentMethod === 'cartao_debito')  { feePct = maq.debito_pct;  feeValue = totalCobrado * feePct / 100; }
+      if (paymentMethod === 'cartao_credito') { feePct = maqConfig.credito_pct; feeValue = totalCobrado * feePct / 100; }
+      if (paymentMethod === 'cartao_debito')  { feePct = maqConfig.debito_pct;  feeValue = totalCobrado * feePct / 100; }
       const netValue = totalCobrado - (feeValue ?? 0);
 
       await create({
         patient_id: patient.id,
+        appointment_id: appointmentId,
         services_ids: services.map(s => s.id),
         total_value: totalCobrado,
         total_cost: totalCusto,
@@ -483,7 +520,7 @@ export function RegistrarPage() {
   const canAdvance = () => {
     if (step === 0) return !!patient;
     if (step === 1) return services.length > 0;
-    if (step === 2) return paymentMethod !== 'pix_parcelado' || installments >= 2;
+    if (step === 2) return !loadingMaq && !maqError && (paymentMethod !== 'pix_parcelado' || installments >= 2);
     return true;
   };
 
@@ -527,13 +564,21 @@ export function RegistrarPage() {
           <StepServicos selected={services} onToggle={toggleService} />
         )}
         {step === 2 && (
-          <StepPagamento
-            services={services}
-            paymentMethod={paymentMethod}
-            setPaymentMethod={m => { setPaymentMethod(m); }}
-            installments={installments}
-            setInstallments={setInstallments}
-          />
+          <>
+            {maqError && (
+              <div className="empty-state" style={{ padding: '16px 0' }}>
+                <p>{maqError}</p>
+              </div>
+            )}
+            <StepPagamento
+              services={services}
+              paymentMethod={paymentMethod}
+              setPaymentMethod={m => { setPaymentMethod(m); }}
+              installments={installments}
+              setInstallments={setInstallments}
+              maq={maqConfig}
+            />
+          </>
         )}
         {step === 3 && patient && (
           <StepConfirmar
@@ -543,6 +588,7 @@ export function RegistrarPage() {
             installments={installments}
             saving={saving}
             onConfirm={confirm}
+            maq={maqConfig}
           />
         )}
 

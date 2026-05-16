@@ -69,7 +69,7 @@ const emptyH = (): AnamnesisHabits => ({});
 const emptyA = (): AnamnesisAesthetics => ({});
 
 export function AnamneseTab({ patientId }: Props) {
-  const { anamnese, loading, load, save } = useAnamnese(patientId);
+  const { anamnese, loading, error, load, save } = useAnamnese(patientId);
   const [conditions, setConditions] = useState<AnamnesisConditions>(emptyC());
   const [surgical, setSurgical] = useState<AnamnosisSurgicalHistory>(emptyS());
   const [habits, setHabits] = useState<AnamnesisHabits>(emptyH());
@@ -116,6 +116,14 @@ export function AnamneseTab({ patientId }: Props) {
     }
   };
 
+  if (error) {
+    return (
+      <div className="empty-state" style={{ padding: '48px 20px' }}>
+        <p>{error}</p>
+      </div>
+    );
+  }
+
   if (loading) return <div className="loading-state">Carregando...</div>;
 
   const SaveBtn = () => (
@@ -133,7 +141,7 @@ export function AnamneseTab({ patientId }: Props) {
 
       {/* Condições de Saúde */}
       <SectionTitle>Condições de Saúde</SectionTitle>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 16px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '0 16px' }}>
         {([
           ['hipertensao', 'Hipertensão'],
           ['hipotensao', 'Hipotensão'],
@@ -251,7 +259,7 @@ export function AnamneseTab({ patientId }: Props) {
 
       {/* Hábitos Alimentares */}
       <SectionTitle>Hábitos Alimentares</SectionTitle>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 16px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '0 16px' }}>
         {([
           ['refrigerante', 'Refrigerante'],
           ['fast_food', 'Fast food'],

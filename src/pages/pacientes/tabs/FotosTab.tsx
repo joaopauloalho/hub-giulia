@@ -8,7 +8,7 @@ import { ptBR } from 'date-fns/locale';
 interface Props { patientId: string; }
 
 export function FotosTab({ patientId }: Props) {
-  const { photos, loading, load, upload, remove } = usePatientPhotos(patientId);
+  const { photos, loading, error, load, upload, remove } = usePatientPhotos(patientId);
   const [uploading, setUploading] = useState(false);
   const [label, setLabel] = useState('');
   const [preview, setPreview] = useState<PatientPhoto | null>(null);
@@ -73,7 +73,11 @@ export function FotosTab({ patientId }: Props) {
       </div>
 
       {/* Gallery */}
-      {loading ? (
+      {error ? (
+        <div className="empty-state" style={{ padding: '32px 0' }}>
+          <p>{error}</p>
+        </div>
+      ) : loading ? (
         <div className="loading-state">Carregando fotos...</div>
       ) : photos.length === 0 ? (
         <div className="empty-state" style={{ padding: '32px 0' }}>
@@ -81,7 +85,7 @@ export function FotosTab({ patientId }: Props) {
           <p>Nenhuma foto registrada.</p>
         </div>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 12 }}>
           {photos.map(photo => (
             <div key={photo.id} style={{
               border: '1px solid var(--border)',
@@ -122,6 +126,9 @@ export function FotosTab({ patientId }: Props) {
       {/* Lightbox */}
       {preview && (
         <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Pré-visualização da foto"
           style={{
             position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.9)',
             zIndex: 1000, display: 'flex', flexDirection: 'column',
@@ -136,6 +143,7 @@ export function FotosTab({ patientId }: Props) {
             <div style={{ color: '#fff', marginTop: 12, fontSize: '0.9rem' }}>{preview.label}</div>
           )}
           <button className="btn btn--ghost btn--sm"
+            aria-label="Fechar pré-visualização"
             style={{ marginTop: 16, color: '#fff', borderColor: 'rgba(255,255,255,0.3)' }}
             onClick={() => setPreview(null)}>
             Fechar
