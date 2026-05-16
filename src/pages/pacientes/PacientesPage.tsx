@@ -1,139 +1,108 @@
 import { useState } from 'react';
-import { Plus, Search, Eye, Pencil, Trash2, UserRound } from 'lucide-react';
+import { Plus, Search, UserRound } from 'lucide-react';
 import { usePacientes } from '../../hooks/usePacientes';
 import { NovaClienteDrawer } from './NovaClienteDrawer';
 import { PacienteView } from './PacienteView';
-import type { Paciente } from '../../types';
+import type { Patient } from '../../types';
 
 export function PacientesPage() {
   const { pacientes, loading, create, update, remove } = usePacientes();
   const [search, setSearch] = useState('');
-  const [drawer, setDrawer] = useState<{ open: boolean; editing: Paciente | null }>({ open: false, editing: null });
-  const [viewing, setViewing] = useState<Paciente | null>(null);
+  const [showCreate, setShowCreate] = useState(false);
+  const [viewing, setViewing] = useState<Patient | null>(null);
 
   const filtered = pacientes.filter(p =>
-    [p.nome, p.celular, p.email, p.profissao, p.motivoConsulta]
+    [p.name, p.phone, p.email]
       .some(v => v?.toLowerCase().includes(search.toLowerCase()))
   );
 
-  const openCreate = () => setDrawer({ open: true, editing: null });
-  const openEdit = (p: Paciente) => {
-    setViewing(null);
-    setDrawer({ open: true, editing: p });
-  };
-  const closeDrawer = () => setDrawer({ open: false, editing: null });
+  const initials = (name: string) =>
+    name.split(' ').slice(0, 2).map(w => w[0]).join('').toUpperCase();
 
-  const handleSave = (data: Omit<Paciente, 'id' | 'createdAt'>) => {
-    if (drawer.editing) update(drawer.editing.id, data);
-    else create(data);
-  };
-
-  const handleDelete = (p: Paciente) => {
-    if (!confirm(`Excluir a ficha de ${p.nome}?`)) return;
-    remove(p.id);
-    if (viewing?.id === p.id) setViewing(null);
-  };
-
-  const fmtDate = (iso: string) =>
-    iso ? new Date(iso + 'T12:00:00').toLocaleDateString('pt-BR') : '—';
+  const fmtDate = (iso: string | null) =>
+    iso ? new Date(iso).toLocaleDateString('pt-BR') : null;
 
   return (
     <div className="page">
       <div className="page-header">
         <div>
           <h1 className="page-title">Pacientes</h1>
-          <p className="page-sub">{pacientes.length} {pacientes.length === 1 ? 'paciente' : 'pacientes'} cadastrada{pacientes.length !== 1 ? 's' : ''}</p>
+          <p className="page-sub">
+            {pacientes.length} {pacientes.length === 1 ? 'paciente' : 'pacientes'}
+          </p>
         </div>
-        <button className="btn btn--primary btn--md" onClick={openCreate}>
-          <Plus size={16} strokeWidth={2} /> Nova Cliente
-        </button>
       </div>
 
-      <div className="toolbar">
-        <div className="search-wrap">
-          <Search size={16} className="search-icon" />
-          <input
-            className="search-input"
-            placeholder="Buscar por nome, celular, email..."
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-          />
-        </div>
+      <div className="search-wrap">
+        <Search size={18} className="search-icon" />
+        <input
+          className="search-input"
+          placeholder="Buscar por nome, celular ou email..."
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+        />
       </div>
 
       {loading ? (
         <div className="loading-state">Carregando...</div>
       ) : filtered.length === 0 ? (
         <div className="empty-state">
+          <UserRound size={48} strokeWidth={1} style={{ color: 'var(--primary-lt)' }} />
           {search ? (
             <p>Nenhuma paciente encontrada para "{search}".</p>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
-              <UserRound size={36} strokeWidth={1} style={{ color: 'var(--text-3)' }} />
+            <>
               <p>Nenhuma paciente cadastrada ainda.</p>
-              <button className="btn btn--primary btn--md" onClick={openCreate}>
-                <Plus size={16} /> Cadastrar primeira cliente
+              <button className="btn btn--primary btn--md" onClick={() => setShowCreate(true)}>
+                <Plus size={16} /> Cadastrar primeira paciente
               </button>
-            </div>
+            </>
           )}
         </div>
       ) : (
-        <div className="table-wrap">
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Nome</th>
-                <th>Celular</th>
-                <th>Profissão</th>
-                <th>Consulta</th>
-                <th>Motivo</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map(p => (
-                <tr key={p.id} style={{ cursor: 'pointer' }} onClick={() => setViewing(p)}>
-                  <td>
-                    <div className="cell-with-avatar">
-                      <div className="avatar">{p.nome[0]?.toUpperCase() ?? '?'}</div>
-                      <div>
-                        <span style={{ display: 'block' }}>{p.nome}</span>
-                        {p.idade && <span style={{ fontSize: '0.78rem', color: 'var(--text-3)' }}>{p.idade} anos</span>}
-                      </div>
-                    </div>
-                  </td>
-                  <td>{p.celular || '—'}</td>
-                  <td>{p.profissao || '—'}</td>
-                  <td>{fmtDate(p.dataConsulta)}</td>
-                  <td style={{ maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {p.motivoConsulta || '—'}
-                  </td>
-                  <td onClick={e => e.stopPropagation()}>
-                    <div className="row-actions">
-                      <button className="icon-btn" title="Ver ficha" onClick={() => setViewing(p)}><Eye size={14} /></button>
-                      <button className="icon-btn" title="Editar" onClick={() => openEdit(p)}><Pencil size={14} /></button>
-                      <button className="icon-btn icon-btn--danger" title="Excluir" onClick={() => handleDelete(p)}><Trash2 size={14} /></button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="patient-list">
+          {filtered.map(p => (
+            <div key={p.id} className="patient-item" onClick={() => setViewing(p)}>
+              <div className="avatar">{initials(p.name)}</div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontWeight: 600, fontSize: '0.95rem', color: 'var(--text)' }}>
+                  {p.name}
+                </div>
+                <div style={{ fontSize: '0.82rem', color: 'var(--text-3)', marginTop: 2 }}>
+                  {[p.phone, p.profession].filter(Boolean).join(' · ')}
+                </div>
+              </div>
+              {p.created_at && (
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-3)', flexShrink: 0 }}>
+                  {fmtDate(p.created_at)}
+                </div>
+              )}
+            </div>
+          ))}
         </div>
       )}
 
+      <button className="fab" onClick={() => setShowCreate(true)} aria-label="Nova paciente">
+        <Plus size={24} />
+      </button>
+
       <NovaClienteDrawer
-        open={drawer.open}
-        onClose={closeDrawer}
-        onSave={handleSave}
-        initial={drawer.editing}
+        open={showCreate}
+        onClose={() => setShowCreate(false)}
+        onCreate={async (data) => {
+          await create(data);
+          setShowCreate(false);
+        }}
       />
 
-      <PacienteView
-        paciente={viewing}
-        onClose={() => setViewing(null)}
-        onEdit={() => viewing && openEdit(viewing)}
-      />
+      {viewing && (
+        <PacienteView
+          patient={viewing}
+          onClose={() => setViewing(null)}
+          onUpdate={async (data) => { await update(viewing.id, data); }}
+          onDelete={async () => { await remove(viewing.id); setViewing(null); }}
+        />
+      )}
     </div>
   );
 }

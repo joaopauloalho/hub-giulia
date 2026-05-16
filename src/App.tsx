@@ -2,10 +2,11 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { useAuth } from './hooks/useAuth';
 import { Layout } from './components/layout/Layout';
 import { LoginPage } from './pages/auth/LoginPage';
-import { DashboardPage } from './pages/dashboard/DashboardPage';
-import { ContactsPage } from './pages/contacts/ContactsPage';
-import { DealsPage } from './pages/deals/DealsPage';
+import { AgendaPage } from './pages/agenda/AgendaPage';
 import { PacientesPage } from './pages/pacientes/PacientesPage';
+import { RegistrarPage } from './pages/registrar/RegistrarPage';
+import { FinanceiroPage } from './pages/financeiro/FinanceiroPage';
+import { CatalogoPage } from './pages/catalogo/CatalogoPage';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -27,12 +28,14 @@ export default function App() {
             </ProtectedRoute>
           }
         >
-          <Route index element={<Navigate to="/dashboard" replace />} />
-          <Route path="dashboard" element={<DashboardPage />} />
-          <Route path="pacientes" element={<PacientesPage />} />
-          <Route path="contacts" element={<ContactsPage />} />
-          <Route path="deals" element={<DealsPage />} />
+          <Route index element={<Navigate to="/agenda" replace />} />
+          <Route path="agenda"     element={<AgendaPage />} />
+          <Route path="pacientes"  element={<PacientesPage />} />
+          <Route path="registrar"  element={<RegistrarPage />} />
+          <Route path="financeiro" element={<FinanceiroPage />} />
+          <Route path="catalogo"   element={<CatalogoPage />} />
         </Route>
+        <Route path="*" element={<Navigate to="/agenda" replace />} />
       </Routes>
     </BrowserRouter>
   );

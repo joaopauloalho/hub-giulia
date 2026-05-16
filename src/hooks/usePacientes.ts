@@ -1,56 +1,46 @@
 import { useState, useEffect, useCallback } from 'react';
-import type { Paciente } from '../types';
-
-const KEY = 'hub-giulia-pacientes';
-
-function load(): Paciente[] {
-  try {
-    return JSON.parse(localStorage.getItem(KEY) ?? '[]');
-  } catch {
-    return [];
-  }
-}
-
-function save(list: Paciente[]) {
-  localStorage.setItem(KEY, JSON.stringify(list));
-}
+import { supabase } from '../lib/supabase';
+import type { Patient } from '../types';
 
 export function usePacientes() {
-  const [pacientes, setPacientes] = useState<Paciente[]>([]);
+  const [pacientes, setPacientes] = useState<Patient[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const refresh = useCallback(() => {
+  const refresh = useCallback(async () => {
     setLoading(true);
-    setPacientes(load().sort((a, b) => b.createdAt.localeCompare(a.createdAt)));
+    const { data } = await supabase
+      .from('patients')
+      .select('*')
+      .order('created_at', { ascending: false });
+    setPacientes(data ?? []);
     setLoading(false);
   }, []);
 
   useEffect(() => { refresh(); }, [refresh]);
 
-  const create = (data: Omit<Paciente, 'id' | 'createdAt'>) => {
-    const novo: Paciente = {
-      ...data,
-      id: crypto.randomUUID(),
-      createdAt: new Date().toISOString(),
-    };
-    const list = load();
-    save([novo, ...list]);
-    refresh();
-    return novo;
+  const create = async (data: Omit<Patient, 'id' | 'user_id' | 'created_at'>) => {
+    const { data: { user } } = await supabase.auth.getUser();
+    const { data: row, error } = await supabase
+      .from('patients')
+      .insert({ ...data, user_id: user!.id })
+      .select()
+      .single();
+    if (error) throw error;
+    await refresh();
+    return row as Patient;
   };
 
-  const update = (id: string, data: Partial<Omit<Paciente, 'id' | 'createdAt'>>) => {
-    const list = load().map(p => p.id === id ? { ...p, ...data } : p);
-    save(list);
-    refresh();
+  const update = async (id: string, data: Partial<Omit<Patient, 'id' | 'user_id' | 'created_at'>>) => {
+    const { error } = await supabase.from('patients').update(data).eq('id', id);
+    if (error) throw error;
+    await refresh();
   };
 
-  const remove = (id: string) => {
-    save(load().filter(p => p.id !== id));
-    refresh();
+  const remove = async (id: string) => {
+    const { error } = await supabase.from('patients').delete().eq('id', id);
+    if (error) throw error;
+    await refresh();
   };
 
-  const getById = (id: string) => load().find(p => p.id === id) ?? null;
-
-  return { pacientes, loading, create, update, remove, getById, refresh };
+  return { pacientes, loading, create, update, remove, refresh };
 }

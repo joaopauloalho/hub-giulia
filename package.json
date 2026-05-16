@@ -11,19 +11,23 @@
     "typecheck": "tsc --noEmit -p tsconfig.app.json"
   },
   "dependencies": {
+    "@react-pdf/renderer": "^4.5.1",
     "@supabase/supabase-js": "^2.57.4",
     "@tanstack/react-query": "^5.100.5",
+    "date-fns": "^4.1.0",
     "lucide-react": "^0.344.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-hook-form": "^7.74.0",
     "react-router-dom": "^7.14.2",
+    "react-signature-canvas": "^1.1.0-alpha.2",
     "zod": "^4.3.6"
   },
   "devDependencies": {
     "@eslint/js": "^9.9.1",
     "@types/react": "^18.3.5",
     "@types/react-dom": "^18.3.0",
+    "@types/react-signature-canvas": "^1.0.7",
     "@vitejs/plugin-react": "^4.3.1",
     "autoprefixer": "^10.4.18",
     "eslint": "^9.9.1",

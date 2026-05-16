@@ -20,18 +20,15 @@ export function LoginPage() {
       setError('Email ou senha incorretos.');
       setLoading(false);
     } else {
-      navigate('/dashboard');
+      navigate('/agenda');
     }
   };
 
   return (
     <div className="login-shell">
       <div className="login-card">
-        <div className="login-brand">
-          <span className="logo-text">hub</span>
-          <span className="logo-accent">giulia</span>
-        </div>
-        <p className="login-sub">Faça login para continuar</p>
+        <div className="login-brand">Hub Giulia</div>
+        <p className="login-sub">Gestão da clínica</p>
         <form onSubmit={handleSubmit} className="login-form">
           <Input
             label="Email"
