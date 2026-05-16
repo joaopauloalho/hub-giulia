@@ -13,7 +13,7 @@ import {
 } from 'lucide-react';
 import { useFinanceiro } from '../../hooks/useFinanceiro';
 import { useServicos } from '../../hooks/useServicos';
-import type { PixInstallment, Procedure, Service } from '../../types';
+import type { PixInstallment, Procedure, ProcedurePayment, Service } from '../../types';
 
 const PAYMENT_LABELS: Record<string, string> = {
   dinheiro: 'Dinheiro',
@@ -21,6 +21,7 @@ const PAYMENT_LABELS: Record<string, string> = {
   cartao_debito: 'Cartão Débito',
   pix: 'PIX',
   pix_parcelado: 'PIX Parcelado',
+  split: 'Pagamento dividido',
 };
 
 function currency(value: number) {
@@ -182,6 +183,77 @@ function PixPendentes({ items, onPagar }: { items: PixInstallment[]; onPagar: (i
   );
 }
 
+function PagamentosPendentes({ items, onPagar }: { items: ProcedurePayment[]; onPagar: (id: string) => Promise<void> }) {
+  const [paying, setPaying] = useState<string | null>(null);
+
+  const handlePagar = async (id: string) => {
+    setPaying(id);
+    try { await onPagar(id); } finally { setPaying(null); }
+  };
+
+  if (items.length === 0) {
+    return (
+      <div style={{ padding: '24px 0', textAlign: 'center', color: 'var(--text-3)', fontSize: '0.85rem' }}>
+        Nenhum pagamento agendado pendente.
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      {items.map(payment => {
+        const due = payment.scheduled_date ? parseISO(payment.scheduled_date) : null;
+        const overdue = due ? (isPast(due) || isToday(due)) : false;
+        const dueColor = overdue ? 'var(--red)' : 'var(--amber)';
+        const name = payment.procedure?.patient?.name ?? 'Paciente';
+        const methodLabel = PAYMENT_LABELS[payment.method] ?? payment.method;
+        const installLabel = payment.installments > 1 ? ` ${payment.installments}x` : '';
+
+        return (
+          <div
+            key={payment.id}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 12,
+              padding: '14px 16px',
+              background: overdue ? '#fff5f5' : '#fffbf0',
+              border: `1px solid ${overdue ? '#fecaca' : '#fde68a'}`,
+              borderLeft: `4px solid ${dueColor}`,
+              borderRadius: 'var(--radius)',
+            }}
+          >
+            <Clock size={18} style={{ color: dueColor, flexShrink: 0 }} />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontWeight: 600, color: 'var(--text)', fontSize: '0.9rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {name}
+              </div>
+              <div style={{ fontSize: '0.75rem', color: dueColor, fontWeight: 500 }}>
+                {methodLabel}{installLabel}{due ? ` - ${format(due, 'dd/MM/yyyy')}` : ''}{overdue && ' - VENCIDO'}
+              </div>
+            </div>
+            <div style={{ textAlign: 'right', flexShrink: 0 }}>
+              <div style={{ fontWeight: 700, color: 'var(--text)' }}>{currency(payment.amount)}</div>
+              <button
+                onClick={() => handlePagar(payment.id)}
+                disabled={paying === payment.id}
+                style={{
+                  marginTop: 4, padding: '4px 10px', background: 'var(--green)', color: 'white',
+                  border: 'none', borderRadius: 6, fontSize: '0.72rem', fontWeight: 600, cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', gap: 4, opacity: paying === payment.id ? 0.6 : 1,
+                }}
+              >
+                {paying === payment.id ? <Loader2 size={12} className="spin" /> : <CheckCircle size={12} />}
+                Recebido
+              </button>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function ProcedureRow({ proc, services }: { proc: Procedure; services: Service[] }) {
   const [open, setOpen] = useState(false);
   const lucro = proc.net_value - proc.total_cost;
@@ -255,7 +327,7 @@ function ProcedureRow({ proc, services }: { proc: Procedure; services: Service[]
 
 export function FinanceiroPage() {
   const [month, setMonth] = useState(new Date());
-  const { procedures, pixPendentes, summary, loading, error, markPixPago } = useFinanceiro(month);
+  const { procedures, pixPendentes, pagamentosPendentes, summary, loading, error, markPixPago, markPagamentoPago } = useFinanceiro(month);
   const { servicos, loading: loadingServices, error: servicesError } = useServicos();
   const monthLabel = format(month, 'MMMM yyyy', { locale: ptBR });
 
@@ -330,6 +402,18 @@ export function FinanceiroPage() {
                 )}
               </h2>
               <PixPendentes items={pixPendentes} onPagar={markPixPago} />
+            </section>
+
+            <section style={{ marginBottom: 28 }}>
+              <h2 style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--text)', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
+                Pagamentos Agendados
+                {pagamentosPendentes.length > 0 && (
+                  <span style={{ padding: '2px 8px', background: 'var(--red)', color: 'white', borderRadius: 10, fontSize: '0.72rem', fontWeight: 700 }}>
+                    {pagamentosPendentes.length}
+                  </span>
+                )}
+              </h2>
+              <PagamentosPendentes items={pagamentosPendentes} onPagar={markPagamentoPago} />
             </section>
 
             <section>
