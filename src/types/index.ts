@@ -170,7 +170,30 @@ export interface Service {
   return_max_days: number | null;
   technical_sheet: string | null;
   active: boolean;
+  is_injectable: boolean;
   created_at: string;
+}
+
+// ─── Injetáveis ───────────────────────────────────────────────────────────────
+
+export interface InjectablePoint {
+  id: string;
+  x: number;
+  y: number;
+  service_id: string;
+  service_name: string;
+  color: string;
+  quantity: number;
+  unit: string;
+}
+
+export interface InjectableMap {
+  id: string;
+  procedure_id: string | null;
+  patient_id: string;
+  user_id: string;
+  created_at: string;
+  points: InjectablePoint[];
 }
 
 export type AppointmentStatus = 'pendente' | 'confirmado' | 'realizado' | 'cancelado';

@@ -9,6 +9,7 @@ import { DadosTab } from './tabs/DadosTab';
 import { AnamneseTab } from './tabs/AnamneseTab';
 import { FotosTab } from './tabs/FotosTab';
 import { HistoricoTab } from './tabs/HistoricoTab';
+import { InjetaveisTab } from './tabs/InjetaveisTab';
 import { ContratosTab } from './tabs/ContratosTab';
 const SignatureScreen = lazy(() => import('./SignatureScreen').then(module => ({ default: module.SignatureScreen })));
 
@@ -20,7 +21,7 @@ interface Props {
   onDelete: () => Promise<void>;
 }
 
-const TABS = ['Dados', 'Anamnese', 'Fotos', 'Histórico', 'Contratos'] as const;
+const TABS = ['Dados', 'Anamnese', 'Fotos', 'Histórico', 'Injetáveis', 'Contratos'] as const;
 type Tab = typeof TABS[number];
 
 const initials = (name: string) =>
@@ -172,7 +173,8 @@ export function PacienteView({ patient, sourceAppointmentId, onClose, onUpdate, 
           {tab === 'Dados'     && <DadosTab patient={patient} onUpdate={onUpdate} />}
           {tab === 'Anamnese'  && <AnamneseTab patientId={patient.id} />}
           {tab === 'Fotos'     && <FotosTab patientId={patient.id} />}
-          {tab === 'Histórico' && <HistoricoTab patientId={patient.id} />}
+          {tab === 'Histórico'  && <HistoricoTab patientId={patient.id} />}
+          {tab === 'Injetáveis' && <InjetaveisTab patientId={patient.id} patientName={patient.name} />}
           {tab === 'Contratos' && (
             <ContratosTab
               patientId={patient.id}

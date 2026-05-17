@@ -1,11 +1,13 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, lazy, Suspense } from 'react';
 import { useLocation, useSearchParams } from 'react-router-dom';
 import { Search, Check, ChevronRight, ChevronLeft, Loader2, X, Plus, Trash2 } from 'lucide-react';
 import { usePacientes } from '../../hooks/usePacientes';
 import { useServicos } from '../../hooks/useServicos';
 import { useProcedures } from '../../hooks/useProcedures';
+import { useInjetaveis } from '../../hooks/useInjetaveis';
 import { useMaquininhaConfig, getFeePct } from '../../hooks/useMaquininhaConfig';
-import type { Patient, Service, PaymentMethod, MaquininhaRates, PaymentEntryUI, CardBrand, SimplePaymentMethod } from '../../types';
+import type { Patient, Service, PaymentMethod, MaquininhaRates, PaymentEntryUI, CardBrand, SimplePaymentMethod, InjectablePoint } from '../../types';
+const InjetaveisScreen = lazy(() => import('./InjetaveisScreen').then(m => ({ default: m.InjetaveisScreen })));
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
@@ -60,21 +62,29 @@ function computeEntry(entry: PaymentEntryUI, rates: MaquininhaRates) {
 }
 
 // ─── Step indicator ───────────────────────────────────────────────────────────
-function StepBar({ step }: { step: number }) {
-  const steps = ['Paciente', 'Serviços', 'Pagamento', 'Confirmar'];
+function StepBar({ step, hasInjectables, injetaveisDone }: { step: number; hasInjectables: boolean; injetaveisDone: boolean }) {
+  const steps = hasInjectables
+    ? ['Paciente', 'Serviços', 'Injetáveis', 'Pagamento', 'Confirmar']
+    : ['Paciente', 'Serviços', 'Pagamento', 'Confirmar'];
+
+  // Map logical step (0-3) to visual step index accounting for injectable step
+  const visualStep = hasInjectables
+    ? (step === 1 && !injetaveisDone ? 1 : step >= 2 ? step + 1 : step)
+    : step;
+
   return (
     <div style={{ display: 'flex', gap: 4, marginBottom: 24 }}>
       {steps.map((label, i) => (
         <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
           <div style={{
             width: '100%', height: 4, borderRadius: 2,
-            background: i <= step ? 'var(--primary)' : 'var(--border)',
+            background: i <= visualStep ? 'var(--primary)' : 'var(--border)',
             transition: 'background 0.2s',
           }} />
           <span style={{
             fontSize: '0.68rem',
-            color: i === step ? 'var(--primary)' : 'var(--text-3)',
-            fontWeight: i === step ? 600 : 400,
+            color: i === visualStep ? 'var(--primary)' : 'var(--text-3)',
+            fontWeight: i === visualStep ? 600 : 400,
           }}>{label}</span>
         </div>
       ))}
@@ -607,6 +617,12 @@ export function RegistrarPage() {
   const [paymentEntries, setPaymentEntries] = useState<PaymentEntryUI[]>([]);
   const [saving, setSaving] = useState(false);
   const [done, setDone] = useState(false);
+  const [injectablePoints, setInjectablePoints] = useState<InjectablePoint[]>([]);
+  const [showInjetaveisScreen, setShowInjetaveisScreen] = useState(false);
+  const [injetaveisDone, setInjetaveisDone] = useState(false);
+
+  const { save: saveInjetaveis } = useInjetaveis();
+  const hasInjectables = services.some(s => s.is_injectable);
 
   const routeState = (location.state ?? {}) as {
     patient?: Patient;
@@ -655,6 +671,9 @@ export function RegistrarPage() {
     setAppointmentId(null);
     setPaymentEntries([]);
     setDone(false);
+    setInjectablePoints([]);
+    setShowInjetaveisScreen(false);
+    setInjetaveisDone(false);
   };
 
   const confirm = async () => {
@@ -688,7 +707,7 @@ export function RegistrarPage() {
         is_immediate: e.scheduledDate <= todayStr,
       }));
 
-      await create({
+      const procedure = await create({
         patient_id: patient.id,
         appointment_id: appointmentId,
         services_ids: services.map(s => s.id),
@@ -700,6 +719,10 @@ export function RegistrarPage() {
         net_value: immediateNetValue,
         payment_entries,
       });
+
+      if (injectablePoints.length > 0 && patient) {
+        await saveInjetaveis(patient.id, injectablePoints, procedure?.id);
+      }
 
       setDone(true);
     } catch (e) {
@@ -746,6 +769,14 @@ export function RegistrarPage() {
     return true;
   };
 
+  const handleContinue = () => {
+    if (step === 1 && hasInjectables && !injetaveisDone) {
+      setShowInjetaveisScreen(true);
+    } else {
+      setStep(s => s + 1);
+    }
+  };
+
   return (
     <div className="page">
       <div className="page-header">
@@ -770,8 +801,27 @@ export function RegistrarPage() {
         )}
       </div>
 
+      {showInjetaveisScreen && (
+        <Suspense fallback={<div className="full-loader">Carregando mapa...</div>}>
+          <InjetaveisScreen
+            injectableServices={services.filter(s => s.is_injectable)}
+            onDone={pts => {
+              setInjectablePoints(pts);
+              setInjetaveisDone(true);
+              setShowInjetaveisScreen(false);
+              setStep(2);
+            }}
+            onCancel={() => {
+              setInjetaveisDone(true);
+              setShowInjetaveisScreen(false);
+              setStep(2);
+            }}
+          />
+        </Suspense>
+      )}
+
       <div style={{ padding: '0 16px 100px' }}>
-        <StepBar step={step} />
+        <StepBar step={step} hasInjectables={hasInjectables} injetaveisDone={injetaveisDone} />
 
         {step === 0 && <StepPaciente onSelect={p => { setPatient(p); setStep(1); }} />}
         {step === 1 && <StepServicos selected={services} onToggle={toggleService} />}
@@ -811,7 +861,7 @@ export function RegistrarPage() {
               display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
               opacity: canAdvance() ? 1 : 0.45, pointerEvents: canAdvance() ? 'auto' : 'none',
             }}
-            onClick={() => setStep(s => s + 1)}
+            onClick={handleContinue}
             disabled={!canAdvance()}
           >
             Continuar <ChevronRight size={18} />

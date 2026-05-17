@@ -32,6 +32,7 @@ const emptyService = (): Omit<Service, 'id' | 'user_id' | 'created_at'> => ({
   return_max_days: null,
   technical_sheet: null,
   active: true,
+  is_injectable: false,
 });
 
 // ─── Service Drawer ───────────────────────────────────────────
@@ -56,6 +57,7 @@ function ServiceDrawer({
           return_max_days: initial.return_max_days,
           technical_sheet: initial.technical_sheet,
           active: initial.active,
+          is_injectable: initial.is_injectable,
         }
       : emptyService()
   );
@@ -149,6 +151,18 @@ function ServiceDrawer({
               {form.active ? <ToggleRight size={28} /> : <ToggleLeft size={28} />}
             </button>
             <span style={{ fontSize: '14px', color: 'var(--text-2)' }}>{form.active ? 'Ativo' : 'Inativo'}</span>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px' }}>
+            <button
+              onClick={() => set('is_injectable', !(form as { is_injectable: boolean }).is_injectable)}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', color: (form as { is_injectable: boolean }).is_injectable ? '#9b59b6' : 'var(--text-3)', display: 'flex' }}
+            >
+              {(form as { is_injectable: boolean }).is_injectable ? <ToggleRight size={28} /> : <ToggleLeft size={28} />}
+            </button>
+            <span style={{ fontSize: '14px', color: 'var(--text-2)' }}>
+              {(form as { is_injectable: boolean }).is_injectable ? 'Serviço injetável' : 'Não injetável'}
+            </span>
           </div>
 
           {error && <p style={{ color: 'var(--red)', fontSize: '13px', marginTop: '8px' }}>{error}</p>}
