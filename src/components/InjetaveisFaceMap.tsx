@@ -132,7 +132,7 @@ export function InjetaveisFaceMap({
   };
 
   return (
-    <div ref={wrapRef} style={{ position: 'relative', userSelect: 'none', width: 'min(100%, calc((100svh - 280px) * 0.7895))', margin: '0 auto' }}>
+    <div ref={wrapRef} style={{ position: 'relative', userSelect: 'none', width: 'min(100%, calc((100svh - 215px) * 0.7895))', margin: '0 auto' }}>
       {(pending || editing) && (
         <div
           style={{ position: 'absolute', inset: 0, zIndex: 15 }}
@@ -153,7 +153,7 @@ export function InjetaveisFaceMap({
         onClick={handleSvgClick}
       >
         {/* ── Face image ── */}
-        <image href="/Face_FRONT.png" x="0" y="0" width="300" height="380" preserveAspectRatio="xMidYMid meet"/>
+        <image href="/face-botox.png" x="0" y="0" width="300" height="380" preserveAspectRatio="xMidYMid meet"/>
 
         {/* ── Injection points ── */}
         {points.map(p => (
