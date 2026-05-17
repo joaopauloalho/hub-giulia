@@ -166,18 +166,18 @@ export function InjetaveisFaceMap({
             <circle
               cx={p.x * VB_W}
               cy={p.y * VB_H}
-              r={9}
+              r={5}
               fill={p.color}
               stroke="white"
-              strokeWidth={2}
+              strokeWidth={1.5}
             />
             {showQuantities && (
               <text
                 x={p.x * VB_W}
-                y={p.y * VB_H + 1}
+                y={p.y * VB_H + 0.5}
                 textAnchor="middle"
                 dominantBaseline="middle"
-                fontSize={8}
+                fontSize={5}
                 fontWeight="bold"
                 fill="white"
                 style={{ pointerEvents: 'none' }}
@@ -193,10 +193,10 @@ export function InjetaveisFaceMap({
           <circle
             cx={pending.svgX}
             cy={pending.svgY}
-            r={9}
+            r={5}
             fill={activeColor}
             stroke="white"
-            strokeWidth={2}
+            strokeWidth={1.5}
             opacity={0.6}
           />
         )}
