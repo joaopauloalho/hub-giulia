@@ -41,10 +41,10 @@ export function InjetaveisScreen({ injectableServices, onDone, onCancel }: Props
   };
 
   const report = useMemo(() => {
-    const byService: Record<string, { name: string; color: string; count: number; total: number }> = {};
+    const byService: Record<string, { name: string; color: string; count: number; total: number; unit: string }> = {};
     for (const p of points) {
       if (!byService[p.service_id]) {
-        byService[p.service_id] = { name: p.service_name, color: p.color, count: 0, total: 0 };
+        byService[p.service_id] = { name: p.service_name, color: p.color, count: 0, total: 0, unit: p.unit };
       }
       byService[p.service_id].count += 1;
       byService[p.service_id].total += p.quantity;
@@ -154,7 +154,7 @@ export function InjetaveisScreen({ injectableServices, onDone, onCancel }: Props
                   {r.count} {r.count === 1 ? 'ponto' : 'pontos'}
                 </span>
                 <span style={{ color: 'var(--text-3)' }}>—</span>
-                <span style={{ color: 'var(--text)', fontWeight: 600 }}>{r.total} un</span>
+                <span style={{ color: 'var(--text)', fontWeight: 600 }}>{parseFloat(r.total.toFixed(1))} {r.unit}</span>
               </div>
             ))}
           </div>
