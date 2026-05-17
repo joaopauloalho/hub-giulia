@@ -132,7 +132,7 @@ export function InjetaveisFaceMap({
   };
 
   return (
-    <div ref={wrapRef} style={{ position: 'relative', userSelect: 'none' }}>
+    <div ref={wrapRef} style={{ position: 'relative', userSelect: 'none', width: 'min(100%, calc((100svh - 280px) * 0.7895))', margin: '0 auto' }}>
       {(pending || editing) && (
         <div
           style={{ position: 'absolute', inset: 0, zIndex: 15 }}
@@ -145,11 +145,8 @@ export function InjetaveisFaceMap({
         viewBox={`0 0 ${VB_W} ${VB_H}`}
         style={{
           display: 'block',
-          margin: '0 auto',
-          width: 'auto',
+          width: '100%',
           height: 'auto',
-          maxWidth: '100%',
-          maxHeight: 'calc(100svh - 255px)',
           cursor: activeServiceId && !pending && !editing ? 'crosshair' : 'default',
           touchAction: 'none',
         }}
