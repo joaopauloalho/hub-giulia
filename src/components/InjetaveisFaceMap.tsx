@@ -144,10 +144,12 @@ export function InjetaveisFaceMap({
         ref={svgRef}
         viewBox={`0 0 ${VB_W} ${VB_H}`}
         style={{
-          width: '100%',
-          maxWidth: 520,
           display: 'block',
           margin: '0 auto',
+          width: 'auto',
+          height: 'auto',
+          maxWidth: '100%',
+          maxHeight: 'calc(100svh - 255px)',
           cursor: activeServiceId && !pending && !editing ? 'crosshair' : 'default',
           touchAction: 'none',
         }}

@@ -122,7 +122,7 @@ export function InjetaveisScreen({ injectableServices, onDone, onCancel }: Props
         </div>
 
         {/* Face map */}
-        <div style={{ flex: 1, overflowY: 'auto', padding: '16px 8px 8px' }}>
+        <div style={{ flex: 1, overflowY: 'auto', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '4px 8px' }}>
           <InjetaveisFaceMap
             points={points}
             activeServiceId={activeService?.id ?? null}
