@@ -28,6 +28,27 @@ function serviceNames(proc: Procedure, services: Service[]) {
   return names.length > 0 ? names.join(', ') : 'Serviços registrados';
 }
 
+function RetornoChip({ proc, services }: { proc: Procedure; services: Service[] }) {
+  const procServices = proc.services_ids
+    .map(id => services.find(s => s.id === id))
+    .filter((s): s is Service => s !== undefined);
+
+  const minValues = procServices
+    .map(s => s.return_min_days)
+    .filter((d): d is number => d !== null);
+  const maxValues = procServices
+    .map(s => s.return_max_days)
+    .filter((d): d is number => d !== null);
+
+  if (minValues.length === 0 || maxValues.length === 0) return null;
+
+  return (
+    <span style={{ fontSize: '0.7rem', color: 'var(--text-3)', marginTop: 2, display: 'inline-block' }}>
+      ↩ {Math.min(...minValues)}–{Math.max(...maxValues)}d
+    </span>
+  );
+}
+
 function ProcedureCard({ proc, services }: { proc: Procedure; services: Service[] }) {
   const [open, setOpen] = useState(false);
   const lucro = proc.net_value - proc.total_cost;
@@ -86,6 +107,7 @@ function ProcedureCard({ proc, services }: { proc: Procedure; services: Service[
           }}>
             {serviceNames(proc, services)}
           </div>
+          <RetornoChip proc={proc} services={services} />
           <div style={{ fontSize: '0.72rem', color: 'var(--text-3)', marginTop: 2 }}>
             {PAYMENT_LABELS[proc.payment_method]}
           </div>

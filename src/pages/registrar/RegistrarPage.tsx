@@ -1,22 +1,63 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useLocation, useSearchParams } from 'react-router-dom';
-import { Search, Check, ChevronRight, ChevronLeft, Loader2, X } from 'lucide-react';
+import { Search, Check, ChevronRight, ChevronLeft, Loader2, X, Plus, Trash2 } from 'lucide-react';
 import { usePacientes } from '../../hooks/usePacientes';
 import { useServicos } from '../../hooks/useServicos';
 import { useProcedures } from '../../hooks/useProcedures';
-import { useMaquininhaConfig } from '../../hooks/useMaquininhaConfig';
-import type { Patient, Service, PaymentMethod, MaquininhaConfig, CardBrand } from '../../types';
+import { useMaquininhaConfig, getFeePct } from '../../hooks/useMaquininhaConfig';
+import type { Patient, Service, PaymentMethod, MaquininhaRates, PaymentEntryUI, CardBrand, SimplePaymentMethod } from '../../types';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+
 const PAYMENT_LABELS: Record<PaymentMethod, string> = {
   dinheiro: 'Dinheiro',
   cartao_credito: 'Cartão Crédito',
   cartao_debito: 'Cartão Débito',
   pix: 'PIX',
   pix_parcelado: 'PIX Parcelado',
+  split: 'Pagamento dividido',
 };
+
+const METHOD_LABELS: Record<SimplePaymentMethod, string> = {
+  dinheiro: 'Dinheiro',
+  pix: 'PIX',
+  cartao_credito: 'Crédito',
+  cartao_debito: 'Débito',
+};
+
+const TODAY = format(new Date(), 'yyyy-MM-dd');
+
+function mkEntry(amount: number): PaymentEntryUI {
+  return {
+    tempId: Math.random().toString(36).slice(2, 10),
+    method: 'pix',
+    baseValue: amount,
+    cardBrand: 'master_visa',
+    installments: 1,
+    absorveTaxa: true,
+    scheduledDate: TODAY,
+  };
+}
+
+function computeEntry(entry: PaymentEntryUI, rates: MaquininhaRates) {
+  const feePct = getFeePct(rates, entry.method, entry.cardBrand, entry.installments);
+  if (feePct === 0) {
+    return { feePct: 0, clientPays: entry.baseValue, feeValue: 0, netAmount: entry.baseValue };
+  }
+  if (entry.absorveTaxa) {
+    const clientPays = entry.baseValue;
+    const feeValue = clientPays * feePct / 100;
+    return { feePct, clientPays, feeValue, netAmount: clientPays - feeValue };
+  } else {
+    // repassar: baseValue = what I want to receive net
+    const netAmount = entry.baseValue;
+    const clientPays = netAmount / (1 - feePct / 100);
+    const feeValue = clientPays * feePct / 100;
+    return { feePct, clientPays, feeValue, netAmount };
+  }
+}
 
 // ─── Step indicator ───────────────────────────────────────────────────────────
 function StepBar({ step }: { step: number }) {
@@ -99,13 +140,7 @@ function StepPaciente({ onSelect }: { onSelect: (p: Patient) => void }) {
 }
 
 // ─── Step 2: Serviços ─────────────────────────────────────────────────────────
-function StepServicos({
-  selected,
-  onToggle,
-}: {
-  selected: Service[];
-  onToggle: (s: Service) => void;
-}) {
+function StepServicos({ selected, onToggle }: { selected: Service[]; onToggle: (s: Service) => void }) {
   const { servicos, loading } = useServicos();
   const ativos = servicos.filter(s => s.active);
   const [q, setQ] = useState('');
@@ -184,154 +219,262 @@ function StepServicos({
   );
 }
 
+// ─── EntryCard ────────────────────────────────────────────────────────────────
+function EntryCard({
+  entry, index, rates, canRemove, onChange, onRemove,
+}: {
+  entry: PaymentEntryUI;
+  index: number;
+  rates: MaquininhaRates;
+  canRemove: boolean;
+  onChange: (e: PaymentEntryUI) => void;
+  onRemove: () => void;
+}) {
+  const { feePct, clientPays, feeValue, netAmount } = computeEntry(entry, rates);
+  const isCard = entry.method === 'cartao_credito' || entry.method === 'cartao_debito';
+  const isCredit = entry.method === 'cartao_credito';
+  const isScheduled = entry.scheduledDate > TODAY;
+
+  return (
+    <div style={{
+      background: 'var(--bg-2)',
+      border: `1.5px solid ${isScheduled ? '#fde68a' : 'var(--border)'}`,
+      borderRadius: 12, padding: 16, marginBottom: 12,
+    }}>
+      {/* Header */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+        <span style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--text)' }}>
+          Pagamento {index + 1}{isScheduled ? ' 📅' : ''}
+        </span>
+        {canRemove && (
+          <button
+            onClick={onRemove}
+            style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 4, color: 'var(--text-3)' }}
+          >
+            <Trash2 size={16} />
+          </button>
+        )}
+      </div>
+
+      {/* Method selector */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6, marginBottom: 14 }}>
+        {(Object.entries(METHOD_LABELS) as [SimplePaymentMethod, string][]).map(([m, label]) => (
+          <button
+            key={m}
+            onClick={() => onChange({ ...entry, method: m, installments: 1 })}
+            style={{
+              padding: '8px 4px', fontSize: '0.72rem', fontWeight: 600,
+              background: entry.method === m ? '#fdf2f8' : 'var(--bg)',
+              border: `1.5px solid ${entry.method === m ? 'var(--primary)' : 'var(--border)'}`,
+              borderRadius: 8, cursor: 'pointer',
+              color: entry.method === m ? 'var(--primary)' : 'var(--text)',
+            }}
+          >{label}</button>
+        ))}
+      </div>
+
+      {/* Amount */}
+      <div style={{ marginBottom: 12 }}>
+        <label style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-2)', display: 'block', marginBottom: 4 }}>
+          {feePct > 0 && !entry.absorveTaxa ? 'Valor que quero receber (líquido)' : 'Valor cobrado'}
+        </label>
+        <input
+          className="field-input"
+          type="number"
+          min="0"
+          step="0.01"
+          value={entry.baseValue || ''}
+          onChange={e => onChange({ ...entry, baseValue: parseFloat(e.target.value) || 0 })}
+          style={{ width: '100%' }}
+        />
+      </div>
+
+      {/* Card brand */}
+      {isCard && (
+        <div style={{ marginBottom: 12 }}>
+          <label style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-2)', display: 'block', marginBottom: 6 }}>Bandeira</label>
+          <div style={{ display: 'flex', gap: 8 }}>
+            {(['master_visa', 'elo'] as CardBrand[]).map(b => (
+              <button
+                key={b}
+                onClick={() => onChange({ ...entry, cardBrand: b })}
+                style={{
+                  flex: 1, padding: '8px', fontSize: '0.82rem',
+                  background: entry.cardBrand === b ? '#fdf2f8' : 'var(--bg)',
+                  border: `1.5px solid ${entry.cardBrand === b ? 'var(--primary)' : 'var(--border)'}`,
+                  borderRadius: 8, cursor: 'pointer',
+                  fontWeight: entry.cardBrand === b ? 600 : 400,
+                  color: entry.cardBrand === b ? 'var(--primary)' : 'var(--text)',
+                }}
+              >{b === 'master_visa' ? 'Master / Visa' : 'Elo'}</button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Installments */}
+      {isCredit && (
+        <div style={{ marginBottom: 12 }}>
+          <label style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-2)', display: 'block', marginBottom: 6 }}>Parcelas</label>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+            {Array.from({ length: 18 }, (_, i) => i + 1).map(n => {
+              const pct = (rates[entry.cardBrand] as Record<string, number>)?.[String(n)] ?? 0;
+              const sel = entry.installments === n;
+              return (
+                <button
+                  key={n}
+                  onClick={() => onChange({ ...entry, installments: n })}
+                  title={`Taxa: ${pct}%`}
+                  style={{
+                    padding: '5px 9px', fontSize: '0.78rem', fontWeight: 600,
+                    background: sel ? 'var(--primary)' : 'var(--bg)',
+                    border: `1.5px solid ${sel ? 'var(--primary)' : 'var(--border)'}`,
+                    borderRadius: 7, cursor: 'pointer',
+                    color: sel ? 'white' : 'var(--text)',
+                  }}
+                >{n}x</button>
+              );
+            })}
+          </div>
+          {isCredit && entry.installments > 1 && clientPays > 0 && (
+            <p style={{ marginTop: 6, fontSize: '0.75rem', color: 'var(--text-3)' }}>
+              {entry.installments}x de R$ {(clientPays / entry.installments).toFixed(2)}
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* Fee absorption toggle */}
+      {feePct > 0 && (
+        <div style={{ marginBottom: 12 }}>
+          <label style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-2)', display: 'block', marginBottom: 6 }}>Quem absorve a taxa?</label>
+          <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+            {[
+              { val: true, label: 'Eu absorvo' },
+              { val: false, label: 'Repassar ao cliente' },
+            ].map(({ val, label }) => (
+              <button
+                key={String(val)}
+                onClick={() => onChange({ ...entry, absorveTaxa: val })}
+                style={{
+                  flex: 1, padding: '8px', fontSize: '0.78rem',
+                  background: entry.absorveTaxa === val ? '#fdf2f8' : 'var(--bg)',
+                  border: `1.5px solid ${entry.absorveTaxa === val ? 'var(--primary)' : 'var(--border)'}`,
+                  borderRadius: 8, cursor: 'pointer',
+                  fontWeight: entry.absorveTaxa === val ? 600 : 400,
+                  color: entry.absorveTaxa === val ? 'var(--primary)' : 'var(--text)',
+                }}
+              >{label}</button>
+            ))}
+          </div>
+          <div style={{ padding: '8px 12px', background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: 8, fontSize: '0.78rem', color: '#b45309' }}>
+            Cliente paga R$ {clientPays.toFixed(2)} · Taxa {feePct}% = R$ {feeValue.toFixed(2)} · Você recebe R$ {netAmount.toFixed(2)}
+          </div>
+        </div>
+      )}
+
+      {/* Date */}
+      <div>
+        <label style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-2)', display: 'block', marginBottom: 4 }}>
+          {isScheduled ? 'Data combinada (agendado)' : 'Data do pagamento'}
+        </label>
+        <input
+          className="field-input"
+          type="date"
+          value={entry.scheduledDate}
+          onChange={e => onChange({ ...entry, scheduledDate: e.target.value })}
+          style={{ width: '100%' }}
+        />
+      </div>
+    </div>
+  );
+}
+
 // ─── Step 3: Pagamento ────────────────────────────────────────────────────────
 function StepPagamento({
   services,
-  paymentMethod,
-  setPaymentMethod,
-  installments,
-  setInstallments,
-  cardBrand,
-  setCardBrand,
-  maq,
+  entries,
+  setEntries,
+  rates,
 }: {
   services: Service[];
-  paymentMethod: PaymentMethod;
-  setPaymentMethod: (m: PaymentMethod) => void;
-  installments: number;
-  setInstallments: (n: number) => void;
-  cardBrand: CardBrand;
-  setCardBrand: (b: CardBrand) => void;
-  maq: MaquininhaConfig;
+  entries: PaymentEntryUI[];
+  setEntries: (e: PaymentEntryUI[]) => void;
+  rates: MaquininhaRates;
 }) {
-  const totalCobrado = services.reduce((s, x) => s + x.price, 0);
+  const total = services.reduce((s, x) => s + x.price, 0);
   const totalCusto = services.reduce((s, x) => s + x.cost_per_unit, 0);
 
-  const isCard = paymentMethod === 'cartao_credito' || paymentMethod === 'cartao_debito';
-  const creditPct = cardBrand === 'elo' ? maq.elo_credito_pct : maq.credito_pct;
-  const debitoPct = cardBrand === 'elo' ? maq.elo_debito_pct : maq.debito_pct;
+  const computed = entries.map(e => computeEntry(e, rates));
+  const sumBase = entries.reduce((s, e) => s + e.baseValue, 0);
+  const sumNet = computed.reduce((s, c) => s + c.netAmount, 0);
+  const remaining = +(total - sumBase).toFixed(2);
+  const balanced = Math.abs(remaining) < 0.01;
+  const lucro = sumNet - totalCusto;
 
-  let feePct = 0;
-  let feeValue = 0;
-  if (paymentMethod === 'cartao_credito') { feePct = creditPct; feeValue = totalCobrado * feePct / 100; }
-  if (paymentMethod === 'cartao_debito')  { feePct = debitoPct; feeValue = totalCobrado * feePct / 100; }
-  const lucro = totalCobrado - totalCusto - feeValue;
-
-  const methods: PaymentMethod[] = ['dinheiro', 'pix', 'pix_parcelado', 'cartao_credito', 'cartao_debito'];
+  const update = (idx: number, e: PaymentEntryUI) =>
+    setEntries(entries.map((x, i) => i === idx ? e : x));
+  const remove = (idx: number) =>
+    setEntries(entries.filter((_, i) => i !== idx));
+  const addEntry = () =>
+    setEntries([...entries, mkEntry(remaining > 0 ? remaining : 0)]);
 
   return (
     <div>
       <h2 style={{ fontSize: '1.1rem', fontWeight: 600, marginBottom: 16 }}>Forma de pagamento</h2>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(112px, 1fr))', gap: 8, marginBottom: 24 }}>
+      {/* Summary chips */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginBottom: 20 }}>
         {[
-          { label: 'Cobrado', value: totalCobrado, color: 'var(--text)' },
-          { label: 'Custo', value: totalCusto, color: 'var(--red)' },
+          { label: 'Total', value: total, color: 'var(--text)' },
+          { label: 'Você recebe', value: sumNet, color: 'var(--primary)' },
           { label: 'Lucro est.', value: lucro, color: lucro >= 0 ? 'var(--green)' : 'var(--red)' },
         ].map(({ label, value, color }) => (
-          <div key={label} style={{
-            padding: '12px 10px', background: 'var(--bg-2)',
-            borderRadius: 10, border: '1px solid var(--border)', textAlign: 'center',
-          }}>
-            <div style={{ fontSize: '0.72rem', color: 'var(--text-3)', marginBottom: 4 }}>{label}</div>
-            <div style={{ fontWeight: 700, color, fontSize: '1rem' }}>R$ {value.toFixed(2)}</div>
+          <div key={label} style={{ padding: '10px 8px', background: 'var(--bg-2)', borderRadius: 10, border: '1px solid var(--border)', textAlign: 'center' }}>
+            <div style={{ fontSize: '0.68rem', color: 'var(--text-3)', marginBottom: 3 }}>{label}</div>
+            <div style={{ fontWeight: 700, color, fontSize: '0.92rem' }}>R$ {value.toFixed(2)}</div>
           </div>
         ))}
       </div>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 20 }}>
-        {methods.map(m => (
-          <button
-            key={m}
-            onClick={() => setPaymentMethod(m)}
-            style={{
-              display: 'flex', alignItems: 'center', gap: 10,
-              padding: '14px 16px',
-              background: paymentMethod === m ? '#fdf2f8' : 'var(--bg-2)',
-              border: `1.5px solid ${paymentMethod === m ? 'var(--primary)' : 'var(--border)'}`,
-              borderRadius: 'var(--radius)', cursor: 'pointer', textAlign: 'left', width: '100%',
-            }}
-          >
-            <div style={{
-              width: 18, height: 18, borderRadius: '50%', flexShrink: 0,
-              border: `2px solid ${paymentMethod === m ? 'var(--primary)' : 'var(--border-2)'}`,
-              background: paymentMethod === m ? 'var(--primary)' : 'transparent',
-            }} />
-            <span style={{ fontWeight: 500, color: 'var(--text)' }}>{PAYMENT_LABELS[m]}</span>
-            {(m === 'cartao_credito' || m === 'cartao_debito') && (
-              <span style={{ marginLeft: 'auto', fontSize: '0.78rem', color: 'var(--text-3)' }}>
-                {m === 'cartao_credito' ? creditPct : debitoPct}% taxa
-              </span>
-            )}
-          </button>
-        ))}
-      </div>
+      {/* Entry cards */}
+      {entries.map((e, i) => (
+        <EntryCard
+          key={e.tempId}
+          entry={e}
+          index={i}
+          rates={rates}
+          canRemove={entries.length > 1}
+          onChange={updated => update(i, updated)}
+          onRemove={() => remove(i)}
+        />
+      ))}
 
-      {isCard && (
-        <div style={{ marginBottom: 16 }}>
-          <label style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-2)', marginBottom: 8, display: 'block' }}>
-            Bandeira do cartão
-          </label>
-          <div style={{ display: 'flex', gap: 8 }}>
-            {([
-              { value: 'master_visa' as CardBrand, label: 'Mastercard / Visa' },
-              { value: 'elo' as CardBrand, label: 'Elo' },
-            ]).map(({ value, label }) => (
-              <button
-                key={value}
-                onClick={() => setCardBrand(value)}
-                style={{
-                  flex: 1, padding: '10px 12px',
-                  background: cardBrand === value ? '#fdf2f8' : 'var(--bg-2)',
-                  border: `1.5px solid ${cardBrand === value ? 'var(--primary)' : 'var(--border)'}`,
-                  borderRadius: 8, cursor: 'pointer',
-                  fontWeight: cardBrand === value ? 600 : 400,
-                  color: cardBrand === value ? 'var(--primary)' : 'var(--text)',
-                  fontSize: '0.88rem',
-                }}
-              >{label}</button>
-            ))}
-          </div>
-        </div>
-      )}
+      {/* Add entry + balance indicator */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 4 }}>
+        <button
+          onClick={addEntry}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 6,
+            padding: '10px 16px', background: 'var(--bg-2)',
+            border: '1.5px dashed var(--border)', borderRadius: 10,
+            cursor: 'pointer', fontSize: '0.85rem', color: 'var(--primary)', fontWeight: 600,
+          }}
+        >
+          <Plus size={16} /> Adicionar pagamento
+        </button>
 
-      {feeValue > 0 && (
         <div style={{
-          padding: '10px 14px', background: '#fff7ed',
-          border: '1px solid #fed7aa', borderRadius: 8,
-          fontSize: '0.82rem', color: '#b45309', marginBottom: 16,
+          flex: 1, padding: '10px 12px', borderRadius: 10, textAlign: 'center',
+          background: balanced ? '#f0fdf4' : '#fffbf0',
+          border: `1px solid ${balanced ? '#bbf7d0' : '#fde68a'}`,
+          fontSize: '0.78rem',
+          color: balanced ? 'var(--green)' : '#b45309',
+          fontWeight: 600,
         }}>
-          Taxa maquininha ({feePct}%): −R$ {feeValue.toFixed(2)}
+          {balanced ? '✓ Alocado' : `Falta R$ ${remaining.toFixed(2)}`}
         </div>
-      )}
-
-      {paymentMethod === 'pix_parcelado' && (
-        <div style={{ marginTop: 4 }}>
-          <label style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text)', marginBottom: 8, display: 'block' }}>
-            Número de parcelas
-          </label>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            {[2,3,4,5,6,8,10,12].map(n => (
-              <button
-                key={n}
-                onClick={() => setInstallments(n)}
-                style={{
-                  padding: '8px 16px',
-                  background: installments === n ? 'var(--primary)' : 'var(--bg-2)',
-                  color: installments === n ? 'white' : 'var(--text)',
-                  border: `1.5px solid ${installments === n ? 'var(--primary)' : 'var(--border)'}`,
-                  borderRadius: 8, fontWeight: 600, cursor: 'pointer', fontSize: '0.9rem',
-                }}
-              >{n}x</button>
-            ))}
-          </div>
-          {installments >= 2 && (
-            <p style={{ marginTop: 10, fontSize: '0.8rem', color: 'var(--text-3)' }}>
-              {installments}x de R$ {(totalCobrado / installments).toFixed(2)} · 1ª parcela em 30 dias
-            </p>
-          )}
-        </div>
-      )}
+      </div>
     </div>
   );
 }
@@ -340,42 +483,24 @@ function StepPagamento({
 function StepConfirmar({
   patient,
   services,
-  paymentMethod,
-  installments,
+  entries,
+  rates,
   saving,
   onConfirm,
-  cardBrand,
-  maq,
 }: {
   patient: Patient;
   services: Service[];
-  paymentMethod: PaymentMethod;
-  installments: number;
+  entries: PaymentEntryUI[];
+  rates: MaquininhaRates;
   saving: boolean;
   onConfirm: () => void;
-  cardBrand: CardBrand;
-  maq: MaquininhaConfig;
 }) {
   const totalCobrado = services.reduce((s, x) => s + x.price, 0);
   const totalCusto = services.reduce((s, x) => s + x.cost_per_unit, 0);
-
-  const creditPct = cardBrand === 'elo' ? maq.elo_credito_pct : maq.credito_pct;
-  const debitoPct = cardBrand === 'elo' ? maq.elo_debito_pct : maq.debito_pct;
-
-  let feePct = 0;
-  let feeValue = 0;
-  if (paymentMethod === 'cartao_credito') { feePct = creditPct; feeValue = totalCobrado * feePct / 100; }
-  if (paymentMethod === 'cartao_debito')  { feePct = debitoPct; feeValue = totalCobrado * feePct / 100; }
-  const netValue = totalCobrado - feeValue;
-  const lucro = netValue - totalCusto;
-
-  type RowItem = { label: string; value: string; bold: boolean; color?: string };
-  const rows: RowItem[] = [
-    { label: 'Total cobrado', value: `R$ ${totalCobrado.toFixed(2)}`, bold: false },
-    ...(feeValue > 0 ? [{ label: `Taxa (${feePct}%)`, value: `−R$ ${feeValue.toFixed(2)}`, bold: false }] : []),
-    { label: 'Custo', value: `−R$ ${totalCusto.toFixed(2)}`, bold: false },
-    { label: 'Lucro estimado', value: `R$ ${lucro.toFixed(2)}`, bold: true, color: lucro >= 0 ? 'var(--green)' : 'var(--red)' },
-  ];
+  const computed = entries.map(e => ({ entry: e, ...computeEntry(e, rates) }));
+  const totalNet = computed.reduce((s, c) => s + c.netAmount, 0);
+  const totalFee = computed.reduce((s, c) => s + c.feeValue, 0);
+  const lucro = totalNet - totalCusto;
 
   return (
     <div>
@@ -398,18 +523,51 @@ function StepConfirmar({
         </div>
 
         <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)' }}>
-          <div style={{ fontSize: '0.72rem', color: 'var(--text-3)', marginBottom: 2 }}>Pagamento</div>
-          <div style={{ fontWeight: 600 }}>
-            {PAYMENT_LABELS[paymentMethod]}
-            {paymentMethod === 'pix_parcelado' && ` · ${installments}x`}
-          </div>
+          <div style={{ fontSize: '0.72rem', color: 'var(--text-3)', marginBottom: 8 }}>Pagamentos</div>
+          {computed.map(({ entry, clientPays, feePct, feeValue, netAmount }, i) => {
+            const isScheduled = entry.scheduledDate > TODAY;
+            return (
+              <div key={entry.tempId} style={{ marginBottom: i < computed.length - 1 ? 10 : 0 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                  <div>
+                    <span style={{ fontWeight: 600, fontSize: '0.88rem' }}>
+                      {METHOD_LABELS[entry.method]}
+                      {entry.method === 'cartao_credito' && ` ${entry.installments}x`}
+                      {(entry.method === 'cartao_credito' || entry.method === 'cartao_debito') && ` · ${entry.cardBrand === 'elo' ? 'Elo' : 'Master/Visa'}`}
+                    </span>
+                    {feePct > 0 && (
+                      <div style={{ fontSize: '0.72rem', color: 'var(--text-3)' }}>
+                        Taxa {feePct}% = R$ {feeValue.toFixed(2)} {entry.absorveTaxa ? '(absorvo)' : '(repassado)'}
+                      </div>
+                    )}
+                    {isScheduled && (
+                      <div style={{ fontSize: '0.72rem', color: '#b45309', fontWeight: 600 }}>
+                        📅 Agendado para {entry.scheduledDate.split('-').reverse().join('/')}
+                      </div>
+                    )}
+                  </div>
+                  <div style={{ textAlign: 'right' }}>
+                    <div style={{ fontSize: '0.88rem', fontWeight: 600 }}>R$ {clientPays.toFixed(2)}</div>
+                    {feePct > 0 && (
+                      <div style={{ fontSize: '0.72rem', color: 'var(--text-3)' }}>→ R$ {netAmount.toFixed(2)}</div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
         </div>
 
         <div style={{ padding: '12px 16px' }}>
-          {rows.map((row, i) => (
+          {[
+            { label: 'Total cobrado', value: `R$ ${totalCobrado.toFixed(2)}`, bold: false },
+            ...(totalFee > 0 ? [{ label: 'Total taxas', value: `−R$ ${totalFee.toFixed(2)}`, bold: false }] : []),
+            { label: 'Custo', value: `−R$ ${totalCusto.toFixed(2)}`, bold: false },
+            { label: 'Lucro estimado', value: `R$ ${lucro.toFixed(2)}`, bold: true, color: lucro >= 0 ? 'var(--green)' : 'var(--red)' },
+          ].map((row, i) => (
             <div key={i} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
               <span style={{ fontSize: '0.85rem', color: 'var(--text-2)' }}>{row.label}</span>
-              <span style={{ fontWeight: row.bold ? 700 : 500, color: row.color ?? 'var(--text)', fontSize: '0.85rem' }}>
+              <span style={{ fontWeight: row.bold ? 700 : 500, color: (row as { color?: string }).color ?? 'var(--text)', fontSize: '0.85rem' }}>
                 {row.value}
               </span>
             </div>
@@ -446,9 +604,7 @@ export function RegistrarPage() {
   const [patient, setPatient] = useState<Patient | null>(null);
   const [services, setServices] = useState<Service[]>([]);
   const [appointmentId, setAppointmentId] = useState<string | null>(null);
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('dinheiro');
-  const [cardBrand, setCardBrand] = useState<CardBrand>('master_visa');
-  const [installments, setInstallments] = useState(2);
+  const [paymentEntries, setPaymentEntries] = useState<PaymentEntryUI[]>([]);
   const [saving, setSaving] = useState(false);
   const [done, setDone] = useState(false);
 
@@ -469,55 +625,68 @@ export function RegistrarPage() {
       setPatient(requestedPatient);
       setStep(1);
     } else if (!patient && patientId && !loadingPacientes) {
-      const foundPatient = pacientes.find(item => item.id === patientId);
-      if (foundPatient) {
-        setPatient(foundPatient);
-        setStep(1);
-      }
+      const found = pacientes.find(item => item.id === patientId);
+      if (found) { setPatient(found); setStep(1); }
     }
 
-    if (nextAppointmentId) {
-      setAppointmentId(nextAppointmentId);
-    }
+    if (nextAppointmentId) setAppointmentId(nextAppointmentId);
 
     if (serviceId && !loadingServicos && services.length === 0) {
-      const foundService = servicos.find(item => item.id === serviceId);
-      if (foundService) setServices([foundService]);
+      const found = servicos.find(item => item.id === serviceId);
+      if (found) setServices([found]);
     }
   }, [loadingPacientes, loadingServicos, pacientes, patient, routeState.appointmentId, routeState.patient, routeState.patientId, routeState.serviceId, searchParams, services.length, servicos]);
 
-  const toggleService = (s: Service) => {
-    setServices(prev =>
-      prev.some(x => x.id === s.id) ? prev.filter(x => x.id !== s.id) : [...prev, s]
-    );
-  };
+  // Initialize payment entries when entering step 2
+  useEffect(() => {
+    if (step === 2 && paymentEntries.length === 0 && services.length > 0) {
+      const total = services.reduce((s, x) => s + x.price, 0);
+      setPaymentEntries([mkEntry(total)]);
+    }
+  }, [step, paymentEntries.length, services]);
+
+  const toggleService = (s: Service) =>
+    setServices(prev => prev.some(x => x.id === s.id) ? prev.filter(x => x.id !== s.id) : [...prev, s]);
 
   const reset = () => {
     setStep(0);
     setPatient(null);
     setServices([]);
     setAppointmentId(null);
-    setPaymentMethod('dinheiro');
-    setCardBrand('master_visa');
-    setInstallments(2);
+    setPaymentEntries([]);
     setDone(false);
   };
 
   const confirm = async () => {
-    if (!patient || services.length === 0) return;
+    if (!patient || services.length === 0 || paymentEntries.length === 0) return;
     setSaving(true);
     try {
       const totalCobrado = services.reduce((s, x) => s + x.price, 0);
       const totalCusto = services.reduce((s, x) => s + x.cost_per_unit, 0);
+      const rates = maqConfig.rates;
+      const todayStr = format(new Date(), 'yyyy-MM-dd');
 
-      const creditPct = cardBrand === 'elo' ? maqConfig.elo_credito_pct : maqConfig.credito_pct;
-      const debitoPct = cardBrand === 'elo' ? maqConfig.elo_debito_pct : maqConfig.debito_pct;
+      const computed = paymentEntries.map(e => ({ e, ...computeEntry(e, rates) }));
+      const immediateNetValue = computed
+        .filter(c => c.e.scheduledDate <= todayStr)
+        .reduce((s, c) => s + c.netAmount, 0);
+      const totalFeeValue = computed.reduce((s, c) => s + c.feeValue, 0);
+      const paymentMethod: PaymentMethod = paymentEntries.length === 1
+        ? paymentEntries[0].method
+        : 'split';
 
-      let feePct: number | null = null;
-      let feeValue: number | null = null;
-      if (paymentMethod === 'cartao_credito') { feePct = creditPct; feeValue = totalCobrado * feePct / 100; }
-      if (paymentMethod === 'cartao_debito')  { feePct = debitoPct; feeValue = totalCobrado * feePct / 100; }
-      const netValue = totalCobrado - (feeValue ?? 0);
+      const payment_entries = computed.map(({ e, clientPays, feePct, feeValue, netAmount }) => ({
+        method: e.method,
+        amount: clientPays,
+        card_brand: (e.method === 'cartao_credito' || e.method === 'cartao_debito') ? e.cardBrand : null,
+        installments: e.method === 'cartao_credito' ? e.installments : 1,
+        fee_pct: feePct > 0 ? feePct : null,
+        fee_value: feeValue > 0 ? feeValue : null,
+        net_amount: netAmount,
+        absorve_taxa: e.absorveTaxa,
+        scheduled_date: e.scheduledDate !== todayStr ? e.scheduledDate : null,
+        is_immediate: e.scheduledDate <= todayStr,
+      }));
 
       await create({
         patient_id: patient.id,
@@ -526,10 +695,10 @@ export function RegistrarPage() {
         total_value: totalCobrado,
         total_cost: totalCusto,
         payment_method: paymentMethod,
-        card_fee_pct: feePct,
-        card_fee_value: feeValue,
-        net_value: netValue,
-        pix_installments_count: paymentMethod === 'pix_parcelado' ? installments : undefined,
+        card_fee_pct: null,
+        card_fee_value: totalFeeValue > 0 ? totalFeeValue : null,
+        net_value: immediateNetValue,
+        payment_entries,
       });
 
       setDone(true);
@@ -542,19 +711,22 @@ export function RegistrarPage() {
   };
 
   if (done) {
+    const hasScheduled = paymentEntries.some(e => e.scheduledDate > format(new Date(), 'yyyy-MM-dd'));
     return (
       <div className="page">
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '60vh', gap: 20, padding: 32 }}>
-          <div style={{
-            width: 72, height: 72, borderRadius: '50%',
-            background: '#dcfce7', display: 'flex', alignItems: 'center', justifyContent: 'center',
-          }}>
+          <div style={{ width: 72, height: 72, borderRadius: '50%', background: '#dcfce7', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <Check size={36} color="var(--green)" strokeWidth={2.5} />
           </div>
           <h2 style={{ fontWeight: 700, fontSize: '1.3rem', color: 'var(--text)' }}>Atendimento registrado!</h2>
           <p style={{ color: 'var(--text-3)', textAlign: 'center' }}>
             {patient?.name} · {services.map(s => s.name).join(', ')}
           </p>
+          {hasScheduled && (
+            <p style={{ fontSize: '0.85rem', color: '#b45309', background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: 8, padding: '10px 16px', textAlign: 'center' }}>
+              Pagamento(s) agendado(s) adicionados à aba Financeiro.
+            </p>
+          )}
           <button className="btn-primary" style={{ padding: '12px 32px', marginTop: 8 }} onClick={reset}>
             Novo Registro
           </button>
@@ -563,10 +735,14 @@ export function RegistrarPage() {
     );
   }
 
+  const total = services.reduce((s, x) => s + x.price, 0);
+  const sumBase = paymentEntries.reduce((s, e) => s + e.baseValue, 0);
+  const balanced = Math.abs(total - sumBase) < 0.01;
+
   const canAdvance = () => {
     if (step === 0) return !!patient;
     if (step === 1) return services.length > 0;
-    if (step === 2) return !loadingMaq && !maqError && (paymentMethod !== 'pix_parcelado' || installments >= 2);
+    if (step === 2) return !loadingMaq && !maqError && paymentEntries.length > 0 && balanced;
     return true;
   };
 
@@ -584,17 +760,11 @@ export function RegistrarPage() {
           )}
           <div>
             <h1 className="page-title">Registrar</h1>
-            {patient && step > 0 && (
-              <p className="page-sub">{patient.name}</p>
-            )}
+            {patient && step > 0 && <p className="page-sub">{patient.name}</p>}
           </div>
         </div>
         {patient && step > 0 && (
-          <button
-            onClick={reset}
-            style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 4, color: 'var(--text-3)' }}
-            title="Cancelar"
-          >
+          <button onClick={reset} style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 4, color: 'var(--text-3)' }} title="Cancelar">
             <X size={20} />
           </button>
         )}
@@ -603,28 +773,16 @@ export function RegistrarPage() {
       <div style={{ padding: '0 16px 100px' }}>
         <StepBar step={step} />
 
-        {step === 0 && (
-          <StepPaciente onSelect={p => { setPatient(p); setStep(1); }} />
-        )}
-        {step === 1 && (
-          <StepServicos selected={services} onToggle={toggleService} />
-        )}
+        {step === 0 && <StepPaciente onSelect={p => { setPatient(p); setStep(1); }} />}
+        {step === 1 && <StepServicos selected={services} onToggle={toggleService} />}
         {step === 2 && (
           <>
-            {maqError && (
-              <div className="empty-state" style={{ padding: '16px 0' }}>
-                <p>{maqError}</p>
-              </div>
-            )}
+            {maqError && <div className="empty-state" style={{ padding: '16px 0' }}><p>{maqError}</p></div>}
             <StepPagamento
               services={services}
-              paymentMethod={paymentMethod}
-              setPaymentMethod={m => { setPaymentMethod(m); }}
-              installments={installments}
-              setInstallments={setInstallments}
-              cardBrand={cardBrand}
-              setCardBrand={setCardBrand}
-              maq={maqConfig}
+              entries={paymentEntries}
+              setEntries={setPaymentEntries}
+              rates={maqConfig.rates}
             />
           </>
         )}
@@ -632,12 +790,10 @@ export function RegistrarPage() {
           <StepConfirmar
             patient={patient}
             services={services}
-            paymentMethod={paymentMethod}
-            installments={installments}
+            entries={paymentEntries}
+            rates={maqConfig.rates}
             saving={saving}
             onConfirm={confirm}
-            cardBrand={cardBrand}
-            maq={maqConfig}
           />
         )}
 
@@ -645,7 +801,12 @@ export function RegistrarPage() {
           <button
             className="btn-primary"
             style={{
-              position: 'fixed', bottom: 'calc(var(--tab-h) + 16px)', left: 16, right: 16,
+              position: 'fixed',
+              bottom: 'calc(var(--tab-h) + 16px)',
+              left: '50%',
+              transform: 'translateX(-50%)',
+              width: 'calc(100% - 32px)',
+              maxWidth: 640,
               padding: '16px', fontSize: '1rem',
               display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
               opacity: canAdvance() ? 1 : 0.45, pointerEvents: canAdvance() ? 'auto' : 'none',

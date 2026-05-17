@@ -1,12 +1,15 @@
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, X, Clock, User, ChevronRight, Calendar } from 'lucide-react';
+import { Plus, X, Clock, User, ChevronRight, Calendar, MessageCircle } from 'lucide-react';
 import { format, addDays, isSameDay, startOfDay } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { useAgenda } from '../../hooks/useAgenda';
 import { useServicos } from '../../hooks/useServicos';
 import { usePacientes } from '../../hooks/usePacientes';
+import { useRetornos } from '../../hooks/useRetornos';
+import type { RetornoInfo } from '../../hooks/useRetornos';
 import type { Appointment, AppointmentStatus } from '../../types';
+import { buildWhatsAppUrl, whatsAppConfirmacao, whatsAppStatusConfirmado, whatsAppLembrete } from '../../lib/whatsapp';
 
 // ─── Status display ───────────────────────────────────────────
 const STATUS_LABEL: Record<AppointmentStatus, string> = {
@@ -42,7 +45,7 @@ function NovoAgendamentoModal({
   onClose,
 }: {
   initialDate: Date;
-  onSave: (data: Omit<Appointment, 'id' | 'user_id' | 'created_at' | 'patient' | 'service'>) => Promise<unknown>;
+  onSave: (data: Omit<Appointment, 'id' | 'user_id' | 'created_at' | 'google_event_id' | 'patient' | 'service'>) => Promise<unknown>;
   onClose: () => void;
 }) {
   const { pacientes } = usePacientes();
@@ -57,6 +60,7 @@ function NovoAgendamentoModal({
   const [notes, setNotes] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [savedWaUrl, setSavedWaUrl] = useState<string | null>(null);
 
   const handleSubmit = async () => {
     if (!patientId) { setError('Selecione a paciente'); return; }
@@ -70,7 +74,14 @@ function NovoAgendamentoModal({
         status,
         notes: notes.trim() || null,
       });
-      onClose();
+      const patient = pacientes.find(p => p.id === patientId);
+      const service = servicos.find(s => s.id === serviceId);
+      if (patient?.phone) {
+        const msg = whatsAppConfirmacao(patient.name, scheduled_at, service?.name ?? 'Consulta');
+        setSavedWaUrl(buildWhatsAppUrl(patient.phone, msg));
+      } else {
+        onClose();
+      }
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Erro ao salvar');
     } finally {
@@ -132,10 +143,27 @@ function NovoAgendamentoModal({
           {error && <p style={{ color: 'var(--red)', fontSize: '13px', marginTop: '8px' }}>{error}</p>}
         </div>
         <div className="drawer-footer">
-          <button className="btn-secondary" onClick={onClose}>Cancelar</button>
-          <button className="btn-primary" onClick={handleSubmit} disabled={saving}>
-            {saving ? 'Salvando...' : 'Agendar'}
-          </button>
+          {savedWaUrl ? (
+            <>
+              <button className="btn-secondary" onClick={onClose}>Fechar</button>
+              <a
+                href={savedWaUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="btn-primary"
+                style={{ display: 'flex', alignItems: 'center', gap: '6px', textDecoration: 'none' }}
+              >
+                <MessageCircle size={16} /> Enviar confirmação WhatsApp
+              </a>
+            </>
+          ) : (
+            <>
+              <button className="btn-secondary" onClick={onClose}>Cancelar</button>
+              <button className="btn-primary" onClick={handleSubmit} disabled={saving}>
+                {saving ? 'Salvando...' : 'Agendar'}
+              </button>
+            </>
+          )}
         </div>
       </div>
     </div>
@@ -186,6 +214,18 @@ function AppointmentCard({
           <span style={{ ...STATUS_STYLE[apt.status], padding: '3px 10px', borderRadius: '10px', fontSize: '11px', fontWeight: 600 }}>
             {STATUS_LABEL[apt.status]}
           </span>
+          {apt.status === 'confirmado' && apt.patient?.phone && (
+            <a
+              href={buildWhatsAppUrl(apt.patient.phone, whatsAppStatusConfirmado(apt.patient.name, apt.scheduled_at))}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={e => e.stopPropagation()}
+              aria-label="Enviar WhatsApp de confirmação"
+              style={{ display: 'flex', alignItems: 'center', color: '#16a34a', flexShrink: 0 }}
+            >
+              <MessageCircle size={18} />
+            </a>
+          )}
           <ChevronRight size={16} style={{ color: 'var(--text-3)' }} />
         </div>
       </div>
@@ -248,12 +288,188 @@ function DateStrip({ selected, onSelect }: { selected: Date; onSelect: (d: Date)
   );
 }
 
+// ─── Retornos Section ─────────────────────────────────────────
+const RETORNO_LABEL_COLOR: Record<string, string> = {
+  overdue:   '#dc2626',
+  in_window: '#16a34a',
+  upcoming:  '#d97706',
+};
+
+function RetornosSection({ retornos }: { retornos: RetornoInfo[] }) {
+  const navigate = useNavigate();
+  const urgent = retornos.filter(
+    r => r.status === 'overdue' || r.status === 'in_window' || r.status === 'upcoming'
+  );
+  // component only mounts when urgent.length > 0 (conditional in parent), so init is correct
+  const hasOverdue = urgent.some(r => r.status === 'overdue');
+  const [open, setOpen] = useState(hasOverdue);
+
+  const badgeBg    = hasOverdue ? '#fee2e2' : '#fef3c7';
+  const badgeColor = hasOverdue ? '#dc2626' : '#d97706';
+
+  return (
+    <div style={{ borderBottom: '1px solid var(--border)' }}>
+      <button
+        onClick={() => setOpen(o => !o)}
+        style={{
+          width: '100%', display: 'flex', alignItems: 'center', gap: 8,
+          padding: '10px 16px', background: 'var(--bg-2)',
+          border: 'none', cursor: 'pointer', textAlign: 'left',
+        }}
+      >
+        <span style={{ flex: 1, fontWeight: 600, fontSize: '0.85rem', color: 'var(--text)' }}>
+          Retornos
+        </span>
+        <span style={{
+          background: badgeBg, color: badgeColor,
+          borderRadius: 999, padding: '2px 8px',
+          fontSize: '0.75rem', fontWeight: 700,
+        }}>
+          {urgent.length}
+        </span>
+        <ChevronRight
+          size={14}
+          style={{
+            color: 'var(--text-3)',
+            transform: open ? 'rotate(90deg)' : 'none',
+            transition: 'transform 0.2s',
+          }}
+        />
+      </button>
+
+      {open && (
+        <div style={{ padding: '0 16px 10px' }}>
+          {urgent.map(r => (
+            <div key={r.patientId} style={{
+              display: 'flex', alignItems: 'center', gap: 8,
+              padding: '10px 14px', background: '#fff',
+              border: '1px solid var(--border)', borderRadius: 'var(--radius)',
+              marginBottom: 6,
+            }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontWeight: 600, fontSize: '0.85rem', color: 'var(--text)' }}>
+                  {r.patientName}
+                </div>
+                <div style={{ fontSize: '0.75rem', color: RETORNO_LABEL_COLOR[r.status] }}>
+                  {r.daysLabel}
+                </div>
+              </div>
+              <button
+                onClick={() => navigate(`/pacientes?patient_id=${r.patientId}`)}
+                style={{
+                  padding: '6px 12px', fontSize: '0.78rem', fontWeight: 600,
+                  background: 'var(--primary)', color: '#fff',
+                  border: 'none', borderRadius: 8, cursor: 'pointer', flexShrink: 0,
+                }}
+              >
+                Ver ficha
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Lembretes Section ────────────────────────────────────────
+function LembretesSection({ agendamentos }: { agendamentos: Appointment[] }) {
+  const [open, setOpen] = useState(false);
+  if (agendamentos.length === 0) return null;
+
+  return (
+    <div style={{ borderBottom: '1px solid var(--border)' }}>
+      <button
+        onClick={() => setOpen(o => !o)}
+        style={{
+          width: '100%', display: 'flex', alignItems: 'center', gap: 8,
+          padding: '10px 16px', background: 'var(--bg-2)',
+          border: 'none', cursor: 'pointer', textAlign: 'left',
+        }}
+      >
+        <span style={{ flex: 1, fontWeight: 600, fontSize: '0.85rem', color: 'var(--text)' }}>
+          Lembretes de amanhã
+        </span>
+        <span style={{
+          background: '#dbeafe', color: '#1d4ed8',
+          borderRadius: 999, padding: '2px 8px',
+          fontSize: '0.75rem', fontWeight: 700,
+        }}>
+          {agendamentos.length}
+        </span>
+        <ChevronRight
+          size={14}
+          style={{
+            color: 'var(--text-3)',
+            transform: open ? 'rotate(90deg)' : 'none',
+            transition: 'transform 0.2s',
+          }}
+        />
+      </button>
+
+      {open && (
+        <div style={{ padding: '0 16px 10px' }}>
+          {agendamentos.map(apt => {
+            const hora = format(new Date(apt.scheduled_at), 'HH:mm');
+            const waUrl = apt.patient?.phone
+              ? buildWhatsAppUrl(
+                  apt.patient.phone,
+                  whatsAppLembrete(apt.patient.name, apt.scheduled_at, apt.service?.name ?? 'Consulta')
+                )
+              : null;
+            return (
+              <div key={apt.id} style={{
+                display: 'flex', alignItems: 'center', gap: 8,
+                padding: '10px 14px', background: '#fff',
+                border: '1px solid var(--border)', borderRadius: 'var(--radius)',
+                marginBottom: 6,
+              }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 600, fontSize: '0.85rem', color: 'var(--text)' }}>
+                    {apt.patient?.name ?? '—'}
+                  </div>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-2)' }}>
+                    {hora}{apt.service ? ` · ${apt.service.name}` : ''}
+                  </div>
+                </div>
+                {waUrl && (
+                  <a
+                    href={waUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: '4px',
+                      padding: '6px 12px', fontSize: '0.78rem', fontWeight: 600,
+                      background: '#dcfce7', color: '#16a34a',
+                      border: 'none', borderRadius: 8, cursor: 'pointer',
+                      flexShrink: 0, textDecoration: 'none',
+                    }}
+                  >
+                    <MessageCircle size={14} /> Lembrete
+                  </a>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Main ─────────────────────────────────────────────────────
 export function AgendaPage() {
   const navigate = useNavigate();
   const [selectedDate, setSelectedDate] = useState(startOfDay(new Date()));
+  const [tomorrow] = useState(() => startOfDay(addDays(new Date(), 1)));
   const { agendamentos, loading, error, create } = useAgenda(selectedDate);
+  const { agendamentos: lembretes } = useAgenda(tomorrow);
   const [showModal, setShowModal] = useState(false);
+  const { servicos } = useServicos();
+  const { retornos } = useRetornos(servicos);
+  const hasUrgentRetornos = retornos.some(
+    r => r.status === 'overdue' || r.status === 'in_window' || r.status === 'upcoming'
+  );
 
   const handleOpenPatient = (apt: Appointment) => {
     navigate(`/pacientes?patient_id=${apt.patient_id}&appointment_id=${apt.id}`, {
@@ -280,7 +496,11 @@ export function AgendaPage() {
         </div>
       </div>
 
+      {hasUrgentRetornos && <RetornosSection retornos={retornos} />}
+
       <DateStrip selected={selectedDate} onSelect={setSelectedDate} />
+
+      <LembretesSection agendamentos={lembretes} />
 
       <div style={{ padding: '16px' }}>
         {error ? (

@@ -36,7 +36,7 @@ export function useAgenda(date: Date) {
 
   useEffect(() => { refresh(); }, [refresh]);
 
-  const create = async (data: Omit<Appointment, 'id' | 'user_id' | 'created_at' | 'patient' | 'service'>) => {
+  const create = async (data: Omit<Appointment, 'id' | 'user_id' | 'created_at' | 'google_event_id' | 'patient' | 'service'>) => {
     const { data: { user } } = await supabase.auth.getUser();
     const { data: row, error } = await supabase
       .from('appointments')
@@ -45,7 +45,14 @@ export function useAgenda(date: Date) {
       .single();
     if (error) throw error;
     await refresh();
-    return row as Appointment;
+    const apt = row as Appointment;
+
+    // Best-effort Google Calendar sync — never blocks the main flow
+    supabase.functions.invoke('google-calendar-upsert', {
+      body: { appointment_id: apt.id },
+    }).catch(() => {/* silent */});
+
+    return apt;
   };
 
   const update = async (id: string, data: Partial<Omit<Appointment, 'id' | 'user_id' | 'created_at' | 'patient' | 'service'>>) => {

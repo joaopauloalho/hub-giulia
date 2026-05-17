@@ -3,6 +3,19 @@ import { supabase } from '../lib/supabase';
 import type { Procedure, PaymentMethod } from '../types';
 import { addMonths, format } from 'date-fns';
 
+interface PaymentEntryInput {
+  method: string;
+  amount: number;
+  card_brand: string | null;
+  installments: number;
+  fee_pct: number | null;
+  fee_value: number | null;
+  net_amount: number;
+  absorve_taxa: boolean;
+  scheduled_date: string | null;
+  is_immediate: boolean;
+}
+
 interface CreateProcedureInput {
   patient_id: string;
   appointment_id?: string | null;
@@ -16,6 +29,7 @@ interface CreateProcedureInput {
   net_value: number;
   notes?: string | null;
   pix_installments_count?: number;
+  payment_entries?: PaymentEntryInput[];
 }
 
 export function useProcedures(patientId?: string) {
@@ -49,6 +63,8 @@ export function useProcedures(patientId?: string) {
   const create = async (input: CreateProcedureInput): Promise<Procedure> => {
     const { data: { user } } = await supabase.auth.getUser();
     const uid = user!.id;
+
+    // Legacy pix_parcelado via RPC
     const pixInstallmentsCount = input.payment_method === 'pix_parcelado' && input.pix_installments_count && input.pix_installments_count >= 2
       ? input.pix_installments_count
       : null;
@@ -101,6 +117,33 @@ export function useProcedures(patientId?: string) {
 
     if (error) throw error;
 
+    if (input.payment_entries && input.payment_entries.length > 0) {
+      const rows = input.payment_entries.map(e => ({
+        procedure_id: proc.id,
+        user_id: uid,
+        method: e.method,
+        amount: e.amount,
+        card_brand: e.card_brand,
+        installments: e.installments,
+        fee_pct: e.fee_pct,
+        fee_value: e.fee_value,
+        net_amount: e.net_amount,
+        absorve_taxa: e.absorve_taxa,
+        scheduled_date: e.scheduled_date,
+        paid_at: e.is_immediate ? new Date().toISOString() : null,
+      }));
+
+      const { error: paymentsError } = await supabase
+        .from('procedure_payments')
+        .insert(rows);
+
+      if (paymentsError) {
+        await supabase.from('procedures').delete().eq('id', proc.id);
+        throw paymentsError;
+      }
+    }
+
+    // Legacy pix_parcelado client-side fallback
     if (isPixParcelado) {
       const n = pixInstallmentsCount;
       const base = Math.round((input.total_value / n) * 100) / 100;
@@ -129,11 +172,10 @@ export function useProcedures(patientId?: string) {
     }
 
     if (input.appointment_id) {
-      const { error: appointmentError } = await supabase
+      await supabase
         .from('appointments')
         .update({ status: 'realizado' })
         .eq('id', input.appointment_id);
-      if (appointmentError) throw appointmentError;
     }
 
     await refresh();

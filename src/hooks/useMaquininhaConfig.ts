@@ -1,13 +1,38 @@
 import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
-import type { MaquininhaConfig } from '../types';
+import type { CardBrand, MaquininhaConfig, MaquininhaRates } from '../types';
 
-const DEFAULT_CONFIG: MaquininhaConfig = {
-  credito_pct: 2.93,
-  debito_pct: 1.39,
-  elo_credito_pct: 3.24,
-  elo_debito_pct: 1.45,
+export const DEFAULT_RATES: MaquininhaRates = {
+  pix: 0.50,
+  master_visa: {
+    debito: 1.39,
+    '1': 2.93, '2': 4.36, '3': 5.13, '4': 5.89, '5': 6.63,
+    '6': 7.37, '7': 7.97, '8': 8.69, '9': 9.41, '10': 10.11,
+    '11': 10.82, '12': 11.51, '13': 12.20, '14': 12.88, '15': 13.55,
+    '16': 14.22, '17': 14.88, '18': 15.53,
+  },
+  elo: {
+    debito: 1.45,
+    '1': 3.24, '2': 4.56, '3': 5.33, '4': 6.09, '5': 6.83,
+    '6': 7.57, '7': 8.17, '8': 8.89, '9': 9.61, '10': 10.31,
+    '11': 11.02, '12': 11.71, '13': 12.40, '14': 13.08, '15': 13.75,
+    '16': 14.42, '17': 15.08, '18': 15.73,
+  },
 };
+
+const DEFAULT_CONFIG: MaquininhaConfig = { rates: DEFAULT_RATES };
+
+export function getFeePct(
+  rates: MaquininhaRates,
+  method: string,
+  brand: CardBrand,
+  installments: number,
+): number {
+  if (method === 'pix') return rates.pix;
+  if (method === 'cartao_debito') return (rates[brand] as Record<string, number>)?.debito ?? 0;
+  if (method === 'cartao_credito') return (rates[brand] as Record<string, number>)?.[String(installments)] ?? 0;
+  return 0;
+}
 
 export function useMaquininhaConfig() {
   const [config, setConfig] = useState<MaquininhaConfig>(DEFAULT_CONFIG);
@@ -26,17 +51,12 @@ export function useMaquininhaConfig() {
 
       const { data, error: configError } = await supabase
         .from('maquininha_configs')
-        .select('credito_pct, debito_pct, elo_credito_pct, elo_debito_pct')
+        .select('rates')
         .eq('user_id', user.id)
         .maybeSingle();
 
       if (configError) throw configError;
-      setConfig(data ? {
-        credito_pct: Number(data.credito_pct),
-        debito_pct: Number(data.debito_pct),
-        elo_credito_pct: Number(data.elo_credito_pct),
-        elo_debito_pct: Number(data.elo_debito_pct),
-      } : DEFAULT_CONFIG);
+      setConfig(data?.rates ? { rates: data.rates as MaquininhaRates } : DEFAULT_CONFIG);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erro ao carregar taxas da maquininha.');
     } finally {
@@ -59,10 +79,7 @@ export function useMaquininhaConfig() {
         .from('maquininha_configs')
         .upsert({
           user_id: user.id,
-          credito_pct: nextConfig.credito_pct,
-          debito_pct: nextConfig.debito_pct,
-          elo_credito_pct: nextConfig.elo_credito_pct,
-          elo_debito_pct: nextConfig.elo_debito_pct,
+          rates: nextConfig.rates,
           updated_at: new Date().toISOString(),
         });
 

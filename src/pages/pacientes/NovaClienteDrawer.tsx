@@ -29,9 +29,10 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 export function NovaClienteDrawer({ open, onClose, onCreate }: Props) {
   const [form, setForm] = useState<CreateData>(empty);
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (open) setForm(empty);
+    if (open) { setForm(empty); setSaveError(null); }
   }, [open]);
 
   useEffect(() => {
@@ -46,8 +47,11 @@ export function NovaClienteDrawer({ open, onClose, onCreate }: Props) {
   const handleSave = async () => {
     if (!form.name.trim()) return;
     setSaving(true);
+    setSaveError(null);
     try {
       await onCreate(form);
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : 'Erro ao cadastrar. Tente novamente.');
     } finally {
       setSaving(false);
     }
@@ -169,6 +173,12 @@ export function NovaClienteDrawer({ open, onClose, onCreate }: Props) {
             </Field>
           </div>
         </div>
+
+        {saveError && (
+          <div style={{ padding: '0 1.25rem 0.75rem', color: 'var(--danger, #e53e3e)', fontSize: '0.85rem' }}>
+            {saveError}
+          </div>
+        )}
 
         <div className="modal-footer">
           <button className="btn btn--ghost btn--md w-full" onClick={onClose}>Cancelar</button>

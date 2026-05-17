@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
-import type { Procedure, PixInstallment } from '../types';
+import type { Procedure, PixInstallment, ProcedurePayment } from '../types';
 import { startOfMonth, endOfMonth, format } from 'date-fns';
 
 export interface FinanceiroSummary {
@@ -14,6 +14,7 @@ export interface FinanceiroSummary {
 export function useFinanceiro(month: Date) {
   const [procedures, setProcedures] = useState<Procedure[]>([]);
   const [pixPendentes, setPixPendentes] = useState<PixInstallment[]>([]);
+  const [pagamentosPendentes, setPagamentosPendentes] = useState<ProcedurePayment[]>([]);
   const [summary, setSummary] = useState<FinanceiroSummary>({ receitaTotal: 0, recebido: 0, pendente: 0, custos: 0, lucro: 0 });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -26,7 +27,11 @@ export function useFinanceiro(month: Date) {
       const start = format(startOfMonth(month), 'yyyy-MM-dd');
       const end = format(endOfMonth(month), 'yyyy-MM-dd');
 
-      const [{ data: procs, error: procsError }, { data: pix, error: pixError }] = await Promise.all([
+      const [
+        { data: procs, error: procsError },
+        { data: pix, error: pixError },
+        { data: pendPayments, error: pendErr },
+      ] = await Promise.all([
         supabase
           .from('procedures')
           .select('*, patient:patients(id, name)')
@@ -38,13 +43,20 @@ export function useFinanceiro(month: Date) {
           .select('*, procedure:procedures(id, patient_id, total_value, patient:patients(id, name))')
           .is('paid_at', null)
           .order('due_date', { ascending: true }),
+        supabase
+          .from('procedure_payments')
+          .select('*, procedure:procedures(id, patient_id, total_value, patient:patients(id, name))')
+          .is('paid_at', null)
+          .not('scheduled_date', 'is', null)
+          .order('scheduled_date', { ascending: true }),
       ]);
 
       if (procsError) throw procsError;
       if (pixError) throw pixError;
+      if (pendErr) throw pendErr;
 
       const procList = (procs ?? []) as Procedure[];
-      const procIds = procList.map(proc => proc.id);
+      const procIds = procList.map(p => p.id);
       const { data: monthlyPix, error: monthlyPixError } = procIds.length > 0
         ? await supabase.from('pix_installments').select('*').in('procedure_id', procIds)
         : { data: [], error: null };
@@ -54,31 +66,28 @@ export function useFinanceiro(month: Date) {
       const pixList = (pix ?? []) as PixInstallment[];
       const monthlyPixList = (monthlyPix ?? []) as PixInstallment[];
 
-      const paidPixByProcedure = monthlyPixList.reduce<Record<string, number>>((acc, installment) => {
-        if (installment.paid_at) {
-          acc[installment.procedure_id] = (acc[installment.procedure_id] ?? 0) + installment.amount;
-        }
+      const paidPixByProcedure = monthlyPixList.reduce<Record<string, number>>((acc, inst) => {
+        if (inst.paid_at) acc[inst.procedure_id] = (acc[inst.procedure_id] ?? 0) + inst.amount;
         return acc;
       }, {});
 
-      const receitaTotal = procList.reduce((sum, proc) => sum + proc.total_value, 0);
-      const custos = procList.reduce((sum, proc) => sum + proc.total_cost, 0);
-      const recebido = procList.reduce((sum, proc) => {
-        if (proc.payment_method === 'pix_parcelado') {
-          return sum + (paidPixByProcedure[proc.id] ?? 0);
-        }
-
-        return sum + proc.net_value;
+      const receitaTotal = procList.reduce((s, p) => s + p.total_value, 0);
+      const custos = procList.reduce((s, p) => s + p.total_cost, 0);
+      const recebido = procList.reduce((s, p) => {
+        if (p.payment_method === 'pix_parcelado') return s + (paidPixByProcedure[p.id] ?? 0);
+        return s + p.net_value;
       }, 0);
       const pendente = Math.max(receitaTotal - recebido, 0);
       const lucro = recebido - custos;
 
       setProcedures(procList);
       setPixPendentes(pixList);
+      setPagamentosPendentes((pendPayments ?? []) as ProcedurePayment[]);
       setSummary({ receitaTotal, recebido, pendente, custos, lucro });
     } catch (err) {
       setProcedures([]);
       setPixPendentes([]);
+      setPagamentosPendentes([]);
       setSummary({ receitaTotal: 0, recebido: 0, pendente: 0, custos: 0, lucro: 0 });
       setError(err instanceof Error ? err.message : 'Erro ao carregar financeiro.');
     } finally {
@@ -97,5 +106,14 @@ export function useFinanceiro(month: Date) {
     await refresh();
   };
 
-  return { procedures, pixPendentes, summary, loading, error, refresh, markPixPago };
+  const markPagamentoPago = async (id: string) => {
+    const { error } = await supabase
+      .from('procedure_payments')
+      .update({ paid_at: new Date().toISOString() })
+      .eq('id', id);
+    if (error) throw error;
+    await refresh();
+  };
+
+  return { procedures, pixPendentes, pagamentosPendentes, summary, loading, error, refresh, markPixPago, markPagamentoPago };
 }

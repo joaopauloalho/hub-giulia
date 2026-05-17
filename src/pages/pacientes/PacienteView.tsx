@@ -1,7 +1,10 @@
 import { lazy, Suspense, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { X, Phone, Mail, Instagram, PenLine, ClipboardPlus } from 'lucide-react';
+import { X, Phone, Mail, Instagram, PenLine, ClipboardPlus, Clock } from 'lucide-react';
+import { format } from 'date-fns';
 import type { Patient } from '../../types';
+import { useServicos } from '../../hooks/useServicos';
+import { useRetornos } from '../../hooks/useRetornos';
 import { DadosTab } from './tabs/DadosTab';
 import { AnamneseTab } from './tabs/AnamneseTab';
 import { FotosTab } from './tabs/FotosTab';
@@ -23,10 +26,20 @@ type Tab = typeof TABS[number];
 const initials = (name: string) =>
   name.split(' ').slice(0, 2).map(w => w[0]).join('').toUpperCase();
 
+const RETORNO_BANNER: Record<string, { bg: string; border: string; color: string }> = {
+  overdue:   { bg: '#fff5f5', border: '#fecaca', color: '#dc2626' },
+  in_window: { bg: '#f0fdf4', border: '#bbf7d0', color: '#16a34a' },
+  upcoming:  { bg: '#fffbf0', border: '#fde68a', color: '#d97706' },
+};
+
 export function PacienteView({ patient, sourceAppointmentId, onClose, onUpdate, onDelete }: Props) {
   const navigate = useNavigate();
   const [tab, setTab] = useState<Tab>('Dados');
   const [showSignature, setShowSignature] = useState(false);
+
+  const { servicos } = useServicos();
+  const { retornos } = useRetornos(servicos);
+  const retorno = retornos.find(r => r.patientId === patient.id);
 
   const handleDelete = async () => {
     if (!confirm(`Excluir a ficha de ${patient.name}? Esta ação não pode ser desfeita.`)) return;
@@ -120,6 +133,26 @@ export function PacienteView({ patient, sourceAppointmentId, onClose, onUpdate, 
             Excluir
           </button>
         </div>
+
+        {/* Return banner */}
+        {retorno && RETORNO_BANNER[retorno.status] && (
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            padding: '10px 16px',
+            borderBottom: `1px solid ${RETORNO_BANNER[retorno.status].border}`,
+            background: RETORNO_BANNER[retorno.status].bg,
+          }}>
+            <Clock size={14} style={{ color: RETORNO_BANNER[retorno.status].color, flexShrink: 0 }} />
+            <span style={{ fontSize: '0.82rem', color: RETORNO_BANNER[retorno.status].color }}>
+              {retorno.daysLabel}
+              {retorno.windowStart && retorno.windowEnd && (
+                <> · retornar {format(retorno.windowStart, 'dd/MM')} – {format(retorno.windowEnd, 'dd/MM')}</>
+              )}
+            </span>
+          </div>
+        )}
 
         {/* Sub-tabs */}
         <div className="sub-tabs">

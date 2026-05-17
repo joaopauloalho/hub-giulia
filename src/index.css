@@ -19,6 +19,7 @@
   --radius:      12px;
   --radius-lg:   18px;
   --tab-h:       80px;
+  --rail-w:      80px;
 }
 
 /* ─── Base ───────────────────────────────────────────────────── */
@@ -29,7 +30,7 @@ html { font-size: 16px; }
 body {
   background: var(--bg);
   color: var(--text);
-  font-family: -apple-system, 'Helvetica Neue', Arial, sans-serif;
+  font-family: 'DM Sans', -apple-system, 'Helvetica Neue', Arial, sans-serif;
   font-weight: 400;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
@@ -106,10 +107,12 @@ body {
 }
 
 .page-title {
+  font-family: 'Fraunces', Georgia, serif;
+  font-style: italic;
+  font-weight: 400;
   font-size: 1.6rem;
-  font-weight: 700;
   color: var(--text);
-  letter-spacing: -0.02em;
+  letter-spacing: -0.01em;
 }
 
 .page-sub {
@@ -721,12 +724,14 @@ select.field-input { cursor: pointer; }
 }
 
 .login-brand {
+  font-family: 'Fraunces', Georgia, serif;
+  font-style: italic;
+  font-weight: 600;
   text-align: center;
   margin-bottom: 6px;
   font-size: 1.8rem;
-  font-weight: 800;
   color: var(--primary);
-  letter-spacing: -0.04em;
+  letter-spacing: -0.03em;
 }
 
 .login-sub {
@@ -830,4 +835,122 @@ select.field-input { cursor: pointer; }
   .cond-radio { height: 52px; min-width: 80px; font-size: 0.95rem; }
   .cond-field-header { min-height: 56px; }
   .check-item { min-height: 52px; }
+}
+
+/* ─── Side Rail (tablet navigation) ─────────────────────────── */
+.side-rail {
+  display: none;
+  width: var(--rail-w);
+  position: fixed;
+  top: 0; left: 0; bottom: 0;
+  flex-direction: column;
+  align-items: center;
+  background: rgba(255, 255, 255, 0.97);
+  backdrop-filter: saturate(180%) blur(20px);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  border-right: 1px solid var(--border);
+  z-index: 50;
+  padding: 20px 0 max(20px, env(safe-area-inset-bottom));
+  gap: 2px;
+}
+
+.rail-brand {
+  font-family: 'Fraunces', Georgia, serif;
+  font-style: italic;
+  font-weight: 600;
+  font-size: 0.8rem;
+  color: var(--primary);
+  text-align: center;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  margin-bottom: 18px;
+  padding: 0 6px;
+}
+
+.rail-item {
+  width: 64px;
+  padding: 10px 4px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  border-radius: 14px;
+  color: var(--text-3);
+  font-size: 0.6rem;
+  font-weight: 600;
+  font-family: 'DM Sans', inherit;
+  text-decoration: none;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+.rail-item--active {
+  background: #fce7f0;
+  color: var(--primary);
+}
+
+.rail-item:not(.rail-item--active):hover {
+  background: var(--bg-2);
+  color: var(--text-2);
+}
+
+.rail-spacer { flex: 1; }
+
+/* ─── iPad breakpoint (≥768px) ───────────────────────────────── */
+@media (min-width: 768px) {
+  :root {
+    --tab-h: 0px;
+  }
+
+  .bottom-tabs { display: none; }
+  .side-rail   { display: flex; }
+
+  .app-shell {
+    padding-left: var(--rail-w);
+  }
+
+  .app-main {
+    padding-bottom: 0;
+  }
+
+  .page {
+    padding: 32px 40px;
+    max-width: 1024px;
+  }
+
+  .page-title {
+    font-size: 1.85rem;
+  }
+
+  .drawer {
+    width: min(760px, calc(100vw - var(--rail-w)));
+  }
+
+  /* Constrain FAB from the rail */
+  .fab {
+    bottom: 24px;
+    right: 28px;
+  }
+
+  /* Better photo grid on tablet */
+  .photo-grid {
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  }
+}
+
+/* ─── iPad landscape / large tablet (≥1024px) ───────────────── */
+@media (min-width: 1024px) {
+  .page {
+    padding: 40px 52px;
+    max-width: 1080px;
+  }
+
+  .page-title {
+    font-size: 2rem;
+  }
 }

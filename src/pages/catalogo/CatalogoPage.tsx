@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Plus, Pencil, Trash2, ToggleLeft, ToggleRight, X, BookOpen, FileText, Settings } from 'lucide-react';
+import { Plus, Pencil, Trash2, ToggleLeft, ToggleRight, X, BookOpen, FileText, Settings, Calendar, Link2Off } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useServicos } from '../../hooks/useServicos';
 import { useMaquininhaConfig } from '../../hooks/useMaquininhaConfig';
+import { useGoogleCalendar } from '../../hooks/useGoogleCalendar';
 import type { Service, ServiceType, ContractTemplate, MaquininhaConfig } from '../../types';
 
 type Section = 'servicos' | 'contratos' | 'config';
@@ -284,6 +285,7 @@ function ServiceCard({ s, onEdit, onDelete, onToggle }: {
 export function CatalogoPage() {
   const [section, setSection] = useState<Section>('servicos');
   const { servicos, loading: loadingServicos, error: servicosError, create, update, remove, toggle } = useServicos();
+  const { connected: gcalConnected, loading: gcalLoading, connect: gcalConnect, disconnect: gcalDisconnect } = useGoogleCalendar();
   const [filterType, setFilterType] = useState<ServiceType | 'todos'>('todos');
   const [serviceDrawer, setServiceDrawer] = useState<{ open: boolean; item?: Service }>({ open: false });
 
@@ -585,6 +587,48 @@ export function CatalogoPage() {
                 <p style={{ fontSize: '24px', fontWeight: 700, color: 'var(--text)' }}>{servicos.filter(s => !s.active).length}</p>
                 <p style={{ fontSize: '11px', color: 'var(--text-3)', marginTop: '2px' }}>inativos</p>
               </div>
+            </div>
+          </div>
+
+          {/* Integrações */}
+          <div className="card" style={{ marginTop: '12px' }}>
+            <h3 style={{ fontWeight: 600, fontSize: '15px', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <Calendar size={18} style={{ color: 'var(--primary)' }} /> Integrações
+            </h3>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <div style={{ flex: 1 }}>
+                <p style={{ fontWeight: 600, fontSize: '14px' }}>Google Calendar</p>
+                <p style={{ fontSize: '12px', color: 'var(--text-2)', marginTop: '2px' }}>
+                  {gcalLoading
+                    ? 'Verificando...'
+                    : gcalConnected
+                      ? 'Conectado — agendamentos sincronizados automaticamente'
+                      : 'Não conectado'}
+                </p>
+              </div>
+              {gcalConnected ? (
+                <button
+                  onClick={gcalDisconnect}
+                  disabled={gcalLoading}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: '6px',
+                    padding: '8px 14px', borderRadius: '10px', border: '1px solid var(--border)',
+                    background: 'var(--bg-2)', color: 'var(--text-2)',
+                    fontSize: '13px', fontWeight: 600, cursor: 'pointer', flexShrink: 0,
+                  }}
+                >
+                  <Link2Off size={15} /> Desconectar
+                </button>
+              ) : (
+                <button
+                  onClick={gcalConnect}
+                  disabled={gcalLoading}
+                  className="btn-primary"
+                  style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}
+                >
+                  <Calendar size={15} /> Conectar
+                </button>
+              )}
             </div>
           </div>
         </div>

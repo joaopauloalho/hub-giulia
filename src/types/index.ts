@@ -183,21 +183,72 @@ export interface Appointment {
   scheduled_at: string;
   status: AppointmentStatus;
   notes: string | null;
+  google_event_id: string | null;
   created_at: string;
   patient?: Pick<Patient, 'id' | 'name' | 'phone'>;
   service?: Pick<Service, 'id' | 'name' | 'duration_minutes'>;
 }
 
+// ─── Maquininha / Rates ───────────────────────────────────────────────────────
+
 export type CardBrand = 'master_visa' | 'elo';
 
-export interface MaquininhaConfig {
-  credito_pct: number;
-  debito_pct: number;
-  elo_credito_pct: number;
-  elo_debito_pct: number;
+export interface BrandRates {
+  debito: number;
+  [installments: string]: number; // '1'..'18'
 }
 
-export type PaymentMethod = 'dinheiro' | 'cartao_credito' | 'cartao_debito' | 'pix' | 'pix_parcelado';
+export interface MaquininhaRates {
+  pix: number;
+  master_visa: BrandRates;
+  elo: BrandRates;
+}
+
+export interface MaquininhaConfig {
+  rates: MaquininhaRates;
+}
+
+// ─── Payment ──────────────────────────────────────────────────────────────────
+
+export type SimplePaymentMethod = 'dinheiro' | 'pix' | 'cartao_credito' | 'cartao_debito';
+export type PaymentMethod = SimplePaymentMethod | 'pix_parcelado' | 'split';
+
+/** UI-only state for a single payment entry during registration */
+export interface PaymentEntryUI {
+  tempId: string;
+  method: SimplePaymentMethod;
+  baseValue: number;
+  cardBrand: CardBrand;
+  installments: number; // 1 = à vista, 2-18 for credit
+  absorveTaxa: boolean;
+  scheduledDate: string; // 'YYYY-MM-DD'
+}
+
+/** DB row from procedure_payments */
+export interface ProcedurePayment {
+  id: string;
+  procedure_id: string;
+  user_id: string;
+  method: string;
+  amount: number;
+  card_brand: string | null;
+  installments: number;
+  fee_pct: number | null;
+  fee_value: number | null;
+  net_amount: number;
+  absorve_taxa: boolean;
+  scheduled_date: string | null;
+  paid_at: string | null;
+  created_at: string;
+  procedure?: {
+    id: string;
+    patient_id: string;
+    total_value: number;
+    patient?: Pick<Patient, 'id' | 'name'>;
+  };
+}
+
+// ─── Procedure ────────────────────────────────────────────────────────────────
 
 export interface Procedure {
   id: string;
