@@ -145,7 +145,7 @@ export function InjetaveisFaceMap({
         viewBox={`0 0 ${VB_W} ${VB_H}`}
         style={{
           width: '100%',
-          maxWidth: 320,
+          maxWidth: 520,
           display: 'block',
           margin: '0 auto',
           cursor: activeServiceId && !pending && !editing ? 'crosshair' : 'default',
