@@ -26,9 +26,24 @@ async function refreshAccessToken(refreshToken: string): Promise<{ access_token:
   };
 }
 
+const CORS_HEADERS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+};
+
 Deno.serve(async (req) => {
+  const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), {
+    status,
+    headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
+  });
+
+  if (req.method === 'OPTIONS') {
+    return new Response(null, { headers: CORS_HEADERS, status: 204 });
+  }
+
   if (req.method !== 'POST') {
-    return new Response(JSON.stringify({ error: 'Method not allowed' }), { status: 405 });
+    return json({ error: 'Method not allowed' }, 405);
   }
 
   let appointmentId: string;
@@ -37,7 +52,7 @@ Deno.serve(async (req) => {
     appointmentId = body.appointment_id;
     if (!appointmentId) throw new Error('missing appointment_id');
   } catch {
-    return new Response(JSON.stringify({ synced: false, error: 'Invalid body' }), { status: 400 });
+    return json({ synced: false, error: 'Invalid body' }, 400);
   }
 
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
@@ -58,7 +73,7 @@ Deno.serve(async (req) => {
       .single();
 
     if (tokenErr || !tokenRow) {
-      return new Response(JSON.stringify({ synced: false, error: 'not_connected' }), { status: 200 });
+      return json({ synced: false, error: 'not_connected' });
     }
 
     let accessToken = tokenRow.access_token;
@@ -70,6 +85,23 @@ Deno.serve(async (req) => {
         access_token: refreshed.access_token,
         expires_at: refreshed.expires_at,
       }).eq('user_id', apt.user_id);
+    }
+
+    if (apt.status === 'cancelado') {
+      if (apt.google_event_id) {
+        const deleteRes = await fetch(
+          `https://www.googleapis.com/calendar/v3/calendars/primary/events/${apt.google_event_id}`,
+          { method: 'DELETE', headers: { Authorization: `Bearer ${accessToken}` } },
+        );
+        if (!deleteRes.ok && deleteRes.status !== 404 && deleteRes.status !== 410) {
+          throw new Error(`DELETE event failed: ${deleteRes.status}`);
+        }
+        await supabase
+          .from('appointments')
+          .update({ google_event_id: null })
+          .eq('id', appointmentId);
+      }
+      return json({ synced: true, cancelled: true });
     }
 
     const startDt = new Date(apt.scheduled_at);
@@ -113,12 +145,9 @@ Deno.serve(async (req) => {
       .update({ google_event_id: calEventId })
       .eq('id', appointmentId);
 
-    return new Response(JSON.stringify({ synced: true, google_event_id: calEventId }), { status: 200 });
+    return json({ synced: true, google_event_id: calEventId });
   } catch (err) {
     console.error('google-calendar-upsert error:', err);
-    return new Response(
-      JSON.stringify({ synced: false, error: err instanceof Error ? err.message : String(err) }),
-      { status: 200 }
-    );
+    return json({ synced: false, error: err instanceof Error ? err.message : String(err) });
   }
 });

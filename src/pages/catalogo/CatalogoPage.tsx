@@ -1,12 +1,15 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Plus, Pencil, Trash2, ToggleLeft, ToggleRight, X, BookOpen, FileText, Settings, Calendar, Link2Off } from 'lucide-react';
+import { Plus, Pencil, Trash2, ToggleLeft, ToggleRight, X, BookOpen, FileText, Settings, Calendar, Link2Off, Search, ChevronRight } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useServicos } from '../../hooks/useServicos';
 import { useMaquininhaConfig } from '../../hooks/useMaquininhaConfig';
 import { useGoogleCalendar } from '../../hooks/useGoogleCalendar';
+import { useToast } from '../../hooks/useToast';
+import { Skeleton } from '../../components/ui/Skeleton';
 import type { Service, ServiceType, ContractTemplate, MaquininhaConfig } from '../../types';
 
 type Section = 'servicos' | 'contratos' | 'config';
+type SortMode = 'name' | 'price_desc' | 'price_asc' | 'margin_desc';
 
 const SERVICE_TYPE_LABELS: Record<ServiceType, string> = {
   servico: 'Serviço',
@@ -190,6 +193,7 @@ function TemplateDrawer({
 }) {
   const [name, setName] = useState(initial?.name ?? '');
   const [body, setBody] = useState(initial?.body ?? '');
+  const [guideOpen, setGuideOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
@@ -219,6 +223,20 @@ function TemplateDrawer({
           <input className="field-input" value={name} onChange={e => setName(e.target.value)} placeholder="Ex: Contrato padrão" />
 
           <label className="field-label">Texto do contrato *</label>
+          <button
+            type="button"
+            className="btn btn--ghost btn--sm"
+            onClick={() => setGuideOpen(value => !value)}
+            aria-expanded={guideOpen}
+            style={{ width: '100%', justifyContent: 'space-between', marginBottom: 8 }}
+          >
+            Guia de variaveis <ChevronRight size={14} style={{ transform: guideOpen ? 'rotate(90deg)' : 'none' }} />
+          </button>
+          {guideOpen && (
+            <div style={{ padding: 12, border: '1px solid var(--border)', borderRadius: 'var(--radius)', background: 'var(--bg-2)', marginBottom: 10, fontSize: '0.82rem', color: 'var(--text-2)', lineHeight: 1.7 }}>
+              {'{{nome}}'}, {'{{data}}'}, {'{{servico}}'}, {'{{valor}}'}, {'{{profissional}}'}, {'{{cpf}}'}
+            </div>
+          )}
           <textarea
             className="field-input"
             rows={14}
@@ -299,8 +317,11 @@ function ServiceCard({ s, onEdit, onDelete, onToggle }: {
 export function CatalogoPage() {
   const [section, setSection] = useState<Section>('servicos');
   const { servicos, loading: loadingServicos, error: servicosError, create, update, remove, toggle } = useServicos();
+  const { confirm, toast } = useToast();
   const { connected: gcalConnected, loading: gcalLoading, connect: gcalConnect, disconnect: gcalDisconnect } = useGoogleCalendar();
   const [filterType, setFilterType] = useState<ServiceType | 'todos'>('todos');
+  const [serviceSearch, setServiceSearch] = useState('');
+  const [sortMode, setSortMode] = useState<SortMode>('name');
   const [serviceDrawer, setServiceDrawer] = useState<{ open: boolean; item?: Service }>({ open: false });
 
   // Contract templates
@@ -343,9 +364,16 @@ export function CatalogoPage() {
   };
 
   const deleteTemplate = async (id: string) => {
-    if (!confirm('Excluir este template?')) return;
+    const ok = await confirm({
+      title: 'Excluir template',
+      message: 'Excluir este template?',
+      confirmLabel: 'Excluir',
+      tone: 'danger',
+    });
+    if (!ok) return;
     await supabase.from('contract_templates').delete().eq('id', id);
     await loadTemplates();
+    toast.success('Template excluido.');
   };
 
   // Maquininha config
@@ -373,7 +401,15 @@ export function CatalogoPage() {
     }
   };
 
-  const filtered = filterType === 'todos' ? servicos : servicos.filter(s => s.type === filterType);
+  const filtered = servicos
+    .filter(s => filterType === 'todos' || s.type === filterType)
+    .filter(s => s.name.toLowerCase().includes(serviceSearch.trim().toLowerCase()))
+    .sort((a, b) => {
+      if (sortMode === 'price_desc') return b.price - a.price;
+      if (sortMode === 'price_asc') return a.price - b.price;
+      if (sortMode === 'margin_desc') return (b.price - b.cost_per_unit) - (a.price - a.cost_per_unit);
+      return a.name.localeCompare(b.name);
+    });
 
   const sectionTabs: { key: Section; label: string; icon: React.ReactNode }[] = [
     { key: 'servicos', label: 'Serviços', icon: <BookOpen size={15} /> },
@@ -425,6 +461,19 @@ export function CatalogoPage() {
       {/* ── Serviços ──────────────────────────────────────────── */}
       {section === 'servicos' && (
         <div style={{ padding: '16px' }}>
+          <div className="search-wrap">
+            <Search size={18} className="search-icon" />
+            <input className="search-input" placeholder="Buscar servico..." value={serviceSearch} onChange={event => setServiceSearch(event.target.value)} />
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: '0.8rem', color: 'var(--text-3)' }}>{filtered.length} de {servicos.length} itens</span>
+            <select className="field-input" value={sortMode} onChange={event => setSortMode(event.target.value as SortMode)} style={{ maxWidth: 220, minHeight: 40, padding: '8px 12px', fontSize: '0.86rem' }}>
+              <option value="name">Nome (A-Z)</option>
+              <option value="price_desc">Preco maior</option>
+              <option value="price_asc">Preco menor</option>
+              <option value="margin_desc">Margem</option>
+            </select>
+          </div>
           <div style={{ display: 'flex', gap: '6px', marginBottom: '14px', flexWrap: 'wrap' }}>
             {(['todos', 'servico', 'combo', 'plano', 'produto'] as const).map(t => (
               <button key={t} onClick={() => setFilterType(t)} style={{
@@ -443,7 +492,9 @@ export function CatalogoPage() {
               <p>{servicosError}</p>
             </div>
           ) : loadingServicos ? (
-            <p style={{ color: 'var(--text-3)', textAlign: 'center', padding: '48px 0' }}>Carregando...</p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {Array.from({ length: 4 }, (_, index) => <div className="card" key={index}><Skeleton lines={2} /></div>)}
+            </div>
           ) : filtered.length === 0 ? (
             <div className="empty-state">
               <BookOpen size={48} strokeWidth={1} style={{ color: 'var(--primary-lt)' }} />
@@ -459,7 +510,13 @@ export function CatalogoPage() {
                   key={s.id}
                   s={s}
                   onEdit={() => setServiceDrawer({ open: true, item: s })}
-                  onDelete={async () => { if (confirm('Excluir este item?')) await remove(s.id); }}
+                  onDelete={async () => {
+                    const ok = await confirm({ title: 'Excluir item', message: 'Excluir este item?', confirmLabel: 'Excluir', tone: 'danger' });
+                    if (ok) {
+                      await remove(s.id);
+                      toast.success('Item excluido.');
+                    }
+                  }}
                   onToggle={() => toggle(s.id, !s.active)}
                 />
               ))}

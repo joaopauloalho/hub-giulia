@@ -6,7 +6,7 @@ type CreateData = Omit<Patient, 'id' | 'user_id' | 'created_at'>;
 
 const empty: CreateData = {
   name: '', birth_date: null, phone: null, email: null,
-  profession: null, civil_status: null, weight: null, height: null,
+  cpf: null, profession: null, civil_status: null, weight: null, height: null,
   instagram: null, emergency_name: null, emergency_phone: null,
   convenio: null, notes: null, photo_url: null, start_date: null,
 };
@@ -115,6 +115,11 @@ export function NovaClienteDrawer({ open, onClose, onCreate }: Props) {
             <Field label="Email">
               <input className="field-input" type="email" placeholder="email@exemplo.com"
                 value={form.email ?? ''} onChange={e => set('email', e.target.value)} />
+            </Field>
+
+            <Field label="CPF">
+              <input className="field-input" inputMode="numeric" placeholder="000.000.000-00"
+                value={form.cpf ?? ''} onChange={e => set('cpf', e.target.value)} />
             </Field>
 
             <Field label="Profissão">

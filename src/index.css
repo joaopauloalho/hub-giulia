@@ -692,6 +692,17 @@ select.field-input { cursor: pointer; }
   gap: 12px;
 }
 
+.skeleton {
+  background: linear-gradient(90deg, var(--bg-2) 25%, #fdf2f8 37%, var(--bg-2) 63%);
+  background-size: 400% 100%;
+  animation: skeletonShimmer 1.35s ease-in-out infinite;
+}
+
+@keyframes skeletonShimmer {
+  0% { background-position: 100% 50%; }
+  100% { background-position: 0 50%; }
+}
+
 .full-loader {
   min-height: 100vh;
   display: flex;

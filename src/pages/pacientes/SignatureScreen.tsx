@@ -6,6 +6,8 @@ import { supabase } from '../../lib/supabase';
 import type { Patient, ContractTemplate } from '../../types';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { interpolateContract } from '../../lib/contractUtils';
+import { useToast } from '../../hooks/useToast';
 
 interface Props {
   patient: Patient;
@@ -24,13 +26,13 @@ const pdfStyles = StyleSheet.create({
   sigName: { fontSize: 10, marginTop: 8, borderTop: '1px solid #000', paddingTop: 4, width: 200 },
 });
 
-function ContractPDF({ patient, template, signatureDataUrl, date }: {
+function ContractPDF({ patient, template, signatureDataUrl, date, body }: {
   patient: Patient;
   template: ContractTemplate | null;
   signatureDataUrl: string;
   date: string;
+  body: string;
 }) {
-  const body = template?.body ?? 'Termo de responsabilidade e consentimento para realização de procedimentos estéticos.';
   return (
     <Document>
       <Page size="A4" style={pdfStyles.page}>
@@ -51,13 +53,16 @@ function ContractPDF({ patient, template, signatureDataUrl, date }: {
 
 export function SignatureScreen({ patient, onClose, onDone }: Props) {
   const sigRef = useRef<SignatureCanvas>(null);
+  const { toast } = useToast();
   const [templates, setTemplates] = useState<ContractTemplate[]>([]);
   const [selectedTemplate, setSelectedTemplate] = useState<ContractTemplate | null>(null);
+  const [professional, setProfessional] = useState('');
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => {
       if (!user) return;
+      setProfessional(user.email ?? 'Profissional');
       supabase
         .from('contract_templates')
         .select('*')
@@ -74,7 +79,7 @@ export function SignatureScreen({ patient, onClose, onDone }: Props) {
 
   const handleSave = async () => {
     if (sigRef.current?.isEmpty()) {
-      alert('Por favor, assine antes de continuar.');
+      toast.error('Por favor, assine antes de continuar.');
       return;
     }
     setSaving(true);
@@ -82,6 +87,17 @@ export function SignatureScreen({ patient, onClose, onDone }: Props) {
       const signatureDataUrl = sigRef.current!.toDataURL('image/png');
       const now = new Date();
       const dateStr = format(now, "dd/MM/yyyy 'às' HH:mm", { locale: ptBR });
+      const contractBody = interpolateContract(
+        selectedTemplate?.body ?? 'Termo de responsabilidade e consentimento para realização de procedimentos estéticos.',
+        {
+          nome: patient.name,
+          data: format(now, 'dd/MM/yyyy'),
+          servico: 'Servico estetico',
+          valor: '',
+          profissional: professional,
+          cpf: patient.cpf ?? '',
+        },
+      );
 
       const { data: { user } } = await supabase.auth.getUser();
 
@@ -107,6 +123,7 @@ export function SignatureScreen({ patient, onClose, onDone }: Props) {
           template={selectedTemplate}
           signatureDataUrl={signatureDataUrl}
           date={dateStr}
+          body={contractBody}
         />
       ).toBlob();
 
@@ -122,11 +139,20 @@ export function SignatureScreen({ patient, onClose, onDone }: Props) {
       onDone();
     } catch (err) {
       console.error(err);
-      alert('Erro ao salvar contrato. Tente novamente.');
+      toast.error('Erro ao salvar contrato. Tente novamente.');
     } finally {
       setSaving(false);
     }
   };
+
+  const previewBody = interpolateContract(selectedTemplate?.body ?? '', {
+    nome: patient.name,
+    data: format(new Date(), 'dd/MM/yyyy'),
+    servico: 'Servico estetico',
+    valor: '',
+    profissional: professional,
+    cpf: patient.cpf ?? '',
+  });
 
   return (
     <div className="drawer-overlay" onClick={onClose}>
@@ -172,7 +198,7 @@ export function SignatureScreen({ patient, onClose, onDone }: Props) {
                 {selectedTemplate.name}
               </div>
               <div style={{ fontSize: '0.82rem', color: 'var(--text-2)', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>
-                {selectedTemplate.body}
+                {previewBody}
               </div>
             </div>
           )}

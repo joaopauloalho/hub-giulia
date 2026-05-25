@@ -11,6 +11,8 @@ import { FotosTab } from './tabs/FotosTab';
 import { HistoricoTab } from './tabs/HistoricoTab';
 import { InjetaveisTab } from './tabs/InjetaveisTab';
 import { ContratosTab } from './tabs/ContratosTab';
+import { NotasTab } from './tabs/NotasTab';
+import { useToast } from '../../hooks/useToast';
 const SignatureScreen = lazy(() => import('./SignatureScreen').then(module => ({ default: module.SignatureScreen })));
 
 interface Props {
@@ -21,7 +23,7 @@ interface Props {
   onDelete: () => Promise<void>;
 }
 
-const TABS = ['Dados', 'Anamnese', 'Fotos', 'Histórico', 'Injetáveis', 'Contratos'] as const;
+const TABS = ['Dados', 'Anamnese', 'Fotos', 'Histórico', 'Notas', 'Injetáveis', 'Contratos'] as const;
 type Tab = typeof TABS[number];
 
 const initials = (name: string) =>
@@ -37,13 +39,20 @@ export function PacienteView({ patient, sourceAppointmentId, onClose, onUpdate, 
   const navigate = useNavigate();
   const [tab, setTab] = useState<Tab>('Dados');
   const [showSignature, setShowSignature] = useState(false);
+  const { confirm } = useToast();
 
   const { servicos } = useServicos();
   const { retornos } = useRetornos(servicos);
   const retorno = retornos.find(r => r.patientId === patient.id);
 
   const handleDelete = async () => {
-    if (!confirm(`Excluir a ficha de ${patient.name}? Esta ação não pode ser desfeita.`)) return;
+    const ok = await confirm({
+      title: 'Excluir ficha',
+      message: `Excluir a ficha de ${patient.name}? Esta acao nao pode ser desfeita.`,
+      confirmLabel: 'Excluir',
+      tone: 'danger',
+    });
+    if (!ok) return;
     await onDelete();
   };
 
@@ -174,6 +183,7 @@ export function PacienteView({ patient, sourceAppointmentId, onClose, onUpdate, 
           {tab === 'Anamnese'  && <AnamneseTab patientId={patient.id} />}
           {tab === 'Fotos'     && <FotosTab patientId={patient.id} />}
           {tab === 'Histórico'  && <HistoricoTab patientId={patient.id} />}
+          {tab === 'Notas' && <NotasTab patientId={patient.id} />}
           {tab === 'Injetáveis' && <InjetaveisTab patientId={patient.id} patientName={patient.name} />}
           {tab === 'Contratos' && (
             <ContratosTab

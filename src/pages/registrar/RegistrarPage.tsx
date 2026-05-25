@@ -6,21 +6,13 @@ import { useServicos } from '../../hooks/useServicos';
 import { useProcedures } from '../../hooks/useProcedures';
 import { useInjetaveis } from '../../hooks/useInjetaveis';
 import { useMaquininhaConfig, getFeePct } from '../../hooks/useMaquininhaConfig';
+import { useToast } from '../../hooks/useToast';
 import type { Patient, Service, PaymentMethod, MaquininhaRates, PaymentEntryUI, CardBrand, SimplePaymentMethod, InjectablePoint } from '../../types';
 const InjetaveisScreen = lazy(() => import('./InjetaveisScreen').then(m => ({ default: m.InjetaveisScreen })));
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-
-const PAYMENT_LABELS: Record<PaymentMethod, string> = {
-  dinheiro: 'Dinheiro',
-  cartao_credito: 'Cartão Crédito',
-  cartao_debito: 'Cartão Débito',
-  pix: 'PIX',
-  pix_parcelado: 'PIX Parcelado',
-  split: 'Pagamento dividido',
-};
 
 const METHOD_LABELS: Record<SimplePaymentMethod, string> = {
   dinheiro: 'Dinheiro',
@@ -94,8 +86,8 @@ function StepBar({ step, hasInjectables, injetaveisDone }: { step: number; hasIn
 
 // ─── Step 1: Paciente ─────────────────────────────────────────────────────────
 function StepPaciente({ onSelect }: { onSelect: (p: Patient) => void }) {
-  const { pacientes, loading } = usePacientes();
   const [q, setQ] = useState('');
+  const { pacientes, loading, nextPage, hasMore } = usePacientes({ search: q });
 
   const filtered = useMemo(() => {
     const lq = q.toLowerCase();
@@ -143,6 +135,11 @@ function StepPaciente({ onSelect }: { onSelect: (p: Patient) => void }) {
               <ChevronRight size={18} style={{ color: 'var(--text-3)', flexShrink: 0 }} />
             </button>
           ))}
+          {hasMore && (
+            <button className="btn btn--secondary btn--md" type="button" onClick={nextPage}>
+              Carregar mais
+            </button>
+          )}
         </div>
       )}
     </div>
@@ -607,9 +604,10 @@ export function RegistrarPage() {
   const location = useLocation();
   const [searchParams] = useSearchParams();
   const { create } = useProcedures();
-  const { pacientes, loading: loadingPacientes } = usePacientes();
+  const { pacientes, loading: loadingPacientes, getById } = usePacientes();
   const { servicos, loading: loadingServicos } = useServicos();
   const { config: maqConfig, loading: loadingMaq, error: maqError } = useMaquininhaConfig();
+  const { toast } = useToast();
   const [step, setStep] = useState(0);
   const [patient, setPatient] = useState<Patient | null>(null);
   const [services, setServices] = useState<Service[]>([]);
@@ -642,7 +640,19 @@ export function RegistrarPage() {
       setStep(1);
     } else if (!patient && patientId && !loadingPacientes) {
       const found = pacientes.find(item => item.id === patientId);
-      if (found) { setPatient(found); setStep(1); }
+      if (found) {
+        setPatient(found);
+        setStep(1);
+      } else {
+        let active = true;
+        getById(patientId).then(remotePatient => {
+          if (active && remotePatient) {
+            setPatient(remotePatient);
+            setStep(1);
+          }
+        }).catch(() => undefined);
+        return () => { active = false; };
+      }
     }
 
     if (nextAppointmentId) setAppointmentId(nextAppointmentId);
@@ -651,7 +661,7 @@ export function RegistrarPage() {
       const found = servicos.find(item => item.id === serviceId);
       if (found) setServices([found]);
     }
-  }, [loadingPacientes, loadingServicos, pacientes, patient, routeState.appointmentId, routeState.patient, routeState.patientId, routeState.serviceId, searchParams, services.length, servicos]);
+  }, [getById, loadingPacientes, loadingServicos, pacientes, patient, routeState.appointmentId, routeState.patient, routeState.patientId, routeState.serviceId, searchParams, services.length, servicos]);
 
   // Initialize payment entries when entering step 2
   useEffect(() => {
@@ -727,7 +737,7 @@ export function RegistrarPage() {
       setDone(true);
     } catch (e) {
       console.error(e);
-      alert('Erro ao salvar. Tente novamente.');
+      toast.error('Erro ao salvar. Tente novamente.');
     } finally {
       setSaving(false);
     }

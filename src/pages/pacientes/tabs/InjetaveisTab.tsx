@@ -1,7 +1,9 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Download, Syringe } from 'lucide-react';
 import { Document, Page, Text, View, Image, StyleSheet, pdf } from '@react-pdf/renderer';
 import { useInjetaveis } from '../../../hooks/useInjetaveis';
+import { useToast } from '../../../hooks/useToast';
+import { FaceMapPreview } from '../../../components/FaceMapPreview';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import type { InjectableMap, InjectablePoint } from '../../../types';
@@ -139,7 +141,9 @@ interface Props {
 
 export function InjetaveisTab({ patientId, patientName }: Props) {
   const { maps, loading, error, load } = useInjetaveis(patientId);
+  const { toast } = useToast();
   const downloadingRef = useRef<Set<string>>(new Set());
+  const [openMapId, setOpenMapId] = useState<string | null>(null);
 
   useEffect(() => { load(); }, [load]);
 
@@ -164,7 +168,7 @@ export function InjetaveisTab({ patientId, patientName }: Props) {
       URL.revokeObjectURL(url);
     } catch (e) {
       console.error('Erro ao gerar PDF:', e);
-      alert('Erro ao gerar PDF. Tente novamente.');
+      toast.error('Erro ao gerar PDF. Tente novamente.');
     } finally {
       downloadingRef.current.delete(map.id);
     }
@@ -236,6 +240,24 @@ export function InjetaveisTab({ patientId, patientName }: Props) {
                   <Download size={18} />
                 </button>
               </div>
+              {m.points.length > 0 && (
+                <div style={{ marginTop: 10 }}>
+                  <button
+                    type="button"
+                    className="btn btn--ghost btn--sm"
+                    onClick={() => setOpenMapId(current => current === m.id ? null : m.id)}
+                    aria-expanded={openMapId === m.id}
+                    style={{ width: '100%' }}
+                  >
+                    {openMapId === m.id ? 'Ocultar mapa' : 'Ver mapa facial'}
+                  </button>
+                  {openMapId === m.id && (
+                    <div style={{ marginTop: 10, display: 'flex', justifyContent: 'center', background: '#fff', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: 10 }}>
+                      <FaceMapPreview points={m.points} />
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           );
         })}

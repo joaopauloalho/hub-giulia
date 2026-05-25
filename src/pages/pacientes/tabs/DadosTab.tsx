@@ -40,6 +40,7 @@ export function DadosTab({ patient, onUpdate }: Props) {
       birth_date: patient.birth_date,
       phone: patient.phone,
       email: patient.email,
+      cpf: patient.cpf,
       profession: patient.profession,
       civil_status: patient.civil_status,
       weight: patient.weight,
@@ -88,6 +89,7 @@ export function DadosTab({ patient, onUpdate }: Props) {
             ['civil_status', 'Estado civil', 'text'],
             ['phone', 'Celular', 'tel'],
             ['email', 'Email', 'email'],
+            ['cpf', 'CPF', 'text'],
             ['profession', 'Profissão', 'text'],
             ['instagram', 'Instagram', 'text'],
             ['weight', 'Peso', 'text'],
@@ -136,6 +138,7 @@ export function DadosTab({ patient, onUpdate }: Props) {
       <Row label="Estado civil" value={patient.civil_status} />
       <Row label="Celular" value={patient.phone} />
       <Row label="Email" value={patient.email} />
+      <Row label="CPF" value={patient.cpf} />
       <Row label="Profissão" value={patient.profession} />
       <Row label="Instagram" value={patient.instagram} />
       <Row label="Peso" value={patient.weight} />

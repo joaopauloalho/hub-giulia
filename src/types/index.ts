@@ -5,6 +5,7 @@ export interface Patient {
   birth_date: string | null;
   phone: string | null;
   email: string | null;
+  cpf: string | null;
   profession: string | null;
   civil_status: string | null;
   weight: string | null;
@@ -132,9 +133,23 @@ export interface PatientPhoto {
   id: string;
   patient_id: string;
   user_id: string;
+  procedure_id: string | null;
+  photo_type: 'before' | 'after' | 'general';
   photo_url: string;
   label: string | null;
   taken_at: string;
+  procedure?: Pick<Procedure, 'id' | 'performed_at' | 'services_ids'> | null;
+}
+
+export interface PatientNote {
+  id: string;
+  patient_id: string;
+  user_id: string;
+  content: string;
+  remind_at: string | null;
+  resolved: boolean;
+  created_at: string;
+  patient?: Pick<Patient, 'id' | 'name'>;
 }
 
 export interface ContractTemplate {

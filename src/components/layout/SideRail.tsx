@@ -1,13 +1,14 @@
 import { NavLink } from 'react-router-dom';
-import { CalendarDays, Users, PlusCircle, Wallet, BookOpen, LogOut } from 'lucide-react';
+import { CalendarDays, Users, PlusCircle, Wallet, BookOpen, LogOut, LayoutDashboard } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 
 const TABS = [
-  { to: '/agenda',     icon: CalendarDays, label: 'Agenda' },
-  { to: '/pacientes',  icon: Users,        label: 'Pacientes' },
-  { to: '/registrar',  icon: PlusCircle,   label: 'Registrar' },
-  { to: '/financeiro', icon: Wallet,       label: 'Financeiro' },
-  { to: '/catalogo',   icon: BookOpen,     label: 'Catálogo' },
+  { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
+  { to: '/agenda', icon: CalendarDays, label: 'Agenda' },
+  { to: '/pacientes', icon: Users, label: 'Pacientes' },
+  { to: '/registrar', icon: PlusCircle, label: 'Registrar' },
+  { to: '/financeiro', icon: Wallet, label: 'Financeiro' },
+  { to: '/catalogo', icon: BookOpen, label: 'Catalogo' },
 ];
 
 export function SideRail() {

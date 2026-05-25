@@ -4,6 +4,7 @@ import { useAuth } from './hooks/useAuth';
 import { Layout } from './components/layout/Layout';
 import { LoginPage } from './pages/auth/LoginPage';
 import { AgendaPage } from './pages/agenda/AgendaPage';
+import { DashboardPage } from './pages/dashboard/DashboardPage';
 import { PacientesPage } from './pages/pacientes/PacientesPage';
 import { RegistrarPage } from './pages/registrar/RegistrarPage';
 import { FinanceiroPage } from './pages/financeiro/FinanceiroPage';
@@ -48,14 +49,15 @@ export default function App() {
               </ProtectedRoute>
             }
           >
-            <Route index element={<Navigate to="/agenda" replace />} />
+            <Route index element={<Navigate to="/dashboard" replace />} />
+            <Route path="dashboard"  element={<DashboardPage />} />
             <Route path="agenda"     element={<AgendaPage />} />
             <Route path="pacientes"  element={<PacientesPage />} />
             <Route path="registrar"  element={<RegistrarPage />} />
             <Route path="financeiro" element={<FinanceiroPage />} />
             <Route path="catalogo"   element={<CatalogoPage />} />
           </Route>
-          <Route path="*" element={<Navigate to="/agenda" replace />} />
+          <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Routes>
       </BrowserRouter>
     </ErrorBoundary>

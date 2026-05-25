@@ -15,7 +15,7 @@ export function usePatientPhotos(patientId: string) {
     try {
       const { data, error: photosError } = await supabase
         .from('patient_photos')
-        .select('*')
+        .select('*, procedure:procedures(id, performed_at, services_ids)')
         .eq('patient_id', patientId)
         .order('taken_at', { ascending: false });
 
@@ -37,7 +37,11 @@ export function usePatientPhotos(patientId: string) {
     }
   }, [patientId]);
 
-  const upload = async (file: File, label: string) => {
+  const upload = async (
+    file: File,
+    label: string,
+    options: { procedure_id?: string | null; photo_type?: PatientPhoto['photo_type'] } = {},
+  ) => {
     const { data: { user } } = await supabase.auth.getUser();
     const ext = file.name.split('.').pop();
     const path = `${user!.id}/${patientId}/${Date.now()}.${ext}`;
@@ -52,6 +56,8 @@ export function usePatientPhotos(patientId: string) {
       user_id: user!.id,
       photo_url: path,
       label: label || null,
+      procedure_id: options.procedure_id ?? null,
+      photo_type: options.photo_type ?? 'general',
       taken_at: new Date().toISOString(),
     });
     if (insertError) throw insertError;

@@ -6,13 +6,18 @@ import {
   ChevronLeft,
   ChevronRight,
   Clock,
+  Download,
   Loader2,
   TrendingDown,
   TrendingUp,
   Wallet,
 } from 'lucide-react';
+import { pdf } from '@react-pdf/renderer';
 import { useFinanceiro } from '../../hooks/useFinanceiro';
 import { useServicos } from '../../hooks/useServicos';
+import { useToast } from '../../hooks/useToast';
+import { Skeleton } from '../../components/ui/Skeleton';
+import { FinanceiroReportPDF } from '../../components/FinanceiroReportPDF';
 import type { PixInstallment, Procedure, ProcedurePayment, Service } from '../../types';
 
 const PAYMENT_LABELS: Record<string, string> = {
@@ -329,7 +334,23 @@ export function FinanceiroPage() {
   const [month, setMonth] = useState(new Date());
   const { procedures, pixPendentes, pagamentosPendentes, summary, loading, error, markPixPago, markPagamentoPago } = useFinanceiro(month);
   const { servicos, loading: loadingServices, error: servicesError } = useServicos();
+  const { toast } = useToast();
   const monthLabel = format(month, 'MMMM yyyy', { locale: ptBR });
+
+  const exportPdf = async () => {
+    try {
+      const blob = await pdf(<FinanceiroReportPDF month={month} summary={summary} procedures={procedures} services={servicos} />).toBlob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `financeiro-${format(month, 'yyyy-MM')}.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success('PDF gerado.');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao gerar PDF.');
+    }
+  };
 
   return (
     <div className="page">
@@ -337,6 +358,9 @@ export function FinanceiroPage() {
         <div>
           <h1 className="page-title">Financeiro</h1>
         </div>
+        <button className="btn btn--secondary btn--sm" onClick={exportPdf} disabled={loading || loadingServices || procedures.length === 0}>
+          <Download size={16} /> Exportar PDF
+        </button>
       </div>
 
       <div style={{ padding: '0 16px 100px' }}>
@@ -374,8 +398,13 @@ export function FinanceiroPage() {
             <p>{error ?? servicesError}</p>
           </div>
         ) : loading || loadingServices ? (
-          <div style={{ textAlign: 'center', padding: 48 }}>
-            <Loader2 size={28} className="spin" style={{ color: 'var(--primary)' }} />
+          <div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(132px, 1fr))', gap: 10, marginBottom: 28 }}>
+              {Array.from({ length: 5 }, (_, index) => <div className="card" key={index}><Skeleton height={54} /></div>)}
+            </div>
+            <div style={{ textAlign: 'center', padding: 16 }}>
+              <Loader2 size={24} className="spin" style={{ color: 'var(--primary)' }} />
+            </div>
           </div>
         ) : (
           <>

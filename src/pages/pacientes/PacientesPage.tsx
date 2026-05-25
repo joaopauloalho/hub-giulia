@@ -1,16 +1,18 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Plus, Search, UserRound } from 'lucide-react';
+import { Download, Plus, Search, UserRound } from 'lucide-react';
 import { usePacientes } from '../../hooks/usePacientes';
 import { NovaClienteDrawer } from './NovaClienteDrawer';
 import { PacienteView } from './PacienteView';
+import { Skeleton } from '../../components/ui/Skeleton';
+import { exportPatientsCSV } from '../../lib/exportUtils';
 import type { Patient } from '../../types';
 
 export function PacientesPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { pacientes, loading, error, create, update, remove } = usePacientes();
   const [search, setSearch] = useState('');
+  const { pacientes, total, loading, error, create, update, remove, getById, nextPage, hasMore } = usePacientes({ search });
   const [showCreate, setShowCreate] = useState(false);
   const [viewing, setViewing] = useState<Patient | null>(null);
   const [sourceAppointmentId, setSourceAppointmentId] = useState<string | null>(null);
@@ -24,8 +26,19 @@ export function PacientesPage() {
     if (found) {
       setViewing(found);
       setSourceAppointmentId(searchParams.get('appointment_id'));
+      return;
     }
-  }, [loading, pacientes, searchParams, viewing]);
+
+    let active = true;
+    getById(patientId).then(patient => {
+      if (!active || !patient) return;
+      setViewing(patient);
+      setSourceAppointmentId(searchParams.get('appointment_id'));
+    }).catch(() => {
+      if (active) setSourceAppointmentId(null);
+    });
+    return () => { active = false; };
+  }, [loading, pacientes, searchParams, viewing, getById]);
 
   const filtered = pacientes.filter(p =>
     [p.name, p.phone, p.email]
@@ -44,9 +57,12 @@ export function PacientesPage() {
         <div>
           <h1 className="page-title">Pacientes</h1>
           <p className="page-sub">
-            {pacientes.length} {pacientes.length === 1 ? 'paciente' : 'pacientes'}
+            {total} {total === 1 ? 'paciente' : 'pacientes'}
           </p>
         </div>
+        <button className="btn btn--secondary btn--sm" onClick={() => exportPatientsCSV(filtered)} disabled={filtered.length === 0}>
+          <Download size={16} /> CSV
+        </button>
       </div>
 
       <div className="search-wrap">
@@ -64,7 +80,14 @@ export function PacientesPage() {
           <p>{error}</p>
         </div>
       ) : loading ? (
-        <div className="loading-state">Carregando...</div>
+        <div className="patient-list">
+          {Array.from({ length: 3 }, (_, index) => (
+            <div className="patient-item" key={index}>
+              <Skeleton width={44} height={44} borderRadius="50%" />
+              <div style={{ flex: 1 }}><Skeleton lines={2} /></div>
+            </div>
+          ))}
+        </div>
       ) : filtered.length === 0 ? (
         <div className="empty-state">
           <UserRound size={48} strokeWidth={1} style={{ color: 'var(--primary-lt)' }} />
@@ -99,6 +122,11 @@ export function PacientesPage() {
               )}
             </div>
           ))}
+          {hasMore && (
+            <button className="btn btn--secondary btn--md" onClick={nextPage} style={{ marginTop: 8 }}>
+              Carregar mais
+            </button>
+          )}
         </div>
       )}
 
@@ -124,7 +152,7 @@ export function PacientesPage() {
             setSourceAppointmentId(null);
             if (searchParams.has('patient_id')) navigate('/pacientes', { replace: true });
           }}
-          onUpdate={async (data) => { await update(viewing.id, data); }}
+          onUpdate={async (data) => { await update(viewing.id, data); setViewing(prev => prev ? { ...prev, ...data } : prev); }}
           onDelete={async () => { await remove(viewing.id); setViewing(null); }}
         />
       )}

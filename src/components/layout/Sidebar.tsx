@@ -1,12 +1,14 @@
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, Users, Briefcase, LogOut, UserRound } from 'lucide-react';
+import { CalendarDays, LayoutDashboard, PlusCircle, Wallet, BookOpen, LogOut, UserRound } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 
 const nav = [
   { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
+  { to: '/agenda', icon: CalendarDays, label: 'Agenda' },
   { to: '/pacientes', icon: UserRound, label: 'Pacientes' },
-  { to: '/contacts', icon: Users, label: 'Contatos' },
-  { to: '/deals', icon: Briefcase, label: 'Negócios' },
+  { to: '/registrar', icon: PlusCircle, label: 'Registrar' },
+  { to: '/financeiro', icon: Wallet, label: 'Financeiro' },
+  { to: '/catalogo', icon: BookOpen, label: 'Catalogo' },
 ];
 
 export function Sidebar() {
