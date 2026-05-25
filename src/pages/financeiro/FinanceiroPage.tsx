@@ -8,6 +8,7 @@ import {
   Clock,
   Download,
   Loader2,
+  Trash2,
   TrendingDown,
   TrendingUp,
   Wallet,
@@ -259,7 +260,7 @@ function PagamentosPendentes({ items, onPagar }: { items: ProcedurePayment[]; on
   );
 }
 
-function ProcedureRow({ proc, services }: { proc: Procedure; services: Service[] }) {
+function ProcedureRow({ proc, services, onRemove }: { proc: Procedure; services: Service[]; onRemove: (proc: Procedure) => void }) {
   const [open, setOpen] = useState(false);
   const lucro = proc.net_value - proc.total_cost;
   const details = [
@@ -324,6 +325,14 @@ function ProcedureRow({ proc, services }: { proc: Procedure; services: Service[]
               </div>
             ))}
           </div>
+          <button
+            type="button"
+            className="btn btn--danger btn--sm"
+            onClick={() => onRemove(proc)}
+            style={{ marginTop: 12 }}
+          >
+            <Trash2 size={14} /> Excluir atendimento
+          </button>
         </div>
       )}
     </div>
@@ -332,9 +341,9 @@ function ProcedureRow({ proc, services }: { proc: Procedure; services: Service[]
 
 export function FinanceiroPage() {
   const [month, setMonth] = useState(new Date());
-  const { procedures, pixPendentes, pagamentosPendentes, summary, loading, error, markPixPago, markPagamentoPago } = useFinanceiro(month);
+  const { procedures, pixPendentes, pagamentosPendentes, summary, loading, error, markPixPago, markPagamentoPago, removeProcedure } = useFinanceiro(month);
   const { servicos, loading: loadingServices, error: servicesError } = useServicos();
-  const { toast } = useToast();
+  const { toast, confirm } = useToast();
   const monthLabel = format(month, 'MMMM yyyy', { locale: ptBR });
 
   const exportPdf = async () => {
@@ -349,6 +358,23 @@ export function FinanceiroPage() {
       toast.success('PDF gerado.');
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Erro ao gerar PDF.');
+    }
+  };
+
+  const handleRemoveProcedure = async (proc: Procedure) => {
+    const ok = await confirm({
+      title: 'Excluir atendimento',
+      message: 'Excluir este atendimento? O financeiro vinculado, incluindo pagamentos e parcelas, sera removido junto.',
+      confirmLabel: 'Excluir',
+      tone: 'danger',
+    });
+    if (!ok) return;
+
+    try {
+      await removeProcedure(proc.id);
+      toast.success('Atendimento e financeiro excluidos.');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao excluir atendimento.');
     }
   };
 
@@ -454,7 +480,7 @@ export function FinanceiroPage() {
                   Nenhum atendimento neste mês.
                 </div>
               ) : (
-                procedures.map(proc => <ProcedureRow key={proc.id} proc={proc} services={servicos} />)
+                procedures.map(proc => <ProcedureRow key={proc.id} proc={proc} services={servicos} onRemove={handleRemoveProcedure} />)
               )}
             </section>
           </>
