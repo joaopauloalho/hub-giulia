@@ -1,9 +1,10 @@
 import { useMemo, useState } from 'react';
-import { ChevronRight, ClipboardList, Loader2 } from 'lucide-react';
+import { ChevronRight, ClipboardList, Loader2, Trash2 } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { useProcedures } from '../../../hooks/useProcedures';
 import { useServicos } from '../../../hooks/useServicos';
+import { useToast } from '../../../hooks/useToast';
 import type { Procedure, Service } from '../../../types';
 
 interface Props { patientId: string; }
@@ -49,7 +50,7 @@ function RetornoChip({ proc, services }: { proc: Procedure; services: Service[] 
   );
 }
 
-function ProcedureCard({ proc, services }: { proc: Procedure; services: Service[] }) {
+function ProcedureCard({ proc, services, onRemove }: { proc: Procedure; services: Service[]; onRemove: (proc: Procedure) => void }) {
   const [open, setOpen] = useState(false);
   const lucro = proc.net_value - proc.total_cost;
 
@@ -141,6 +142,14 @@ function ProcedureCard({ proc, services }: { proc: Procedure; services: Service[
               </div>
             ))}
           </div>
+          <button
+            type="button"
+            className="btn btn--danger btn--sm"
+            onClick={() => onRemove(proc)}
+            style={{ marginTop: 12 }}
+          >
+            <Trash2 size={14} /> Excluir atendimento
+          </button>
         </div>
       )}
     </div>
@@ -148,13 +157,31 @@ function ProcedureCard({ proc, services }: { proc: Procedure; services: Service[
 }
 
 export function HistoricoTab({ patientId }: Props) {
-  const { procedures, loading, error } = useProcedures(patientId);
+  const { procedures, loading, error, remove } = useProcedures(patientId);
   const { servicos, loading: loadingServices, error: servicesError } = useServicos();
+  const { confirm, toast } = useToast();
 
   const total = useMemo(
     () => procedures.reduce((sum, proc) => sum + proc.total_value, 0),
     [procedures]
   );
+
+  const handleRemove = async (proc: Procedure) => {
+    const ok = await confirm({
+      title: 'Excluir atendimento',
+      message: 'Excluir este atendimento? Os pagamentos e parcelas vinculados tambem serao removidos do financeiro. Fotos e mapas ficam preservados, apenas desvinculados.',
+      confirmLabel: 'Excluir',
+      tone: 'danger',
+    });
+    if (!ok) return;
+
+    try {
+      await remove(proc.id);
+      toast.success('Atendimento excluido.');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao excluir atendimento.');
+    }
+  };
 
   if (error || servicesError) {
     return (
@@ -202,7 +229,7 @@ export function HistoricoTab({ patientId }: Props) {
       </div>
 
       {procedures.map(proc => (
-        <ProcedureCard key={proc.id} proc={proc} services={servicos} />
+        <ProcedureCard key={proc.id} proc={proc} services={servicos} onRemove={handleRemove} />
       ))}
     </div>
   );

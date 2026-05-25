@@ -182,5 +182,44 @@ export function useProcedures(patientId?: string) {
     return proc as Procedure;
   };
 
-  return { procedures, loading, error, create, refresh };
+  const remove = async (procedureId: string) => {
+    const { data: proc, error: fetchError } = await supabase
+      .from('procedures')
+      .select('id, appointment_id')
+      .eq('id', procedureId)
+      .single();
+    if (fetchError) throw fetchError;
+
+    await supabase.from('patient_photos').update({ procedure_id: null }).eq('procedure_id', procedureId);
+    await supabase.from('injectable_maps').update({ procedure_id: null }).eq('procedure_id', procedureId);
+
+    const { error: paymentsError } = await supabase
+      .from('procedure_payments')
+      .delete()
+      .eq('procedure_id', procedureId);
+    if (paymentsError) throw paymentsError;
+
+    const { error: pixError } = await supabase
+      .from('pix_installments')
+      .delete()
+      .eq('procedure_id', procedureId);
+    if (pixError) throw pixError;
+
+    const { error: deleteError } = await supabase
+      .from('procedures')
+      .delete()
+      .eq('id', procedureId);
+    if (deleteError) throw deleteError;
+
+    if ((proc as Pick<Procedure, 'appointment_id'> | null)?.appointment_id) {
+      await supabase
+        .from('appointments')
+        .update({ status: 'confirmado' })
+        .eq('id', (proc as Pick<Procedure, 'appointment_id'>).appointment_id);
+    }
+
+    await refresh();
+  };
+
+  return { procedures, loading, error, create, remove, refresh };
 }
