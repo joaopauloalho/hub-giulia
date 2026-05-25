@@ -3,6 +3,7 @@ import { Pencil, Check, X } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import type { Patient } from '../../../types';
+import { ageLabel, birthDateIsoToInput, formatBirthDateInput, parseBirthDateInput } from '../../../lib/dateUtils';
 
 interface Props {
   patient: Patient;
@@ -32,6 +33,7 @@ const fmtDate = (iso: string | null) => {
 export function DadosTab({ patient, onUpdate }: Props) {
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState<Partial<Patient>>({});
+  const [birthInput, setBirthInput] = useState('');
   const [saving, setSaving] = useState(false);
 
   const startEdit = () => {
@@ -51,13 +53,16 @@ export function DadosTab({ patient, onUpdate }: Props) {
       convenio: patient.convenio,
       notes: patient.notes,
     });
+    setBirthInput(birthDateIsoToInput(patient.birth_date));
     setEditing(true);
   };
 
   const handleSave = async () => {
     setSaving(true);
     try {
-      await onUpdate(form);
+      const birthDate = birthInput ? parseBirthDateInput(birthInput) : null;
+      if (birthInput && !birthDate) return;
+      await onUpdate({ ...form, birth_date: birthDate });
       setEditing(false);
     } finally {
       setSaving(false);
@@ -84,8 +89,24 @@ export function DadosTab({ patient, onUpdate }: Props) {
             <label className="field-label">Nome *</label>
             <input className="field-input" value={form.name ?? ''} onChange={e => set('name', e.target.value)} />
           </div>
+          <div className="field">
+            <label className="field-label">Data de nascimento</label>
+            <input
+              className="field-input"
+              type="text"
+              inputMode="numeric"
+              autoComplete="bday"
+              placeholder="dd/mm/aaaa"
+              value={birthInput}
+              onChange={e => setBirthInput(formatBirthDateInput(e.target.value))}
+            />
+            {ageLabel(parseBirthDateInput(birthInput)) && (
+              <span style={{ fontSize: '0.78rem', color: 'var(--text-3)' }}>
+                Idade atual: {ageLabel(parseBirthDateInput(birthInput))}
+              </span>
+            )}
+          </div>
           {([
-            ['birth_date', 'Data de nascimento', 'date'],
             ['civil_status', 'Estado civil', 'text'],
             ['phone', 'Celular', 'tel'],
             ['email', 'Email', 'email'],
@@ -135,6 +156,7 @@ export function DadosTab({ patient, onUpdate }: Props) {
 
       <SectionTitle>Dados Pessoais</SectionTitle>
       <Row label="Data de nascimento" value={fmtDate(patient.birth_date)} />
+      <Row label="Idade atual" value={ageLabel(patient.birth_date)} />
       <Row label="Estado civil" value={patient.civil_status} />
       <Row label="Celular" value={patient.phone} />
       <Row label="Email" value={patient.email} />

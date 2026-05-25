@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { X } from 'lucide-react';
 import type { Patient } from '../../types';
+import { ageLabel, birthDateIsoToInput, formatBirthDateInput, parseBirthDateInput } from '../../lib/dateUtils';
 
 type CreateData = Omit<Patient, 'id' | 'user_id' | 'created_at'>;
 
@@ -28,11 +29,12 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 
 export function NovaClienteDrawer({ open, onClose, onCreate }: Props) {
   const [form, setForm] = useState<CreateData>(empty);
+  const [birthInput, setBirthInput] = useState('');
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (open) { setForm(empty); setSaveError(null); }
+    if (open) { setForm(empty); setBirthInput(''); setSaveError(null); }
   }, [open]);
 
   useEffect(() => {
@@ -49,7 +51,12 @@ export function NovaClienteDrawer({ open, onClose, onCreate }: Props) {
     setSaving(true);
     setSaveError(null);
     try {
-      await onCreate(form);
+      const birthDate = birthInput ? parseBirthDateInput(birthInput) : null;
+      if (birthInput && !birthDate) {
+        setSaveError('Data de nascimento inválida. Use dd/mm/aaaa.');
+        return;
+      }
+      await onCreate({ ...form, birth_date: birthDate });
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : 'Erro ao cadastrar. Tente novamente.');
     } finally {
@@ -91,8 +98,20 @@ export function NovaClienteDrawer({ open, onClose, onCreate }: Props) {
             </div>
 
             <Field label="Data de nascimento">
-              <input className="field-input" type="date" value={form.birth_date ?? ''}
-                onChange={e => set('birth_date', e.target.value)} />
+              <input
+                className="field-input"
+                type="text"
+                inputMode="numeric"
+                autoComplete="bday"
+                placeholder="dd/mm/aaaa"
+                value={birthInput || birthDateIsoToInput(form.birth_date)}
+                onChange={e => setBirthInput(formatBirthDateInput(e.target.value))}
+              />
+              {ageLabel(parseBirthDateInput(birthInput)) && (
+                <span style={{ fontSize: '0.78rem', color: 'var(--text-3)' }}>
+                  Idade atual: {ageLabel(parseBirthDateInput(birthInput))}
+                </span>
+              )}
             </Field>
 
             <Field label="Estado civil">
