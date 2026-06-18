@@ -43,9 +43,11 @@ export function useContracts(patientId: string) {
     pdf_url?: string;
   }) => {
     const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error('Usuario nao autenticado.');
+
     const { error } = await supabase.from('contracts').insert({
       patient_id: patientId,
-      user_id: user!.id,
+      user_id: user.id,
       template_id: opts.template_id,
       signature_data: opts.signature_data,
       pdf_url: opts.pdf_url ?? null,
@@ -57,7 +59,9 @@ export function useContracts(patientId: string) {
 
   const uploadPdf = async (blob: Blob, contractId: string) => {
     const { data: { user } } = await supabase.auth.getUser();
-    const path = `${user!.id}/${patientId}/${contractId}.pdf`;
+    if (!user) throw new Error('Usuario nao autenticado.');
+
+    const path = `${user.id}/${patientId}/${contractId}.pdf`;
     const { error } = await supabase.storage
       .from('contracts')
       .upload(path, blob, { contentType: 'application/pdf', upsert: true });

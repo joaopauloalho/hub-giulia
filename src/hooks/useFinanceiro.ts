@@ -116,6 +116,19 @@ export function useFinanceiro(month: Date) {
   };
 
   const removeProcedure = async (procedureId: string) => {
+    const { error: rpcError } = await supabase.rpc('remove_procedure_cascade', {
+      p_procedure_id: procedureId,
+    });
+
+    if (!rpcError) {
+      await refresh();
+      return;
+    }
+
+    if (rpcError.code !== 'PGRST202' && rpcError.code !== '42883') {
+      throw rpcError;
+    }
+
     const { data: proc, error: fetchError } = await supabase
       .from('procedures')
       .select('id, appointment_id')

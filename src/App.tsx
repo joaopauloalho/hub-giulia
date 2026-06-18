@@ -1,14 +1,15 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { Component, type ReactNode } from 'react';
+import { Component, lazy, Suspense, type ReactNode } from 'react';
 import { useAuth } from './hooks/useAuth';
 import { Layout } from './components/layout/Layout';
-import { LoginPage } from './pages/auth/LoginPage';
-import { AgendaPage } from './pages/agenda/AgendaPage';
-import { DashboardPage } from './pages/dashboard/DashboardPage';
-import { PacientesPage } from './pages/pacientes/PacientesPage';
-import { RegistrarPage } from './pages/registrar/RegistrarPage';
-import { FinanceiroPage } from './pages/financeiro/FinanceiroPage';
-import { CatalogoPage } from './pages/catalogo/CatalogoPage';
+
+const LoginPage = lazy(() => import('./pages/auth/LoginPage').then((module) => ({ default: module.LoginPage })));
+const AgendaPage = lazy(() => import('./pages/agenda/AgendaPage').then((module) => ({ default: module.AgendaPage })));
+const DashboardPage = lazy(() => import('./pages/dashboard/DashboardPage').then((module) => ({ default: module.DashboardPage })));
+const PacientesPage = lazy(() => import('./pages/pacientes/PacientesPage').then((module) => ({ default: module.PacientesPage })));
+const RegistrarPage = lazy(() => import('./pages/registrar/RegistrarPage').then((module) => ({ default: module.RegistrarPage })));
+const FinanceiroPage = lazy(() => import('./pages/financeiro/FinanceiroPage').then((module) => ({ default: module.FinanceiroPage })));
+const CatalogoPage = lazy(() => import('./pages/catalogo/CatalogoPage').then((module) => ({ default: module.CatalogoPage })));
 
 class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
   state = { error: null };
@@ -35,30 +36,34 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+const routeFallback = <div className="full-loader">Carregando...</div>;
+
 export default function App() {
   return (
     <ErrorBoundary>
       <BrowserRouter>
-        <Routes>
-          <Route path="/login" element={<LoginPage />} />
-          <Route
-            path="/"
-            element={
-              <ProtectedRoute>
-                <Layout />
-              </ProtectedRoute>
-            }
-          >
-            <Route index element={<Navigate to="/dashboard" replace />} />
-            <Route path="dashboard"  element={<DashboardPage />} />
-            <Route path="agenda"     element={<AgendaPage />} />
-            <Route path="pacientes"  element={<PacientesPage />} />
-            <Route path="registrar"  element={<RegistrarPage />} />
-            <Route path="financeiro" element={<FinanceiroPage />} />
-            <Route path="catalogo"   element={<CatalogoPage />} />
-          </Route>
-          <Route path="*" element={<Navigate to="/dashboard" replace />} />
-        </Routes>
+        <Suspense fallback={routeFallback}>
+          <Routes>
+            <Route path="/login" element={<LoginPage />} />
+            <Route
+              path="/"
+              element={
+                <ProtectedRoute>
+                  <Layout />
+                </ProtectedRoute>
+              }
+            >
+              <Route index element={<Navigate to="/dashboard" replace />} />
+              <Route path="dashboard"  element={<DashboardPage />} />
+              <Route path="agenda"     element={<AgendaPage />} />
+              <Route path="pacientes"  element={<PacientesPage />} />
+              <Route path="registrar"  element={<RegistrarPage />} />
+              <Route path="financeiro" element={<FinanceiroPage />} />
+              <Route path="catalogo"   element={<CatalogoPage />} />
+            </Route>
+            <Route path="*" element={<Navigate to="/dashboard" replace />} />
+          </Routes>
+        </Suspense>
       </BrowserRouter>
     </ErrorBoundary>
   );

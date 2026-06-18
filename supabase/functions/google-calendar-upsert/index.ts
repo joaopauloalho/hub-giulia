@@ -1,10 +1,12 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
+const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const GOOGLE_CLIENT_ID = Deno.env.get('GOOGLE_CLIENT_ID')!;
 const GOOGLE_CLIENT_SECRET = Deno.env.get('GOOGLE_CLIENT_SECRET')!;
 const GOOGLE_REDIRECT_URI = Deno.env.get('GOOGLE_REDIRECT_URI')!;
+const APP_URL = Deno.env.get('APP_URL');
 
 async function refreshAccessToken(refreshToken: string): Promise<{ access_token: string; expires_at: string }> {
   const res = await fetch('https://oauth2.googleapis.com/token', {
@@ -26,24 +28,55 @@ async function refreshAccessToken(refreshToken: string): Promise<{ access_token:
   };
 }
 
-const CORS_HEADERS = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
+function isLocalOrigin(origin: string) {
+  try {
+    const { hostname } = new URL(origin);
+    return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1';
+  } catch {
+    return false;
+  }
+}
+
+function corsHeaders(req: Request) {
+  const origin = req.headers.get('Origin');
+  const allowOrigin = APP_URL && origin
+    ? (origin === APP_URL || isLocalOrigin(origin) ? origin : APP_URL)
+    : APP_URL ?? '*';
+
+  return {
+    'Access-Control-Allow-Origin': allowOrigin,
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  };
+}
 
 Deno.serve(async (req) => {
+  const cors = corsHeaders(req);
   const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), {
     status,
-    headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
+    headers: { ...cors, 'Content-Type': 'application/json' },
   });
 
   if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: CORS_HEADERS, status: 204 });
+    return new Response(null, { headers: cors, status: 204 });
   }
 
   if (req.method !== 'POST') {
     return json({ error: 'Method not allowed' }, 405);
+  }
+
+  const authorization = req.headers.get('Authorization');
+  if (!authorization?.startsWith('Bearer ')) {
+    return json({ synced: false, error: 'Unauthorized' }, 401);
+  }
+
+  const authClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    global: { headers: { Authorization: authorization } },
+  });
+  const { data: { user }, error: userErr } = await authClient.auth.getUser();
+
+  if (userErr || !user) {
+    return json({ synced: false, error: 'Unauthorized' }, 401);
   }
 
   let appointmentId: string;
@@ -55,9 +88,18 @@ Deno.serve(async (req) => {
     return json({ synced: false, error: 'Invalid body' }, 400);
   }
 
-  const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-
   try {
+    const { data: ownerRow, error: ownerErr } = await authClient
+      .from('appointments')
+      .select('id,user_id')
+      .eq('id', appointmentId)
+      .single();
+
+    if (ownerErr || !ownerRow || ownerRow.user_id !== user.id) {
+      return json({ synced: false, error: 'Forbidden' }, 403);
+    }
+
+    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
     const { data: apt, error: aptErr } = await supabase
       .from('appointments')
       .select('*, patient:patients(id,name), service:services(id,name,duration_minutes)')
@@ -65,6 +107,9 @@ Deno.serve(async (req) => {
       .single();
 
     if (aptErr || !apt) throw new Error(aptErr?.message ?? 'appointment not found');
+    if (apt.user_id !== ownerRow.user_id) {
+      return json({ synced: false, error: 'Forbidden' }, 403);
+    }
 
     const { data: tokenRow, error: tokenErr } = await supabase
       .from('google_calendar_tokens')

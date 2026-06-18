@@ -43,8 +43,10 @@ export function usePatientPhotos(patientId: string) {
     options: { procedure_id?: string | null; photo_type?: PatientPhoto['photo_type'] } = {},
   ) => {
     const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error('Usuario nao autenticado.');
+
     const ext = file.name.split('.').pop();
-    const path = `${user!.id}/${patientId}/${Date.now()}.${ext}`;
+    const path = `${user.id}/${patientId}/${Date.now()}.${ext}`;
 
     const { error: uploadError } = await supabase.storage
       .from('patient-photos')
@@ -53,23 +55,28 @@ export function usePatientPhotos(patientId: string) {
 
     const { error: insertError } = await supabase.from('patient_photos').insert({
       patient_id: patientId,
-      user_id: user!.id,
+      user_id: user.id,
       photo_url: path,
       label: label || null,
       procedure_id: options.procedure_id ?? null,
       photo_type: options.photo_type ?? 'general',
       taken_at: new Date().toISOString(),
     });
-    if (insertError) throw insertError;
+    if (insertError) {
+      await supabase.storage.from('patient-photos').remove([path]);
+      throw insertError;
+    }
     await load();
   };
 
   const remove = async (photo: PatientPhoto) => {
     const path = storagePathFromValue(photo.photo_url, 'patient-photos');
     if (path) {
-      await supabase.storage.from('patient-photos').remove([path]);
+      const { error: storageError } = await supabase.storage.from('patient-photos').remove([path]);
+      if (storageError) throw storageError;
     }
-    await supabase.from('patient_photos').delete().eq('id', photo.id);
+    const { error: deleteError } = await supabase.from('patient_photos').delete().eq('id', photo.id);
+    if (deleteError) throw deleteError;
     await load();
   };
 

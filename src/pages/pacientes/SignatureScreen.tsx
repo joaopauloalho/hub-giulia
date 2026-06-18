@@ -83,6 +83,9 @@ export function SignatureScreen({ patient, onClose, onDone }: Props) {
       return;
     }
     setSaving(true);
+    let contractId: string | null = null;
+    let pdfPath: string | null = null;
+
     try {
       const signatureDataUrl = sigRef.current!.toDataURL('image/png');
       const now = new Date();
@@ -100,12 +103,13 @@ export function SignatureScreen({ patient, onClose, onDone }: Props) {
       );
 
       const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Usuario nao autenticado.');
 
       const { data: inserted, error: insertErr } = await supabase
         .from('contracts')
         .insert({
           patient_id: patient.id,
-          user_id: user!.id,
+          user_id: user.id,
           template_id: selectedTemplate?.id ?? null,
           signature_data: signatureDataUrl,
           pdf_url: null,
@@ -115,7 +119,7 @@ export function SignatureScreen({ patient, onClose, onDone }: Props) {
         .single();
       if (insertErr) throw insertErr;
 
-      const contractId = (inserted as { id: string }).id;
+      contractId = (inserted as { id: string }).id;
 
       const pdfBlob = await pdf(
         <ContractPDF
@@ -127,7 +131,7 @@ export function SignatureScreen({ patient, onClose, onDone }: Props) {
         />
       ).toBlob();
 
-      const pdfPath = `${user!.id}/${patient.id}/${contractId}.pdf`;
+      pdfPath = `${user.id}/${patient.id}/${contractId}.pdf`;
       const { error: uploadErr } = await supabase.storage
         .from('contracts')
         .upload(pdfPath, pdfBlob, { contentType: 'application/pdf', upsert: true });
@@ -138,6 +142,10 @@ export function SignatureScreen({ patient, onClose, onDone }: Props) {
 
       onDone();
     } catch (err) {
+      await Promise.allSettled([
+        pdfPath ? supabase.storage.from('contracts').remove([pdfPath]) : Promise.resolve(),
+        contractId ? supabase.from('contracts').delete().eq('id', contractId) : Promise.resolve(),
+      ]);
       console.error(err);
       toast.error('Erro ao salvar contrato. Tente novamente.');
     } finally {

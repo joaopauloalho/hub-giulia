@@ -5,6 +5,7 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const GOOGLE_CLIENT_ID = Deno.env.get('GOOGLE_CLIENT_ID')!;
 const GOOGLE_CLIENT_SECRET = Deno.env.get('GOOGLE_CLIENT_SECRET')!;
 const GOOGLE_REDIRECT_URI = Deno.env.get('GOOGLE_REDIRECT_URI')!;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 Deno.serve(async (req) => {
   const url = new URL(req.url);
@@ -15,6 +16,11 @@ Deno.serve(async (req) => {
 
   if (!code || !userId) {
     return Response.redirect(`${appUrl}/?google_error=missing_params`);
+  }
+
+  // TODO(security): replace direct user_id state with a persisted one-time nonce.
+  if (!UUID_RE.test(userId)) {
+    return Response.redirect(`${appUrl}/?google_error=invalid_state`);
   }
 
   try {

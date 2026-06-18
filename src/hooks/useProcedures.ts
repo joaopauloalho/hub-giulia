@@ -64,6 +64,32 @@ export function useProcedures(patientId?: string) {
     const { data: { user } } = await supabase.auth.getUser();
     const uid = user!.id;
 
+    if (input.payment_entries && input.payment_entries.length > 0) {
+      const { data, error: rpcError } = await supabase.rpc('create_procedure_with_payments', {
+        p_patient_id: input.patient_id,
+        p_appointment_id: input.appointment_id ?? null,
+        p_performed_at: input.performed_at ?? new Date().toISOString(),
+        p_services_ids: input.services_ids,
+        p_total_value: input.total_value,
+        p_total_cost: input.total_cost,
+        p_payment_method: input.payment_method,
+        p_card_fee_pct: input.card_fee_pct ?? null,
+        p_card_fee_value: input.card_fee_value ?? null,
+        p_net_value: input.net_value,
+        p_notes: input.notes ?? null,
+        p_payment_entries: input.payment_entries,
+      });
+
+      if (!rpcError) {
+        await refresh();
+        return data as Procedure;
+      }
+
+      if (rpcError.code !== 'PGRST202' && rpcError.code !== '42883') {
+        throw rpcError;
+      }
+    }
+
     // Legacy pix_parcelado via RPC
     const pixInstallmentsCount = input.payment_method === 'pix_parcelado' && input.pix_installments_count && input.pix_installments_count >= 2
       ? input.pix_installments_count
@@ -183,6 +209,19 @@ export function useProcedures(patientId?: string) {
   };
 
   const remove = async (procedureId: string) => {
+    const { error: rpcError } = await supabase.rpc('remove_procedure_cascade', {
+      p_procedure_id: procedureId,
+    });
+
+    if (!rpcError) {
+      await refresh();
+      return;
+    }
+
+    if (rpcError.code !== 'PGRST202' && rpcError.code !== '42883') {
+      throw rpcError;
+    }
+
     const { data: proc, error: fetchError } = await supabase
       .from('procedures')
       .select('id, appointment_id')
