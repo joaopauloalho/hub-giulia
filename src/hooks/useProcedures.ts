@@ -1,7 +1,15 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 import type { Procedure, PaymentMethod } from '../types';
-import { addMonths, format } from 'date-fns';
+import { useAtomicAttendance } from './useAtomicAttendance';
+import {
+  clearAttendanceInjectablePoints,
+  consumePendingAttendanceError,
+  getAttendanceInjectablePoints,
+  markAtomicAttendanceProcedure,
+  setPendingAttendanceError,
+} from '../lib/attendanceRuntime';
+import { getAttendanceErrorMessage } from '../lib/attendanceErrors';
 
 interface PaymentEntryInput {
   method: string;
@@ -36,6 +44,9 @@ export function useProcedures(patientId?: string) {
   const [procedures, setProcedures] = useState<Procedure[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const idempotencyKeyRef = useRef<string | null>(null);
+  const inFlightCreateRef = useRef<Promise<Procedure> | null>(null);
+  const { createAtomic } = useAtomicAttendance();
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -61,151 +72,84 @@ export function useProcedures(patientId?: string) {
   useEffect(() => { refresh(); }, [refresh]);
 
   const create = async (input: CreateProcedureInput): Promise<Procedure> => {
-    const { data: { user } } = await supabase.auth.getUser();
-    const uid = user!.id;
+    if (inFlightCreateRef.current) return inFlightCreateRef.current;
 
-    if (input.payment_entries && input.payment_entries.length > 0) {
-      const { data, error: rpcError } = await supabase.rpc('create_procedure_with_payments', {
-        p_patient_id: input.patient_id,
-        p_appointment_id: input.appointment_id ?? null,
-        p_performed_at: input.performed_at ?? new Date().toISOString(),
-        p_services_ids: input.services_ids,
-        p_total_value: input.total_value,
-        p_total_cost: input.total_cost,
-        p_payment_method: input.payment_method,
-        p_card_fee_pct: input.card_fee_pct ?? null,
-        p_card_fee_value: input.card_fee_value ?? null,
-        p_net_value: input.net_value,
-        p_notes: input.notes ?? null,
-        p_payment_entries: input.payment_entries,
-      });
+    consumePendingAttendanceError();
+    const idempotencyKey = idempotencyKeyRef.current ?? crypto.randomUUID();
+    idempotencyKeyRef.current = idempotencyKey;
 
-      if (!rpcError) {
+    const operation = (async () => {
+      try {
+        if (!input.payment_entries || input.payment_entries.length === 0) {
+          throw new Error('ATTENDANCE_PAYMENTS_REQUIRED');
+        }
+
+        const { data: serviceRows, error: servicesError } = await supabase
+          .from('services')
+          .select('id, price')
+          .in('id', input.services_ids);
+
+        if (servicesError) throw servicesError;
+
+        const priceByService = new Map(
+          (serviceRows ?? []).map(service => [service.id, Number(service.price)]),
+        );
+
+        const items = input.services_ids.map(serviceId => {
+          const price = priceByService.get(serviceId);
+          if (price === undefined || !Number.isFinite(price)) {
+            throw new Error('ATTENDANCE_SERVICE_FORBIDDEN');
+          }
+          return { service_id: serviceId, qty: 1, final_price: price };
+        });
+
+        const paymentEntries = input.payment_entries.map(entry => ({
+          method: entry.method,
+          base_amount: entry.absorve_taxa ? entry.amount : entry.net_amount,
+          amount: entry.amount,
+          card_brand: entry.card_brand,
+          installments: entry.installments,
+          fee_pct: entry.fee_pct,
+          fee_value: entry.fee_value,
+          net_amount: entry.net_amount,
+          absorve_taxa: entry.absorve_taxa,
+          scheduled_date: entry.scheduled_date,
+        }));
+
+        const injectablePoints = getAttendanceInjectablePoints(input.services_ids);
+        const procedure = await createAtomic({
+          idempotency_key: idempotencyKey,
+          patient_id: input.patient_id,
+          appointment_id: input.appointment_id ?? null,
+          performed_at: input.performed_at ?? new Date().toISOString(),
+          items,
+          payment_entries: paymentEntries,
+          injectable_maps: injectablePoints.length > 0 ? [{ points: injectablePoints }] : [],
+          notes: input.notes ?? null,
+        });
+
+        if (injectablePoints.length > 0) {
+          markAtomicAttendanceProcedure(procedure.id);
+        }
+        clearAttendanceInjectablePoints();
+        idempotencyKeyRef.current = null;
         await refresh();
-        return data as Procedure;
+        return procedure;
+      } catch (err) {
+        console.error('[attendance:create_procedure_v2]', err);
+        setPendingAttendanceError(getAttendanceErrorMessage(err));
+        throw err;
       }
+    })();
 
-      if (rpcError.code !== 'PGRST202' && rpcError.code !== '42883') {
-        throw rpcError;
-      }
-    }
-
-    // Legacy pix_parcelado via RPC
-    const pixInstallmentsCount = input.payment_method === 'pix_parcelado' && input.pix_installments_count && input.pix_installments_count >= 2
-      ? input.pix_installments_count
-      : null;
-    const isPixParcelado = pixInstallmentsCount !== null;
-
-    if (isPixParcelado) {
-      const { data, error: rpcError } = await supabase.rpc('create_procedure_with_pix_installments', {
-        p_patient_id: input.patient_id,
-        p_appointment_id: input.appointment_id ?? null,
-        p_performed_at: input.performed_at ?? new Date().toISOString(),
-        p_services_ids: input.services_ids,
-        p_total_value: input.total_value,
-        p_total_cost: input.total_cost,
-        p_payment_method: input.payment_method,
-        p_card_fee_pct: input.card_fee_pct ?? null,
-        p_card_fee_value: input.card_fee_value ?? null,
-        p_net_value: input.net_value,
-        p_notes: input.notes ?? null,
-        p_pix_installments_count: pixInstallmentsCount,
-      });
-
-      if (!rpcError) {
-        await refresh();
-        return data as Procedure;
-      }
-
-      if (rpcError.code !== 'PGRST202' && rpcError.code !== '42883') {
-        throw rpcError;
+    inFlightCreateRef.current = operation;
+    try {
+      return await operation;
+    } finally {
+      if (inFlightCreateRef.current === operation) {
+        inFlightCreateRef.current = null;
       }
     }
-
-    const { data: proc, error } = await supabase
-      .from('procedures')
-      .insert({
-        user_id: uid,
-        patient_id: input.patient_id,
-        appointment_id: input.appointment_id ?? null,
-        performed_at: input.performed_at ?? new Date().toISOString(),
-        services_ids: input.services_ids,
-        total_value: input.total_value,
-        total_cost: input.total_cost,
-        payment_method: input.payment_method,
-        card_fee_pct: input.card_fee_pct ?? null,
-        card_fee_value: input.card_fee_value ?? null,
-        net_value: input.net_value,
-        notes: input.notes ?? null,
-      })
-      .select()
-      .single();
-
-    if (error) throw error;
-
-    if (input.payment_entries && input.payment_entries.length > 0) {
-      const rows = input.payment_entries.map(e => ({
-        procedure_id: proc.id,
-        user_id: uid,
-        method: e.method,
-        amount: e.amount,
-        card_brand: e.card_brand,
-        installments: e.installments,
-        fee_pct: e.fee_pct,
-        fee_value: e.fee_value,
-        net_amount: e.net_amount,
-        absorve_taxa: e.absorve_taxa,
-        scheduled_date: e.scheduled_date,
-        paid_at: e.is_immediate ? new Date().toISOString() : null,
-      }));
-
-      const { error: paymentsError } = await supabase
-        .from('procedure_payments')
-        .insert(rows);
-
-      if (paymentsError) {
-        await supabase.from('procedures').delete().eq('id', proc.id);
-        throw paymentsError;
-      }
-    }
-
-    // Legacy pix_parcelado client-side fallback
-    if (isPixParcelado) {
-      const n = pixInstallmentsCount;
-      const base = Math.round((input.total_value / n) * 100) / 100;
-      const today = new Date();
-
-      const rows = Array.from({ length: n }, (_, i) => {
-        const num = i + 1;
-        const dueDate = addMonths(today, num);
-        return {
-          user_id: uid,
-          procedure_id: proc.id,
-          installment_num: num,
-          total_installments: n,
-          amount: num === n ? input.total_value - base * (n - 1) : base,
-          due_date: format(dueDate, 'yyyy-MM-dd'),
-          paid_at: null,
-          reminded_at: null,
-        };
-      });
-
-      const { error: pixErr } = await supabase.from('pix_installments').insert(rows);
-      if (pixErr) {
-        await supabase.from('procedures').delete().eq('id', proc.id);
-        throw pixErr;
-      }
-    }
-
-    if (input.appointment_id) {
-      await supabase
-        .from('appointments')
-        .update({ status: 'realizado' })
-        .eq('id', input.appointment_id);
-    }
-
-    await refresh();
-    return proc as Procedure;
   };
 
   const remove = async (procedureId: string) => {
