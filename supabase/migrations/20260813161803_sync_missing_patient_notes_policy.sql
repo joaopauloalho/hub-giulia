@@ -1,3 +1,4 @@
--- Historical marker for the production migration sync_missing_patient_notes_policy.
--- This policy was applied directly to production on 2026-08-13.
--- Its canonical idempotent definition is maintained by the later production-drift reconciliation migration.
+create policy "patient_notes_own" on public.patient_notes
+for all to authenticated
+using (user_id = auth.uid())
+with check (user_id = auth.uid());
