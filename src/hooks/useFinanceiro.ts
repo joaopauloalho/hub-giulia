@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import type { Procedure, PixInstallment, ProcedurePayment } from '../types';
 import { startOfMonth, endOfMonth, format } from 'date-fns';
+import { summarizeFinance } from '../lib/financeIntegrity';
 
 export interface FinanceiroSummary {
   receitaTotal: number;
@@ -34,7 +35,7 @@ export function useFinanceiro(month: Date) {
       ] = await Promise.all([
         supabase
           .from('procedures')
-          .select('*, patient:patients(id, name)')
+          .select('*, patient:patients(id, name), payments:procedure_payments(*), items:procedure_items(*)')
           .gte('performed_at', `${start}T00:00:00`)
           .lte('performed_at', `${end}T23:59:59`)
           .order('performed_at', { ascending: false }),
@@ -56,34 +57,18 @@ export function useFinanceiro(month: Date) {
       if (pendErr) throw pendErr;
 
       const procList = (procs ?? []) as Procedure[];
-      const procIds = procList.map(p => p.id);
-      const { data: monthlyPix, error: monthlyPixError } = procIds.length > 0
-        ? await supabase.from('pix_installments').select('*').in('procedure_id', procIds)
-        : { data: [], error: null };
-
-      if (monthlyPixError) throw monthlyPixError;
-
-      const pixList = (pix ?? []) as PixInstallment[];
-      const monthlyPixList = (monthlyPix ?? []) as PixInstallment[];
-
-      const paidPixByProcedure = monthlyPixList.reduce<Record<string, number>>((acc, inst) => {
-        if (inst.paid_at) acc[inst.procedure_id] = (acc[inst.procedure_id] ?? 0) + inst.amount;
-        return acc;
-      }, {});
-
-      const receitaTotal = procList.reduce((s, p) => s + p.total_value, 0);
-      const custos = procList.reduce((s, p) => s + p.total_cost, 0);
-      const recebido = procList.reduce((s, p) => {
-        if (p.payment_method === 'pix_parcelado') return s + (paidPixByProcedure[p.id] ?? 0);
-        return s + p.net_value;
-      }, 0);
-      const pendente = Math.max(receitaTotal - recebido, 0);
-      const lucro = recebido - custos;
+      const finance = summarizeFinance(procList);
 
       setProcedures(procList);
-      setPixPendentes(pixList);
+      setPixPendentes((pix ?? []) as PixInstallment[]);
       setPagamentosPendentes((pendPayments ?? []) as ProcedurePayment[]);
-      setSummary({ receitaTotal, recebido, pendente, custos, lucro });
+      setSummary({
+        receitaTotal: finance.vendas,
+        recebido: finance.liquido,
+        pendente: finance.pendente,
+        custos: finance.custos,
+        lucro: finance.lucro,
+      });
     } catch (err) {
       setProcedures([]);
       setPixPendentes([]);

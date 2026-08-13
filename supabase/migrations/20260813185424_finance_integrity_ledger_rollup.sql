@@ -1,0 +1,4 @@
+-- Production history marker.
+-- Applied in Supabase as finance_integrity_ledger_rollup on 2026-08-13.
+-- Production keeps derived payment rollups on procedures as a cache.
+-- The application intentionally reads procedure_payments directly and does not depend on this cache.

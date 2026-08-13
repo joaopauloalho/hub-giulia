@@ -1,7 +1,8 @@
 import { Document, Page, StyleSheet, Text, View } from '@react-pdf/renderer';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import type { FinanceiroSummary } from '../hooks/useFinanceiro';
+import type { FinanceiroSummary } from '../lib/financeIntegrity';
+import { getProcedureFinancials, procedurePaymentLabel, procedureServiceNames } from '../lib/financeIntegrity';
 import type { Procedure, Service } from '../types';
 
 const styles = StyleSheet.create({
@@ -9,17 +10,18 @@ const styles = StyleSheet.create({
   header: { marginBottom: 18, borderBottom: '1px solid #eee', paddingBottom: 10 },
   title: { fontSize: 17, fontWeight: 'bold', color: '#be185d' },
   sub: { marginTop: 4, color: '#666' },
-  cards: { flexDirection: 'row', gap: 8, marginBottom: 18 },
-  card: { flex: 1, border: '1px solid #eee', padding: 8, borderRadius: 6 },
+  cards: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 18 },
+  card: { width: '31.8%', border: '1px solid #eee', padding: 8, borderRadius: 6 },
   label: { color: '#777', fontSize: 8 },
   value: { marginTop: 4, fontSize: 11, fontWeight: 'bold' },
   tableHeader: { flexDirection: 'row', backgroundColor: '#fff5f7', padding: 6, fontWeight: 'bold' },
   row: { flexDirection: 'row', padding: 6, borderBottom: '1px solid #f2f2f2' },
-  cDate: { width: '15%' },
-  cPatient: { width: '23%' },
-  cService: { width: '28%' },
+  cDate: { width: '11%' },
+  cPatient: { width: '18%' },
+  cService: { width: '23%' },
   cMethod: { width: '14%' },
-  cMoney: { width: '10%', textAlign: 'right' },
+  cMoney: { width: '11%', textAlign: 'right' },
+  cProfit: { width: '12%', textAlign: 'right' },
   footer: { marginTop: 16, paddingTop: 10, borderTop: '1px solid #eee', textAlign: 'right', fontWeight: 'bold' },
 });
 
@@ -36,17 +38,22 @@ function currency(value: number) {
   return `R$ ${value.toFixed(2)}`;
 }
 
-function serviceNames(proc: Procedure, services: Service[]) {
-  const names = proc.services_ids.map(id => services.find(service => service.id === id)?.name).filter(Boolean);
-  return names.length > 0 ? names.join(', ') : 'Servicos registrados';
-}
-
 export function FinanceiroReportPDF({ month, summary, procedures, services }: {
   month: Date;
   summary: FinanceiroSummary;
   procedures: Procedure[];
   services: Service[];
 }) {
+  const cards: [string, number][] = [
+    ['Vendas', summary.vendas],
+    ['Pago', summary.pago],
+    ['Taxas pagas', summary.taxas],
+    ['Liquido pago', summary.liquido],
+    ['Pendente', summary.pendente],
+    ['Custos', summary.custos],
+    ['Lucro realizado', summary.lucro],
+  ];
+
   return (
     <Document>
       <Page size="A4" style={styles.page}>
@@ -56,16 +63,10 @@ export function FinanceiroReportPDF({ month, summary, procedures, services }: {
         </View>
 
         <View style={styles.cards}>
-          {[
-            ['Receita', summary.receitaTotal],
-            ['Recebido', summary.recebido],
-            ['Pendente', summary.pendente],
-            ['Custos', summary.custos],
-            ['Lucro', summary.lucro],
-          ].map(([label, value]) => (
+          {cards.map(([label, value]) => (
             <View key={label} style={styles.card}>
               <Text style={styles.label}>{label}</Text>
-              <Text style={styles.value}>{currency(value as number)}</Text>
+              <Text style={styles.value}>{currency(value)}</Text>
             </View>
           ))}
         </View>
@@ -75,21 +76,28 @@ export function FinanceiroReportPDF({ month, summary, procedures, services }: {
           <Text style={styles.cPatient}>Paciente</Text>
           <Text style={styles.cService}>Servicos</Text>
           <Text style={styles.cMethod}>Metodo</Text>
-          <Text style={styles.cMoney}>Valor</Text>
-          <Text style={styles.cMoney}>Lucro</Text>
+          <Text style={styles.cMoney}>Venda</Text>
+          <Text style={styles.cMoney}>Liquido</Text>
+          <Text style={styles.cProfit}>Lucro</Text>
         </View>
-        {procedures.map(proc => (
-          <View key={proc.id} style={styles.row}>
-            <Text style={styles.cDate}>{format(new Date(proc.performed_at), 'dd/MM/yyyy')}</Text>
-            <Text style={styles.cPatient}>{proc.patient?.name ?? 'Paciente'}</Text>
-            <Text style={styles.cService}>{serviceNames(proc, services)}</Text>
-            <Text style={styles.cMethod}>{PAYMENT_LABELS[proc.payment_method] ?? proc.payment_method}</Text>
-            <Text style={styles.cMoney}>{currency(proc.total_value)}</Text>
-            <Text style={styles.cMoney}>{currency(proc.net_value - proc.total_cost)}</Text>
-          </View>
-        ))}
+        {procedures.map(proc => {
+          const values = getProcedureFinancials(proc);
+          return (
+            <View key={proc.id} style={styles.row}>
+              <Text style={styles.cDate}>{format(new Date(proc.performed_at), 'dd/MM/yyyy')}</Text>
+              <Text style={styles.cPatient}>{proc.patient?.name ?? 'Paciente'}</Text>
+              <Text style={styles.cService}>{procedureServiceNames(proc, services)}</Text>
+              <Text style={styles.cMethod}>{procedurePaymentLabel(proc, PAYMENT_LABELS)}</Text>
+              <Text style={styles.cMoney}>{currency(values.venda)}</Text>
+              <Text style={styles.cMoney}>{currency(values.liquido)}</Text>
+              <Text style={styles.cProfit}>{currency(values.lucro)}</Text>
+            </View>
+          );
+        })}
 
-        <Text style={styles.footer}>Total: {currency(summary.receitaTotal)} - Lucro: {currency(summary.lucro)}</Text>
+        <Text style={styles.footer}>
+          Vendas: {currency(summary.vendas)} - Liquido: {currency(summary.liquido)} - Lucro: {currency(summary.lucro)}
+        </Text>
       </Page>
     </Document>
   );
