@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { birthDateInputError, isValidCpf, normalizePatientCreateData, validatePatientCreateData, type PatientCreateData } from './patientInput';
+import {
+  SESSION_EXPIRED_MESSAGE,
+  birthDateInputError,
+  isPostgrestError,
+  isValidCpf,
+  normalizePatientCreateData,
+  patientCreateFriendlyError,
+  validatePatientCreateData,
+  type PatientCreateData,
+} from './patientInput';
 
 const base: PatientCreateData = {
   name: 'Maria', birth_date: null, phone: null, email: null, cpf: null,
@@ -29,5 +38,17 @@ describe('patientInput', () => {
     const now = new Date(2026, 7, 13, 12, 0, 0);
     expect(birthDateInputError('14/08/2026', now)).toBe('A data de nascimento não pode ser futura.');
     expect(birthDateInputError('13/08/2026', now)).toBeNull();
+  });
+
+  it('recognizes PostgREST-shaped objects without instanceof Error', () => {
+    const error = { code: '23505', message: 'duplicate', details: null, hint: null };
+    expect(error instanceof Error).toBe(false);
+    expect(isPostgrestError(error)).toBe(true);
+    expect(patientCreateFriendlyError(error)).toBe('Já existe uma paciente com esses dados.');
+  });
+
+  it('maps an authentication PostgREST response to the session-expired message', () => {
+    const error = { code: 'PGRST301', message: 'authentication failed', details: null, hint: null };
+    expect(patientCreateFriendlyError(error)).toBe(SESSION_EXPIRED_MESSAGE);
   });
 });
