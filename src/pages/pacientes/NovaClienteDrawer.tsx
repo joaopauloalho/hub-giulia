@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { X } from 'lucide-react';
+import { useToast } from '../../hooks/useToast';
 import { ageLabel, birthDateIsoToInput, formatBirthDateInput, parseBirthDateInput } from '../../lib/dateUtils';
 import { birthDateInputError, normalizePatientCreateData, patientCreateFriendlyError, validatePatientCreateData, type PatientCreateData } from '../../lib/patientInput';
 
@@ -20,6 +21,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 }
 
 export function NovaClienteDrawer({ open, onClose, onCreate }: Props) {
+  const { toast } = useToast();
   const [form, setForm] = useState<PatientCreateData>(empty);
   const [birthInput, setBirthInput] = useState('');
   const [saving, setSaving] = useState(false);
@@ -78,6 +80,7 @@ export function NovaClienteDrawer({ open, onClose, onCreate }: Props) {
     setSaveError(null);
     try {
       await onCreate({ ...normalized, birth_date: birthDate });
+      toast.success('Paciente cadastrada com sucesso.');
     } catch (err) {
       console.error('[NovaClienteDrawer] create failed', err);
       setSaveError(patientCreateFriendlyError(err));
