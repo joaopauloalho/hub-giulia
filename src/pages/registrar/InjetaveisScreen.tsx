@@ -2,6 +2,10 @@ import { useState, useMemo } from 'react';
 import { ChevronLeft, Check, Trash2, Eye, EyeOff } from 'lucide-react';
 import { InjetaveisFaceMap } from '../../components/InjetaveisFaceMap';
 import type { Service, InjectablePoint } from '../../types';
+import {
+  clearAttendanceInjectablePoints,
+  stageAttendanceInjectablePoints,
+} from '../../lib/attendanceRuntime';
 
 const COLORS = [
   '#9b59b6', '#3498db', '#e74c3c', '#2ecc71',
@@ -37,7 +41,18 @@ export function InjetaveisScreen({ injectableServices, onDone, onCancel }: Props
 
   const clearAll = () => {
     setPoints([]);
+    clearAttendanceInjectablePoints();
     setConfirmClear(false);
+  };
+
+  const handleDone = () => {
+    stageAttendanceInjectablePoints(points);
+    onDone(points);
+  };
+
+  const handleCancel = () => {
+    clearAttendanceInjectablePoints();
+    onCancel();
   };
 
   const report = useMemo(() => {
@@ -53,7 +68,7 @@ export function InjetaveisScreen({ injectableServices, onDone, onCancel }: Props
   }, [points]);
 
   return (
-    <div className="drawer-overlay" onClick={onCancel}>
+    <div className="drawer-overlay" onClick={handleCancel}>
       <aside
         className="drawer"
         role="dialog"
@@ -62,9 +77,8 @@ export function InjetaveisScreen({ injectableServices, onDone, onCancel }: Props
         onClick={e => e.stopPropagation()}
         style={{ display: 'flex', flexDirection: 'column', overflowY: 'hidden' }}
       >
-        {/* Header */}
         <div className="drawer-header">
-          <button className="drawer-back" onClick={onCancel} aria-label="Cancelar">
+          <button className="drawer-back" onClick={handleCancel} aria-label="Cancelar">
             <ChevronLeft size={18} />
           </button>
           <div style={{ flex: 1 }}>
@@ -80,7 +94,6 @@ export function InjetaveisScreen({ injectableServices, onDone, onCancel }: Props
           </button>
         </div>
 
-        {/* Substance selector */}
         <div style={{
           padding: '10px 16px',
           borderBottom: '1px solid var(--border)',
@@ -121,7 +134,6 @@ export function InjetaveisScreen({ injectableServices, onDone, onCancel }: Props
           })}
         </div>
 
-        {/* Face map */}
         <div style={{ flex: 1, overflowY: 'auto', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '4px 8px' }}>
           <InjetaveisFaceMap
             points={points}
@@ -135,7 +147,6 @@ export function InjetaveisScreen({ injectableServices, onDone, onCancel }: Props
           />
         </div>
 
-        {/* Unit report */}
         {report.length > 0 && (
           <div style={{
             padding: '10px 16px',
@@ -160,7 +171,6 @@ export function InjetaveisScreen({ injectableServices, onDone, onCancel }: Props
           </div>
         )}
 
-        {/* Actions */}
         <div style={{ padding: '12px 16px', borderTop: '1px solid var(--border)', display: 'flex', gap: 8 }}>
           {confirmClear ? (
             <>
@@ -182,7 +192,7 @@ export function InjetaveisScreen({ injectableServices, onDone, onCancel }: Props
             <>
               <button
                 className="btn btn--ghost btn--sm"
-                onClick={() => points.length > 0 ? setConfirmClear(true) : onCancel()}
+                onClick={() => points.length > 0 ? setConfirmClear(true) : handleCancel()}
                 style={{ display: 'flex', alignItems: 'center', gap: 5 }}
               >
                 {points.length > 0 ? <><Trash2 size={14} /> Limpar</> : 'Cancelar'}
@@ -190,14 +200,14 @@ export function InjetaveisScreen({ injectableServices, onDone, onCancel }: Props
               <button
                 className="btn btn--ghost btn--md"
                 style={{ flex: 1 }}
-                onClick={onCancel}
+                onClick={handleCancel}
               >
                 Pular
               </button>
               <button
                 className="btn btn--primary btn--md"
                 style={{ flex: 2, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}
-                onClick={() => onDone(points)}
+                onClick={handleDone}
               >
                 <Check size={15} /> Salvar mapa
               </button>
