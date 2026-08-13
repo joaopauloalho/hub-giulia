@@ -55,7 +55,7 @@ create table public.procedure_returns (
   window_start date not null,
   window_end date not null check (window_end >= window_start),
   contacted_at timestamptz,
-  contact_method text check (contact_method is null or contact_method in ('whatsapp', 'phone', 'other')),
+  contact_method text,
   appointment_id uuid references public.appointments(id) on delete set null,
   completed_at timestamptz,
   completed_by_procedure_id uuid references public.procedures(id) on delete set null,
@@ -66,7 +66,10 @@ create table public.procedure_returns (
   updated_at timestamptz not null default now(),
   constraint procedure_returns_patient_snapshot_check check (btrim(patient_name_snapshot) <> ''),
   constraint procedure_returns_service_snapshot_check check (btrim(service_name_snapshot) <> ''),
-  constraint procedure_returns_contact_method_check check (contacted_at is not null or contact_method is null),
+  constraint procedure_returns_contact_method_check check (
+    (contact_method is null or contact_method in ('whatsapp', 'phone', 'other'))
+    and (contacted_at is not null or contact_method is null)
+  ),
   constraint procedure_returns_terminal_state_check check (not (completed_at is not null and dismissed_at is not null))
 );
 
