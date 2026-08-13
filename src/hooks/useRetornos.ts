@@ -1,73 +1,192 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
-import { differenceInDays, addDays, parseISO, startOfDay } from 'date-fns';
+import {
+  classifyReturnOperation,
+  classifyReturnWindow,
+  clinicTodayIso,
+  daysBetweenIso,
+  returnNeedsAttention,
+  returnStatusLabel,
+  type ReturnOperationalStatus,
+  type ReturnTemporalStatus,
+} from '../lib/returnStatus';
 import type { Service } from '../types';
 
+export type ReturnType = 'clinical_return' | 'next_session';
+
 export interface RetornoInfo {
-  patientId: string;
+  id: string;
+  patientId: string | null;
   patientName: string;
+  patientPhone: string | null;
+  procedureId: string | null;
+  procedureItemId: string | null;
+  serviceId: string | null;
+  serviceName: string;
+  returnType: ReturnType;
+  procedureDate: string;
+  returnStartDays: number;
+  returnEndDays: number;
+  windowStartIso: string;
+  windowEndIso: string;
+  contactedAt: string | null;
+  contactMethod: string | null;
+  appointmentId: string | null;
+  appointmentStatus: string | null;
+  appointmentScheduledAt: string | null;
+  completedAt: string | null;
+  dismissedAt: string | null;
+  dismissedReason: string | null;
+  notes: string | null;
+  temporalStatus: ReturnTemporalStatus;
+  operationalStatus: ReturnOperationalStatus;
+  situationLabel: string;
+  needsAttention: boolean;
+
+  // Backward-compatible fields used by the compact Agenda/Dashboard previews.
   lastProcedureAt: Date;
   serviceNames: string[];
-  windowStart: Date | null;
-  windowEnd: Date | null;
-  status: 'overdue' | 'in_window' | 'upcoming' | 'ok' | 'no_window';
+  windowStart: Date;
+  windowEnd: Date;
+  status: 'overdue' | 'in_window' | 'upcoming' | 'ok';
   daysLabel: string;
 }
 
-const STATUS_ORDER: Record<RetornoInfo['status'], number> = {
-  overdue: 0,
-  in_window: 1,
-  upcoming: 2,
-  ok: 3,
-  no_window: 4,
-};
-
-function calcStatus(windowStart: Date | null, windowEnd: Date | null): RetornoInfo['status'] {
-  if (!windowStart || !windowEnd) return 'no_window';
-  const today = startOfDay(new Date());
-  const start = startOfDay(windowStart);
-  const end = startOfDay(windowEnd);
-  if (today > end) return 'overdue';
-  if (today >= start) return 'in_window';
-  const daysUntil = differenceInDays(start, today);
-  return daysUntil <= 5 ? 'upcoming' : 'ok';
-}
-
-function buildDaysLabel(
-  status: RetornoInfo['status'],
-  windowStart: Date | null,
-  windowEnd: Date | null,
-  lastProcedureAt: Date,
-): string {
-  const today = startOfDay(new Date());
-  switch (status) {
-    case 'overdue': {
-      const d = differenceInDays(today, startOfDay(windowEnd!));
-      return `${d} dia${d !== 1 ? 's' : ''} atrasada`;
-    }
-    case 'in_window': {
-      const d = differenceInDays(today, startOfDay(lastProcedureAt));
-      return `há ${d} dia${d !== 1 ? 's' : ''} — janela aberta`;
-    }
-    case 'upcoming':
-    case 'ok': {
-      const d = differenceInDays(startOfDay(windowStart!), today);
-      return `em ${d} dia${d !== 1 ? 's' : ''}`;
-    }
-    default:
-      return '';
-  }
-}
-
-type ProcRow = {
+type ReturnRpcRow = {
   id: string;
-  patient_id: string;
-  performed_at: string;
-  services_ids: string[];
-  patient: { id: string; name: string } | null;
+  patient_id: string | null;
+  patient_name: string;
+  patient_phone: string | null;
+  procedure_id: string | null;
+  procedure_item_id: string | null;
+  service_id: string | null;
+  service_name: string;
+  return_type: ReturnType;
+  procedure_date: string;
+  return_start_days: number;
+  return_end_days: number;
+  window_start: string;
+  window_end: string;
+  contacted_at: string | null;
+  contact_method: string | null;
+  appointment_id: string | null;
+  appointment_status: string | null;
+  appointment_scheduled_at: string | null;
+  completed_at: string | null;
+  completed_by_procedure_id: string | null;
+  dismissed_at: string | null;
+  dismissed_reason: string | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
 };
 
-export function useRetornos(servicos: Service[]) {
+function dateAtNoon(iso: string): Date {
+  return new Date(`${iso}T12:00:00`);
+}
+
+function legacyStatus(
+  row: ReturnRpcRow,
+  temporal: ReturnTemporalStatus,
+  operational: ReturnOperationalStatus,
+  today: string,
+): RetornoInfo['status'] {
+  if (operational === 'scheduled' || operational === 'completed' || operational === 'dismissed') return 'ok';
+  if (temporal === 'overdue') return 'overdue';
+  if (temporal === 'available' || temporal === 'due_soon') return 'in_window';
+  return daysBetweenIso(today, row.window_start) <= 5 ? 'upcoming' : 'ok';
+}
+
+function daysLabel(
+  row: ReturnRpcRow,
+  temporal: ReturnTemporalStatus,
+  operational: ReturnOperationalStatus,
+  today: string,
+): string {
+  if (operational === 'completed') return 'Retorno concluído';
+  if (operational === 'dismissed') return 'Retorno dispensado';
+  if (operational === 'scheduled' && row.appointment_scheduled_at) {
+    return `Agendado para ${new Date(row.appointment_scheduled_at).toLocaleDateString('pt-BR')}`;
+  }
+  if (temporal === 'overdue') {
+    const days = daysBetweenIso(row.window_end, today);
+    return `${days} dia${days === 1 ? '' : 's'} em atraso`;
+  }
+  if (temporal === 'available' || temporal === 'due_soon') {
+    const left = daysBetweenIso(today, row.window_end);
+    return left === 0 ? 'Último dia da janela' : `${left} dia${left === 1 ? '' : 's'} até o fim da janela`;
+  }
+  const until = daysBetweenIso(today, row.window_start);
+  return `Disponível em ${until} dia${until === 1 ? '' : 's'}`;
+}
+
+function mapRow(row: ReturnRpcRow, today: string): RetornoInfo {
+  const stateInput = {
+    windowStart: row.window_start,
+    windowEnd: row.window_end,
+    contactedAt: row.contacted_at,
+    appointmentId: row.appointment_id,
+    appointmentStatus: row.appointment_status,
+    completedAt: row.completed_at,
+    dismissedAt: row.dismissed_at,
+  };
+  const temporalStatus = classifyReturnWindow(row.window_start, row.window_end, today);
+  const operationalStatus = classifyReturnOperation(stateInput);
+
+  return {
+    id: row.id,
+    patientId: row.patient_id,
+    patientName: row.patient_name || 'Paciente',
+    patientPhone: row.patient_phone,
+    procedureId: row.procedure_id,
+    procedureItemId: row.procedure_item_id,
+    serviceId: row.service_id,
+    serviceName: row.service_name,
+    returnType: row.return_type,
+    procedureDate: row.procedure_date,
+    returnStartDays: row.return_start_days,
+    returnEndDays: row.return_end_days,
+    windowStartIso: row.window_start,
+    windowEndIso: row.window_end,
+    contactedAt: row.contacted_at,
+    contactMethod: row.contact_method,
+    appointmentId: row.appointment_id,
+    appointmentStatus: row.appointment_status,
+    appointmentScheduledAt: row.appointment_scheduled_at,
+    completedAt: row.completed_at,
+    dismissedAt: row.dismissed_at,
+    dismissedReason: row.dismissed_reason,
+    notes: row.notes,
+    temporalStatus,
+    operationalStatus,
+    situationLabel: returnStatusLabel(temporalStatus, operationalStatus),
+    needsAttention: returnNeedsAttention(stateInput, today),
+    lastProcedureAt: dateAtNoon(row.procedure_date),
+    serviceNames: [row.service_name],
+    windowStart: dateAtNoon(row.window_start),
+    windowEnd: dateAtNoon(row.window_end),
+    status: legacyStatus(row, temporalStatus, operationalStatus, today),
+    daysLabel: daysLabel(row, temporalStatus, operationalStatus, today),
+  };
+}
+
+function friendlyReturnError(error: unknown, fallback: string): string {
+  const message = error instanceof Error ? error.message : String(error ?? '');
+  if (/jwt|session|auth|RETURN_SESSION_REQUIRED/i.test(message)) {
+    return 'Sua sessão expirou. Entre novamente para continuar.';
+  }
+  if (/RETURN_NOT_FOUND|RETURN_NOT_OPEN|RETURN_ALREADY_CLOSED/i.test(message)) {
+    return 'Este retorno não está mais disponível para essa ação.';
+  }
+  if (/RETURN_APPOINTMENT/i.test(message)) {
+    return 'Não foi possível vincular este agendamento ao retorno.';
+  }
+  return fallback;
+}
+
+// The optional services argument is retained only so existing compact previews do not
+// need a breaking signature change. Returns are no longer calculated from mutable services.
+export function useRetornos(_servicos?: Service[]) {
   const [retornos, setRetornos] = useState<RetornoInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -75,74 +194,66 @@ export function useRetornos(servicos: Service[]) {
   const refresh = useCallback(async () => {
     setLoading(true);
     setError(null);
-
-    if (servicos.length === 0) {
-      setLoading(false);
-      return;
-    }
-
     try {
-      const { data, error: fetchError } = await supabase
-        .from('procedures')
-        .select('id, patient_id, performed_at, services_ids, patient:patients(id, name)')
-        .order('performed_at', { ascending: false });
-
+      const { data, error: fetchError } = await supabase.rpc('list_procedure_returns_v2');
       if (fetchError) throw fetchError;
-
-      const rows = (data ?? []) as unknown as ProcRow[];
-
-      // Group by patient_id — rows are desc so first occurrence = most recent
-      const byPatient = new Map<string, ProcRow>();
-      for (const row of rows) {
-        if (!byPatient.has(row.patient_id)) {
-          byPatient.set(row.patient_id, row);
-        }
-      }
-
-      const result: RetornoInfo[] = [];
-
-      for (const [, row] of byPatient) {
-        const procServices = (row.services_ids ?? [])
-          .map(id => servicos.find(s => s.id === id))
-          .filter((s): s is Service => s !== undefined);
-
-        const minValues = procServices
-          .map(s => s.return_min_days)
-          .filter((d): d is number => d !== null);
-        const maxValues = procServices
-          .map(s => s.return_max_days)
-          .filter((d): d is number => d !== null);
-
-        const lastDate = parseISO(row.performed_at);
-        const windowStart = minValues.length > 0 ? addDays(lastDate, Math.min(...minValues)) : null;
-        const windowEnd = maxValues.length > 0 ? addDays(lastDate, Math.max(...maxValues)) : null;
-
-        const status = calcStatus(windowStart, windowEnd);
-        const daysLabel = buildDaysLabel(status, windowStart, windowEnd, lastDate);
-
-        result.push({
-          patientId: row.patient_id,
-          patientName: row.patient?.name ?? 'Paciente',
-          lastProcedureAt: lastDate,
-          serviceNames: procServices.map(s => s.name),
-          windowStart,
-          windowEnd,
-          status,
-          daysLabel,
-        });
-      }
-
-      result.sort((a, b) => STATUS_ORDER[a.status] - STATUS_ORDER[b.status]);
-      setRetornos(result);
+      const today = clinicTodayIso();
+      setRetornos(((data ?? []) as ReturnRpcRow[]).map(row => mapRow(row, today)));
     } catch (err) {
+      console.error('[retornos] load failed', err);
       setRetornos([]);
-      setError(err instanceof Error ? err.message : 'Erro ao calcular retornos.');
+      setError(friendlyReturnError(err, 'Não foi possível carregar os retornos.'));
     } finally {
       setLoading(false);
     }
-  }, [servicos]);
+  }, []);
 
-  useEffect(() => { refresh(); }, [refresh]);
+  useEffect(() => { void refresh(); }, [refresh]);
 
-  return { retornos, loading, error, refresh };
+  const markContacted = useCallback(async (id: string, method: 'whatsapp' | 'phone' | 'other' | null = null) => {
+    const { error: actionError } = await supabase.rpc('mark_procedure_return_contacted_v2', {
+      p_return_id: id,
+      p_method: method,
+    });
+    if (actionError) {
+      console.error('[retornos] contact failed', actionError);
+      throw new Error(friendlyReturnError(actionError, 'Não foi possível marcar a paciente como contatada.'));
+    }
+    await refresh();
+  }, [refresh]);
+
+  const linkAppointment = useCallback(async (id: string, appointmentId: string) => {
+    const { error: actionError } = await supabase.rpc('link_procedure_return_appointment', {
+      p_return_id: id,
+      p_appointment_id: appointmentId,
+    });
+    if (actionError) {
+      console.error('[retornos] appointment link failed', actionError);
+      throw new Error(friendlyReturnError(actionError, 'Não foi possível vincular o agendamento ao retorno.'));
+    }
+    await refresh();
+  }, [refresh]);
+
+  const complete = useCallback(async (id: string) => {
+    const { error: actionError } = await supabase.rpc('complete_procedure_return_v2', { p_return_id: id });
+    if (actionError) {
+      console.error('[retornos] complete failed', actionError);
+      throw new Error(friendlyReturnError(actionError, 'Não foi possível concluir o retorno.'));
+    }
+    await refresh();
+  }, [refresh]);
+
+  const dismiss = useCallback(async (id: string, reason?: string | null) => {
+    const { error: actionError } = await supabase.rpc('dismiss_procedure_return_v2', {
+      p_return_id: id,
+      p_reason: reason ?? null,
+    });
+    if (actionError) {
+      console.error('[retornos] dismiss failed', actionError);
+      throw new Error(friendlyReturnError(actionError, 'Não foi possível dispensar o retorno.'));
+    }
+    await refresh();
+  }, [refresh]);
+
+  return { retornos, loading, error, refresh, markContacted, linkAppointment, complete, dismiss };
 }
