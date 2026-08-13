@@ -1,26 +1,71 @@
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import {
+  GOOGLE_REDIRECT_URI,
+  appRedirect,
+  createAdminClient,
+  isOpaqueState,
+  logSafe,
+  sha256Hex,
+} from '../_shared/google-calendar-security.ts';
 
-const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
-const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-const GOOGLE_CLIENT_ID = Deno.env.get('GOOGLE_CLIENT_ID')!;
-const GOOGLE_CLIENT_SECRET = Deno.env.get('GOOGLE_CLIENT_SECRET')!;
-const GOOGLE_REDIRECT_URI = Deno.env.get('GOOGLE_REDIRECT_URI')!;
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+async function markFailure(stateHash: string, code: string) {
+  try {
+    const admin = createAdminClient();
+    await admin
+      .from('oauth_states')
+      .update({ failure_code: code })
+      .eq('state_hash', stateHash)
+      .is('completed_at', null);
+  } catch {
+    logSafe('google-oauth-callback', 'failure_marker_failed');
+  }
+}
 
-Deno.serve(async (req) => {
-  const url = new URL(req.url);
-  const code = url.searchParams.get('code');
-  const userId = url.searchParams.get('state');
-
-  const appUrl = Deno.env.get('APP_URL') ?? 'https://hub-giulia.vercel.app';
-
-  if (!code || !userId) {
-    return Response.redirect(`${appUrl}/?google_error=missing_params`);
+Deno.serve(async (req: Request) => {
+  if (req.method !== 'GET') {
+    return new Response('Method Not Allowed', { status: 405, headers: { Allow: 'GET' } });
   }
 
-  // TODO(security): replace direct user_id state with a persisted one-time nonce.
-  if (!UUID_RE.test(userId)) {
-    return Response.redirect(`${appUrl}/?google_error=invalid_state`);
+  const url = new URL(req.url);
+  const state = url.searchParams.get('state');
+  const code = url.searchParams.get('code');
+  const providerError = url.searchParams.get('error');
+
+  if (!isOpaqueState(state)) {
+    return Response.redirect(appRedirect('error'), 302);
+  }
+
+  const stateHash = await sha256Hex(state);
+  const admin = createAdminClient();
+  const now = new Date().toISOString();
+
+  // Claim is the single-use/replay barrier. Only one request can transition
+  // the state from unconsumed to consumed while it is still valid.
+  const { data: claimedState, error: claimError } = await admin
+    .from('oauth_states')
+    .update({ consumed_at: now })
+    .eq('state_hash', stateHash)
+    .eq('provider', 'google')
+    .is('consumed_at', null)
+    .gt('expires_at', now)
+    .select('user_id')
+    .maybeSingle();
+
+  if (claimError || !claimedState) {
+    logSafe('google-oauth-callback', 'state_rejected');
+    return Response.redirect(appRedirect('error'), 302);
+  }
+
+  if (providerError || !code) {
+    await markFailure(stateHash, providerError ? 'provider_cancelled' : 'missing_code');
+    return Response.redirect(appRedirect(providerError ? 'cancelled' : 'error'), 302);
+  }
+
+  const clientId = Deno.env.get('GOOGLE_CLIENT_ID');
+  const clientSecret = Deno.env.get('GOOGLE_CLIENT_SECRET');
+  if (!clientId || !clientSecret || !GOOGLE_REDIRECT_URI) {
+    await markFailure(stateHash, 'server_config');
+    logSafe('google-oauth-callback', 'server_config');
+    return Response.redirect(appRedirect('error'), 302);
   }
 
   try {
@@ -29,33 +74,49 @@ Deno.serve(async (req) => {
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({
         code,
-        client_id: GOOGLE_CLIENT_ID,
-        client_secret: GOOGLE_CLIENT_SECRET,
+        client_id: clientId,
+        client_secret: clientSecret,
         redirect_uri: GOOGLE_REDIRECT_URI,
         grant_type: 'authorization_code',
       }),
     });
 
     if (!tokenRes.ok) {
-      throw new Error(`Token exchange failed: ${tokenRes.status}`);
+      await markFailure(stateHash, `exchange_${tokenRes.status}`);
+      logSafe('google-oauth-callback', 'token_exchange_failed', tokenRes.status);
+      return Response.redirect(appRedirect('error'), 302);
     }
 
-    const tokens = await tokenRes.json();
-    const expiresAt = new Date(Date.now() + tokens.expires_in * 1000).toISOString();
+    const tokens = await tokenRes.json() as {
+      access_token?: string;
+      refresh_token?: string;
+      expires_in?: number;
+    };
 
-    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-    const { error } = await supabase.from('google_calendar_tokens').upsert({
-      user_id: userId,
-      access_token: tokens.access_token,
-      refresh_token: tokens.refresh_token,
-      expires_at: expiresAt,
+    if (!tokens.access_token || !Number.isFinite(tokens.expires_in) || Number(tokens.expires_in) <= 0) {
+      await markFailure(stateHash, 'token_response_invalid');
+      logSafe('google-oauth-callback', 'token_response_invalid');
+      return Response.redirect(appRedirect('error'), 302);
+    }
+
+    const expiresAt = new Date(Date.now() + Number(tokens.expires_in) * 1000).toISOString();
+    const { error: finalizeError } = await admin.rpc('finalize_google_oauth_callback', {
+      p_state_hash: stateHash,
+      p_access_token: tokens.access_token,
+      p_refresh_token: tokens.refresh_token ?? '',
+      p_expires_at: expiresAt,
     });
 
-    if (error) throw error;
+    if (finalizeError) {
+      await markFailure(stateHash, 'finalize_failed');
+      logSafe('google-oauth-callback', 'finalize_failed');
+      return Response.redirect(appRedirect('error'), 302);
+    }
 
-    return Response.redirect(`${appUrl}/?google_connected=true`);
-  } catch (err) {
-    console.error('google-oauth-callback error:', err);
-    return Response.redirect(`${appUrl}/?google_error=callback_failed`);
+    return Response.redirect(appRedirect('connected'), 302);
+  } catch {
+    await markFailure(stateHash, 'callback_failed');
+    logSafe('google-oauth-callback', 'callback_failed');
+    return Response.redirect(appRedirect('error'), 302);
   }
 });
