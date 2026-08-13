@@ -233,7 +233,7 @@ export type CardBrand = 'master_visa' | 'elo';
 
 export interface BrandRates {
   debito: number;
-  [installments: string]: number; // '1'..'18'
+  [installments: string]: number;
 }
 
 export interface MaquininhaRates {
@@ -251,18 +251,16 @@ export interface MaquininhaConfig {
 export type SimplePaymentMethod = 'dinheiro' | 'pix' | 'cartao_credito' | 'cartao_debito';
 export type PaymentMethod = SimplePaymentMethod | 'pix_parcelado' | 'split';
 
-/** UI-only state for a single payment entry during registration */
 export interface PaymentEntryUI {
   tempId: string;
   method: SimplePaymentMethod;
   baseValue: number;
   cardBrand: CardBrand;
-  installments: number; // 1 = à vista, 2-18 for credit
+  installments: number;
   absorveTaxa: boolean;
-  scheduledDate: string; // 'YYYY-MM-DD'
+  scheduledDate: string;
 }
 
-/** DB row from procedure_payments */
 export interface ProcedurePayment {
   id: string;
   procedure_id: string;
@@ -288,6 +286,20 @@ export interface ProcedurePayment {
 
 // ─── Procedure ────────────────────────────────────────────────────────────────
 
+export interface ProcedureItem {
+  id: string;
+  procedure_id: string;
+  user_id: string;
+  service_id: string;
+  name: string;
+  qty: number;
+  list_price: number;
+  final_price: number;
+  discount: number;
+  cost_snapshot: number;
+  created_at: string;
+}
+
 export interface Procedure {
   id: string;
   user_id: string;
@@ -305,6 +317,8 @@ export interface Procedure {
   created_at: string;
   patient?: Pick<Patient, 'id' | 'name'>;
   services?: Pick<Service, 'id' | 'name' | 'price'>[];
+  items?: ProcedureItem[];
+  payments?: ProcedurePayment[];
 }
 
 export interface PixInstallment {
