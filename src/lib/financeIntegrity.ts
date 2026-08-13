@@ -20,19 +20,41 @@ export interface FinanceiroSummary {
   lucro: number;
 }
 
+type ProcedureWithRollups = Procedure & Partial<{
+  paid_amount: number;
+  paid_fee_value: number;
+  paid_net_value: number;
+  pending_amount: number;
+  item_names_snapshot: string[];
+}>;
+
 function money(value: number | null | undefined) {
   return Number(value ?? 0);
 }
 
 export function getProcedureFinancials(proc: Procedure): ProcedureFinancials {
-  const payments = proc.payments ?? [];
-  const paid = payments.filter(payment => Boolean(payment.paid_at));
-  const pending = payments.filter(payment => !payment.paid_at);
+  const payments = proc.payments;
+  const rollup = proc as ProcedureWithRollups;
 
-  const pago = paid.reduce((sum, payment) => sum + money(payment.amount), 0);
-  const taxas = paid.reduce((sum, payment) => sum + money(payment.fee_value), 0);
-  const liquido = paid.reduce((sum, payment) => sum + money(payment.net_amount), 0);
-  const pendente = pending.reduce((sum, payment) => sum + money(payment.amount), 0);
+  let pago: number;
+  let taxas: number;
+  let liquido: number;
+  let pendente: number;
+
+  if (payments) {
+    const paid = payments.filter(payment => Boolean(payment.paid_at));
+    const pending = payments.filter(payment => !payment.paid_at);
+    pago = paid.reduce((sum, payment) => sum + money(payment.amount), 0);
+    taxas = paid.reduce((sum, payment) => sum + money(payment.fee_value), 0);
+    liquido = paid.reduce((sum, payment) => sum + money(payment.net_amount), 0);
+    pendente = pending.reduce((sum, payment) => sum + money(payment.amount), 0);
+  } else {
+    pago = money(rollup.paid_amount);
+    taxas = money(rollup.paid_fee_value);
+    liquido = money(rollup.paid_net_value);
+    pendente = money(rollup.pending_amount);
+  }
+
   const custo = money(proc.total_cost);
 
   return {
@@ -72,6 +94,9 @@ export function procedureServiceNames(proc: Procedure, services: Service[] = [])
   const snapshots = proc.items?.map(item => item.name.trim()).filter(Boolean) ?? [];
   if (snapshots.length > 0) return snapshots.join(', ');
 
+  const rollupNames = (proc as ProcedureWithRollups).item_names_snapshot ?? [];
+  if (rollupNames.length > 0) return rollupNames.join(', ');
+
   const legacyNames = proc.services_ids
     .map(id => services.find(service => service.id === id)?.name)
     .filter((name): name is string => Boolean(name));
@@ -81,7 +106,7 @@ export function procedureServiceNames(proc: Procedure, services: Service[] = [])
 
 export function procedurePaymentLabel(proc: Procedure, labels: Record<string, string>) {
   const payments = proc.payments ?? [];
-  if (payments.length > 1) return 'Pagamento dividido';
+  if (payments.length > 1 || proc.payment_method === 'split') return 'Pagamento dividido';
   const method = payments[0]?.method ?? proc.payment_method;
   return labels[method] ?? method;
 }
