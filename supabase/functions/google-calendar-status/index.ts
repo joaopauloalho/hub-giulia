@@ -34,13 +34,9 @@ Deno.serve(async (req: Request) => {
       throw new HttpError(500, 'calendar_status_failed', 'Nao foi possivel verificar o Google Calendar.');
     }
 
-    const tokenPresent = !!tokenRow;
-    const connected = !!connection?.connected && tokenPresent;
-    const needsReauth = !!connection?.needs_reauth || (!!connection?.connected && !tokenPresent);
-
     return json(req, {
-      connected,
-      needs_reauth: needsReauth,
+      connected: Boolean(connection?.connected && tokenRow),
+      needs_reauth: Boolean(connection?.needs_reauth),
       last_sync_at: connection?.last_sync_at ?? null,
     });
   } catch (error) {
