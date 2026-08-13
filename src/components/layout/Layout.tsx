@@ -1,13 +1,13 @@
 import { Outlet } from 'react-router-dom';
 import { BottomTabBar } from './BottomTabBar';
-import { SideRail } from './SideRail';
+import { SideRailV2 } from './SideRailV2';
 import { ToastProvider } from '../ui/Toast';
 
 export function Layout() {
   return (
     <ToastProvider>
       <div className="app-shell">
-        <SideRail />
+        <SideRailV2 />
         <main className="app-main">
           <Outlet />
         </main>
