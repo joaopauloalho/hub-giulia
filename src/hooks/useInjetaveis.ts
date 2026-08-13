@@ -33,17 +33,17 @@ export function useInjetaveis(patientId?: string) {
     procedureId?: string,
   ): Promise<InjectableMap> => {
     if (procedureId && consumeAtomicAttendanceProcedure(procedureId)) {
-      const { data, error: existingError } = await supabase
-        .from('injectable_maps')
-        .select('*')
-        .eq('patient_id', patientId)
-        .eq('procedure_id', procedureId)
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .single();
-
-      if (existingError) throw existingError;
-      return data as InjectableMap;
+      // The map was already inserted by create_procedure_v2 in the same DB transaction.
+      // Do not perform any post-commit network request here: a transient read failure
+      // must never make the UI report failure after a successful attendance commit.
+      return {
+        id: procedureId,
+        procedure_id: procedureId,
+        patient_id: patientId,
+        user_id: '',
+        created_at: new Date().toISOString(),
+        points,
+      };
     }
 
     const { data: { user } } = await supabase.auth.getUser();
