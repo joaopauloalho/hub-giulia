@@ -1,5 +1,12 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
+import {
+  normalizePatientCreateData,
+  patientCreateFriendlyError,
+  SESSION_EXPIRED_MESSAGE,
+  validatePatientCreateData,
+  type PatientCreateData,
+} from '../lib/patientInput';
 import type { Patient } from '../types';
 
 interface UsePacientesOptions {
@@ -35,8 +42,8 @@ export function usePacientes(options: UsePacientesOptions = {}) {
       }
 
       const { data, error: patientsError, count } = await query;
-
       if (patientsError) throw patientsError;
+
       setPacientes(current => append ? [...current, ...((data ?? []) as Patient[])] : ((data ?? []) as Patient[]));
       setTotal(count ?? 0);
       setPage(nextPage);
@@ -54,14 +61,28 @@ export function usePacientes(options: UsePacientesOptions = {}) {
 
   useEffect(() => { refresh(); }, [refresh]);
 
-  const create = async (data: Omit<Patient, 'id' | 'user_id' | 'created_at'>) => {
-    const { data: { user } } = await supabase.auth.getUser();
-    const { data: row, error } = await supabase
+  const create = async (data: PatientCreateData) => {
+    const normalized = normalizePatientCreateData(data);
+    const validationError = validatePatientCreateData(normalized);
+    if (validationError) throw new Error(validationError);
+
+    const { data: authData, error: authError } = await supabase.auth.getUser();
+    if (authError || !authData.user) {
+      console.error('[usePacientes.create] user validation failed', authError);
+      throw new Error(SESSION_EXPIRED_MESSAGE);
+    }
+
+    const { data: row, error: insertError } = await supabase
       .from('patients')
-      .insert({ ...data, user_id: user!.id })
+      .insert({ ...normalized, user_id: authData.user.id })
       .select()
       .single();
-    if (error) throw error;
+
+    if (insertError) {
+      console.error('[usePacientes.create] Supabase insert failed', insertError);
+      throw new Error(patientCreateFriendlyError(insertError));
+    }
+
     await refresh();
     return row as Patient;
   };
