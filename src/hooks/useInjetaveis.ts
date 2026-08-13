@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import type { InjectableMap, InjectablePoint } from '../types';
+import { consumeAtomicAttendanceProcedure } from '../lib/attendanceRuntime';
 
 export function useInjetaveis(patientId?: string) {
   const [maps, setMaps] = useState<InjectableMap[]>([]);
@@ -31,6 +32,20 @@ export function useInjetaveis(patientId?: string) {
     points: InjectablePoint[],
     procedureId?: string,
   ): Promise<InjectableMap> => {
+    if (procedureId && consumeAtomicAttendanceProcedure(procedureId)) {
+      const { data, error: existingError } = await supabase
+        .from('injectable_maps')
+        .select('*')
+        .eq('patient_id', patientId)
+        .eq('procedure_id', procedureId)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single();
+
+      if (existingError) throw existingError;
+      return data as InjectableMap;
+    }
+
     const { data: { user } } = await supabase.auth.getUser();
     const { data, error: err } = await supabase
       .from('injectable_maps')
