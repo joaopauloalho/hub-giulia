@@ -1,10 +1,11 @@
 import { NavLink } from 'react-router-dom';
-import { CalendarDays, LayoutDashboard, PlusCircle, Wallet, BookOpen, LogOut, UserRound } from 'lucide-react';
+import { CalendarDays, LayoutDashboard, PlusCircle, Wallet, BookOpen, LogOut, UserRound, RotateCcw } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 
 const nav = [
   { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
   { to: '/agenda', icon: CalendarDays, label: 'Agenda' },
+  { to: '/retornos', icon: RotateCcw, label: 'Retornos' },
   { to: '/pacientes', icon: UserRound, label: 'Pacientes' },
   { to: '/registrar', icon: PlusCircle, label: 'Registrar' },
   { to: '/financeiro', icon: Wallet, label: 'Financeiro' },
