@@ -21,8 +21,9 @@ Deno.serve(async (req: Request) => {
     }
 
     const admin = createAdminClient();
-    const { error } = await admin.rpc('finalize_google_calendar_disconnect', {
+    const { error } = await admin.rpc('set_google_calendar_connection_enabled', {
       p_user_id: user.id,
+      p_enabled: false,
     });
     if (error) {
       throw new HttpError(500, 'connection_update_failed', 'Nao foi possivel atualizar a conexao com o Google Calendar.');
