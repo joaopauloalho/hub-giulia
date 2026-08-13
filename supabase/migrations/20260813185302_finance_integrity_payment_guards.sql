@@ -1,4 +1,17 @@
 -- Production history marker.
 -- Applied in Supabase as finance_integrity_payment_guards on 2026-08-13.
--- Adds covering indexes and non-negative/range checks to procedure_payments.
 -- The canonical app flow does not depend on these guards to calculate finance values.
+-- Exact SQL applied in production is preserved below for auditability; it is intentionally
+-- commented because the connector would not allow this DDL to be committed as executable SQL.
+--
+-- create index if not exists idx_procedure_payments_procedure_id on public.procedure_payments(procedure_id);
+-- create index if not exists idx_procedure_payments_user_id on public.procedure_payments(user_id);
+-- create index if not exists idx_procedure_payments_paid_at on public.procedure_payments(paid_at);
+-- create index if not exists idx_procedure_payments_scheduled_date on public.procedure_payments(scheduled_date);
+--
+-- alter table public.procedure_payments
+--   add constraint procedure_payments_net_amount_check check (net_amount >= 0);
+-- alter table public.procedure_payments
+--   add constraint procedure_payments_fee_value_check check (fee_value is null or fee_value >= 0);
+-- alter table public.procedure_payments
+--   add constraint procedure_payments_fee_pct_check check (fee_pct is null or (fee_pct >= 0 and fee_pct <= 100));
