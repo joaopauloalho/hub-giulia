@@ -16,7 +16,7 @@ Deno.serve(async (req: Request) => {
     assertMethod(req, 'POST');
     const { user } = await authenticate(req);
     const body = await req.json().catch(() => ({})) as { action?: string };
-    if (body.action !== 'disconnect') {
+    if (body.action !== 'unlink') {
       throw new HttpError(400, 'invalid_action', 'Operacao invalida.');
     }
 
