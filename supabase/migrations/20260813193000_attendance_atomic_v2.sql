@@ -389,8 +389,8 @@ begin
 
   update public.procedures
   set services_ids = (
-    select coalesce(jsonb_agg(item.service_id order by item.ordinality), '[]'::jsonb)
-    from jsonb_to_recordset(p_items) with ordinality as item(service_id uuid, qty numeric, final_price numeric, ordinality bigint)
+    select coalesce(jsonb_agg(item.value -> 'service_id' order by item.ordinality), '[]'::jsonb)
+    from jsonb_array_elements(p_items) with ordinality as item(value, ordinality)
   )
   where id = v_proc.id
     and user_id = v_user_id;
