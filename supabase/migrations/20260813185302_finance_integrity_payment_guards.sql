@@ -1,0 +1,4 @@
+-- Production history marker.
+-- Applied in Supabase as finance_integrity_payment_guards on 2026-08-13.
+-- Adds covering indexes and non-negative/range checks to procedure_payments.
+-- The canonical app flow does not depend on these guards to calculate finance values.

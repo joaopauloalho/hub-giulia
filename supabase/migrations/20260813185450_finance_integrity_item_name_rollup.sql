@@ -1,0 +1,4 @@
+-- Production history marker.
+-- Applied in Supabase as finance_integrity_item_name_rollup on 2026-08-13.
+-- Production keeps item_names_snapshot as a compatibility cache.
+-- The application intentionally reads procedure_items directly for immutable historical names.
