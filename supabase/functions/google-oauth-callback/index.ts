@@ -1,46 +1,35 @@
-import {
-  GOOGLE_REDIRECT_URI,
-  appRedirect,
-  createAdminClient,
-  isOpaqueState,
-  logSafe,
-  sha256Hex,
-} from '../_shared/google-calendar-security.ts';
+import { createClient } from 'npm:@supabase/supabase-js@2';
 
-async function markFailure(stateHash: string, code: string) {
-  try {
-    const admin = createAdminClient();
-    await admin
-      .from('oauth_states')
-      .update({ failure_code: code })
-      .eq('state_hash', stateHash)
-      .is('completed_at', null);
-  } catch {
-    logSafe('google-oauth-callback', 'failure_marker_failed');
-  }
+const APP_URL = (Deno.env.get('APP_URL') ?? 'https://hub-giulia.vercel.app').replace(/\/$/, '');
+const STATE_RE = /^[A-Za-z0-9_-]{43}$/;
+
+function redirect(result: 'connected' | 'error' | 'cancelled') {
+  const target = new URL('/agenda', `${APP_URL}/`);
+  target.searchParams.set('google_calendar', result);
+  return Response.redirect(target.toString(), 302);
+}
+
+async function hashState(value: string) {
+  const bytes = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value));
+  return Array.from(new Uint8Array(bytes), byte => byte.toString(16).padStart(2, '0')).join('');
 }
 
 Deno.serve(async (req: Request) => {
-  if (req.method !== 'GET') {
-    return new Response('Method Not Allowed', { status: 405, headers: { Allow: 'GET' } });
-  }
+  if (req.method !== 'GET') return new Response('Method Not Allowed', { status: 405 });
 
   const url = new URL(req.url);
   const state = url.searchParams.get('state');
-  const code = url.searchParams.get('code');
-  const providerError = url.searchParams.get('error');
+  if (!state || !STATE_RE.test(state)) return redirect('error');
 
-  if (!isOpaqueState(state)) {
-    return Response.redirect(appRedirect('error'), 302);
-  }
-
-  const stateHash = await sha256Hex(state);
-  const admin = createAdminClient();
+  const admin = createClient(
+    Deno.env.get('SUPABASE_URL') ?? '',
+    Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
+    { auth: { persistSession: false, autoRefreshToken: false } },
+  );
+  const stateHash = await hashState(state);
   const now = new Date().toISOString();
 
-  // Claim is the single-use/replay barrier. Only one request can transition
-  // the state from unconsumed to consumed while it is still valid.
-  const { data: claimedState, error: claimError } = await admin
+  const { data: claimed } = await admin
     .from('oauth_states')
     .update({ consumed_at: now })
     .eq('state_hash', stateHash)
@@ -50,73 +39,46 @@ Deno.serve(async (req: Request) => {
     .select('user_id')
     .maybeSingle();
 
-  if (claimError || !claimedState) {
-    logSafe('google-oauth-callback', 'state_rejected');
-    return Response.redirect(appRedirect('error'), 302);
-  }
+  if (!claimed) return redirect('error');
+  if (url.searchParams.get('error')) return redirect('cancelled');
 
-  if (providerError || !code) {
-    await markFailure(stateHash, providerError ? 'provider_cancelled' : 'missing_code');
-    return Response.redirect(appRedirect(providerError ? 'cancelled' : 'error'), 302);
-  }
-
+  const code = url.searchParams.get('code');
   const clientId = Deno.env.get('GOOGLE_CLIENT_ID');
   const clientSecret = Deno.env.get('GOOGLE_CLIENT_SECRET');
-  if (!clientId || !clientSecret || !GOOGLE_REDIRECT_URI) {
-    await markFailure(stateHash, 'server_config');
-    logSafe('google-oauth-callback', 'server_config');
-    return Response.redirect(appRedirect('error'), 302);
-  }
+  const redirectUri = Deno.env.get('GOOGLE_REDIRECT_URI');
+  if (!code || !clientId || !clientSecret || !redirectUri) return redirect('error');
 
   try {
-    const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
+    const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({
         code,
         client_id: clientId,
         client_secret: clientSecret,
-        redirect_uri: GOOGLE_REDIRECT_URI,
+        redirect_uri: redirectUri,
         grant_type: 'authorization_code',
       }),
     });
+    if (!tokenResponse.ok) return redirect('error');
 
-    if (!tokenRes.ok) {
-      await markFailure(stateHash, `exchange_${tokenRes.status}`);
-      logSafe('google-oauth-callback', 'token_exchange_failed', tokenRes.status);
-      return Response.redirect(appRedirect('error'), 302);
-    }
-
-    const tokens = await tokenRes.json() as {
+    const token = await tokenResponse.json() as {
       access_token?: string;
       refresh_token?: string;
       expires_in?: number;
     };
+    if (!token.access_token || !Number.isFinite(token.expires_in) || Number(token.expires_in) <= 0) return redirect('error');
 
-    if (!tokens.access_token || !Number.isFinite(tokens.expires_in) || Number(tokens.expires_in) <= 0) {
-      await markFailure(stateHash, 'token_response_invalid');
-      logSafe('google-oauth-callback', 'token_response_invalid');
-      return Response.redirect(appRedirect('error'), 302);
-    }
-
-    const expiresAt = new Date(Date.now() + Number(tokens.expires_in) * 1000).toISOString();
-    const { error: finalizeError } = await admin.rpc('finalize_google_oauth_callback', {
+    const { error } = await admin.rpc('finalize_google_oauth_callback', {
       p_state_hash: stateHash,
-      p_access_token: tokens.access_token,
-      p_refresh_token: tokens.refresh_token ?? '',
-      p_expires_at: expiresAt,
+      p_access_token: token.access_token,
+      p_refresh_token: token.refresh_token ?? '',
+      p_expires_at: new Date(Date.now() + Number(token.expires_in) * 1000).toISOString(),
     });
+    if (error) return redirect('error');
 
-    if (finalizeError) {
-      await markFailure(stateHash, 'finalize_failed');
-      logSafe('google-oauth-callback', 'finalize_failed');
-      return Response.redirect(appRedirect('error'), 302);
-    }
-
-    return Response.redirect(appRedirect('connected'), 302);
+    return redirect('connected');
   } catch {
-    await markFailure(stateHash, 'callback_failed');
-    logSafe('google-oauth-callback', 'callback_failed');
-    return Response.redirect(appRedirect('error'), 302);
+    return redirect('error');
   }
 });
