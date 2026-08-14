@@ -57,6 +57,6 @@ describe('crm domain helpers', () => {
   });
 
   it('sanitizes characters that interfere with PostgREST OR search syntax', () => {
-    expect(safeCrmSearchTerm('  Maria,(43)  ')).toBe('Maria  43');
+    expect(safeCrmSearchTerm('  Maria,(43)  ')).toBe('Maria 43');
   });
 });
