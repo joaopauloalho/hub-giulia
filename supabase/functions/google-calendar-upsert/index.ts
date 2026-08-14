@@ -113,7 +113,7 @@ Deno.serve(async (req: Request) => {
     // from an appointment the authenticated user owns; it is never accepted from the client.
     const { data: apt, error: aptError } = await client
       .from('appointments')
-      .select('id,user_id,patient_id,service_id,scheduled_at,status,google_event_id,patient:patients(id,name),service:services(id,name,duration_minutes)')
+      .select('id,user_id,patient_id,service_id,scheduled_at,duration_minutes,end_at,status,google_event_id,patient:patients(id,name),service:services(id,name)')
       .eq('id', appointmentId)
       .maybeSingle();
 
@@ -171,9 +171,14 @@ Deno.serve(async (req: Request) => {
     }
 
     const patient = apt.patient as unknown as { id: string; name: string } | null;
-    const service = apt.service as unknown as { id: string; name: string; duration_minutes: number | null } | null;
+    const service = apt.service as unknown as { id: string; name: string } | null;
     const start = new Date(apt.scheduled_at);
-    const end = new Date(start.getTime() + (service?.duration_minutes ?? 60) * 60_000);
+    // end_at is derived by Postgres from this appointment's duration snapshot.
+    // Google must mirror the appointment, never recalculate duration from services.
+    const end = new Date(apt.end_at);
+    if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime()) || end <= start || !apt.duration_minutes) {
+      throw new HttpError(500, 'appointment_time_invalid', 'O horario do agendamento local esta inconsistente.');
+    }
     const eventBody = {
       summary: `${patient?.name ?? 'Paciente'} — ${service?.name ?? 'Consulta'}`,
       start: { dateTime: start.toISOString() },
