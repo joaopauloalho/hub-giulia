@@ -22,7 +22,11 @@ function Event({ appointment, onOpen }: { appointment: AgendaAppointment; onOpen
 }
 
 function DayTimeline({ rows, onOpen, onCreate }: { rows: AgendaAppointment[]; onOpen: (appointment: AgendaAppointment) => void; onCreate: (time: string) => void }) {
-  const hours = ['08:00','09:00','10:00','11:00','12:00','13:00','14:00','15:00','16:00','17:00','18:00','19:00','20:00'];
+  const appointmentHours = rows.map(item => Number(clinicTime(item.scheduled_at).slice(0, 2)));
+  const firstHour = appointmentHours.length ? Math.min(8, ...appointmentHours) : 8;
+  const lastHour = appointmentHours.length ? Math.max(20, ...appointmentHours) : 20;
+  const hours = Array.from({ length: lastHour - firstHour + 1 }, (_, index) => `${String(firstHour + index).padStart(2, '0')}:00`);
+
   return <div style={{ borderTop: '1px solid var(--border)' }}>{hours.map(hour => {
     const hourNumber = Number(hour.slice(0, 2));
     const items = rows.filter(item => Number(clinicTime(item.scheduled_at).slice(0, 2)) === hourNumber);
