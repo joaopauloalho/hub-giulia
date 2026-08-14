@@ -1,6 +1,12 @@
 import type { InjectablePoint } from '../types';
 
+export interface AttendanceInjectableDraft {
+  mapId: string;
+  revision: number;
+}
+
 let stagedInjectablePoints: InjectablePoint[] = [];
+let stagedInjectableDraft: AttendanceInjectableDraft | null = null;
 const atomicProcedureIds = new Set<string>();
 let pendingFriendlyError: string | null = null;
 
@@ -17,6 +23,18 @@ export function getAttendanceInjectablePoints(serviceIds: string[]) {
   return stagedInjectablePoints
     .filter(point => allowed.has(point.service_id))
     .map(point => ({ ...point }));
+}
+
+export function stageAttendanceInjectableDraft(draft: AttendanceInjectableDraft) {
+  stagedInjectableDraft = { ...draft };
+}
+
+export function getAttendanceInjectableDraft() {
+  return stagedInjectableDraft ? { ...stagedInjectableDraft } : null;
+}
+
+export function clearAttendanceInjectableDraft() {
+  stagedInjectableDraft = null;
 }
 
 export function markAtomicAttendanceProcedure(procedureId: string) {
