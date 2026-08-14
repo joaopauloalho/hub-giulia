@@ -3,12 +3,14 @@ import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { Archive, Download, Plus, Search, UserRound } from 'lucide-react';
 import { usePacientes, type PatientRecord } from '../../hooks/usePacientes';
 import { NovaClienteDrawer } from './NovaClienteDrawer';
-import { PacienteView } from './PacienteView';
+import { PacienteView, type TabKey } from './PacienteView';
 import { Skeleton } from '../../components/ui/Skeleton';
 import { exportPatientsCSV } from '../../lib/exportUtils';
 import type { Patient } from '../../types';
 
 type ArchiveMode = 'active' | 'archived';
+
+const PATIENT_TABS: TabKey[] = ['overview', 'timeline', 'procedures', 'anamnesis', 'photos', 'injectables', 'finance', 'contracts', 'notes', 'data'];
 
 export function PacientesPage() {
   const navigate = useNavigate();
@@ -40,6 +42,8 @@ export function PacientesPage() {
     return () => { active = false; };
   }, [loading, pacientes, searchParams, viewing, getById]);
 
+  const requestedTab = searchParams.get('tab');
+  const initialTab = PATIENT_TABS.includes(requestedTab as TabKey) ? requestedTab as TabKey : undefined;
   const filtered = pacientes.filter(patient => [patient.name, patient.phone, patient.email].some(value => value?.toLowerCase().includes(search.toLowerCase())));
   const initials = (name: string) => name.split(' ').slice(0, 2).map(word => word[0]).join('').toUpperCase();
   const fmtDate = (iso: string | null) => iso ? new Date(iso).toLocaleDateString('pt-BR') : null;
@@ -72,6 +76,6 @@ export function PacientesPage() {
     {archiveMode === 'active' && <button className="fab" onClick={() => setShowCreate(true)} aria-label="Nova paciente"><Plus size={24} /></button>}
     <NovaClienteDrawer open={showCreate} onClose={() => setShowCreate(false)} onCreate={async data => { await create(data); setShowCreate(false); }} />
 
-    {viewing && <PacienteView patient={viewing as Patient} archived={Boolean(viewing.archived_at)} sourceAppointmentId={sourceAppointmentId} onClose={closePatient} onUpdate={async data => { await update(viewing.id, data); setViewing(previous => previous ? { ...previous, ...data } : previous); }} onArchive={async () => { await archive(viewing.id); setViewing(null); }} onRestore={async () => { await restore(viewing.id); setViewing(null); }} />}
+    {viewing && <PacienteView patient={viewing as Patient} archived={Boolean(viewing.archived_at)} sourceAppointmentId={sourceAppointmentId} initialTab={initialTab} onClose={closePatient} onUpdate={async data => { await update(viewing.id, data); setViewing(previous => previous ? { ...previous, ...data } : previous); }} onArchive={async () => { await archive(viewing.id); setViewing(null); }} onRestore={async () => { await restore(viewing.id); setViewing(null); }} />}
   </div>;
 }

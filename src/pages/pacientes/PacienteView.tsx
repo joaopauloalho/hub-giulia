@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Archive, CalendarPlus, ClipboardPlus, Mail, MessageCircle, Pencil, Phone, RotateCcw, StickyNote, X } from 'lucide-react';
 import type { Patient } from '../../types';
@@ -22,6 +22,7 @@ interface Props {
   patient: Patient;
   archived?: boolean;
   sourceAppointmentId?: string | null;
+  initialTab?: TabKey;
   onClose: () => void;
   onUpdate: (data: Partial<Patient>) => Promise<void>;
   onArchive: () => Promise<void>;
@@ -40,15 +41,19 @@ const TABS = [
   ['Notas', 'notes'],
   ['Dados', 'data'],
 ] as const;
-type TabKey = typeof TABS[number][1];
+export type TabKey = typeof TABS[number][1];
 
 const initials = (name: string) => name.split(' ').slice(0, 2).map(word => word[0]).join('').toUpperCase();
 
-export function PacienteView({ patient, archived = false, sourceAppointmentId, onClose, onUpdate, onArchive, onRestore }: Props) {
+export function PacienteView({ patient, archived = false, sourceAppointmentId, initialTab, onClose, onUpdate, onArchive, onRestore }: Props) {
   const navigate = useNavigate();
   const { confirm, toast } = useToast();
-  const [tab, setTab] = useState<TabKey>('overview');
+  const [tab, setTab] = useState<TabKey>(initialTab ?? 'overview');
   const [showSignature, setShowSignature] = useState(false);
+
+  useEffect(() => {
+    if (initialTab) setTab(initialTab);
+  }, [initialTab]);
 
   const schedule = () => navigate(`/agenda?patient_id=${patient.id}`, { state: { patient: { id: patient.id, name: patient.name, phone: patient.phone }, from: '/pacientes' } });
   const register = () => {
