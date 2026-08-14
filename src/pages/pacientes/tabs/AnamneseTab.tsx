@@ -1,360 +1,208 @@
-import { useState, useEffect } from 'react';
-import { Save } from 'lucide-react';
-import { useAnamnese } from '../../../hooks/useAnamnese';
-import type {
-  AnamnesisConditions,
-  AnamnosisSurgicalHistory,
-  AnamnesisHabits,
-  AnamnesisAesthetics,
-} from '../../../types';
+import { useCallback, useEffect, useState } from 'react';
+import { ChevronDown, ChevronUp, Clock3, FileCheck2, PencilLine } from 'lucide-react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { supabase } from '../../../lib/supabase';
+import type { AnamnesisCurrentRow, AnamnesisVersion } from '../../../lib/anamnesisV2';
 
 interface Props { patientId: string; }
 
-function SectionTitle({ children }: { children: React.ReactNode }) {
-  return <div className="form-section-title" style={{ marginTop: 20 }}>{children}</div>;
+type SchemaField = {
+  key?: string;
+  label?: string;
+  type?: string;
+  detail_key?: string;
+};
+
+type SchemaSection = {
+  key?: string;
+  title?: string;
+  fields?: SchemaField[];
+};
+
+const dateTime = (value: string | null | undefined) =>
+  value ? new Date(value).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : '—';
+
+function sectionAnswers(snapshot: Record<string, unknown>, sectionKey: string) {
+  if (sectionKey === 'conditions') return (snapshot.conditions ?? {}) as Record<string, unknown>;
+  if (sectionKey === 'medical_history' || sectionKey === 'womens_health') return (snapshot.surgical_history ?? {}) as Record<string, unknown>;
+  if (sectionKey === 'habits') return (snapshot.habits ?? {}) as Record<string, unknown>;
+  if (sectionKey === 'aesthetics') return (snapshot.aesthetics ?? {}) as Record<string, unknown>;
+  return snapshot;
 }
 
-function CheckItem({
-  label, checked, onChange,
-}: { label: string; checked: boolean; onChange: (v: boolean) => void }) {
-  return (
-    <label style={{ display: 'flex', alignItems: 'center', gap: 10, minHeight: 44, cursor: 'pointer' }}>
-      <input type="checkbox" checked={checked} onChange={e => onChange(e.target.checked)}
-        style={{ width: 20, height: 20, accentColor: 'var(--primary)', flexShrink: 0 }} />
-      <span style={{ fontSize: '0.9rem', color: 'var(--text)' }}>{label}</span>
-    </label>
-  );
+function displayValue(
+  snapshot: Record<string, unknown>,
+  sectionKey: string,
+  field: SchemaField,
+) {
+  const key = field.key ?? '';
+  const source = sectionAnswers(snapshot, sectionKey);
+  const value = source[key];
+
+  if (field.type === 'status_text') {
+    const statusKey = key === 'medications' ? 'medications_status' : 'allergies_status';
+    const status = snapshot[statusKey];
+    if (status === 'none') return key === 'medications' ? 'Não utiliza' : 'Não possui';
+    if (status === 'reported') return String(snapshot[key] ?? '').trim() || 'Informado sem descrição';
+    return 'Não respondido';
+  }
+
+  if (field.type === 'text_legacy') {
+    return String(snapshot[key] ?? '').trim() || 'Não informado no modelo legado';
+  }
+
+  if (field.type === 'boolean' || field.type === 'boolean_detail') {
+    if (value === true) {
+      if (field.detail_key) {
+        const detail = String(source[field.detail_key] ?? '').trim();
+        return detail ? `Sim — ${detail}` : 'Sim';
+      }
+      return 'Sim';
+    }
+    if (value === false) return 'Não';
+    return 'Não respondido';
+  }
+
+  if (value === null || value === undefined || value === '') return 'Não respondido';
+  return String(value);
 }
 
-function CondField({
-  label, checked, onCheck, detail, detailLabel, onDetail, detailType = 'text',
-}: {
-  label: string; checked: boolean; onCheck: (v: boolean) => void;
-  detail?: string; detailLabel?: string; onDetail?: (v: string) => void;
-  detailType?: string;
-}) {
+function HistoricalVersion({ version }: { version: AnamnesisVersion }) {
+  const sections = ((version.form_schema_snapshot.sections ?? []) as SchemaSection[])
+    .filter(section => Array.isArray(section.fields));
+
   return (
-    <div>
-      <CheckItem label={label} checked={checked} onChange={onCheck} />
-      {checked && onDetail && (
-        <div style={{ marginLeft: 30, marginTop: 4, marginBottom: 8 }}>
-          <input className="field-input" type={detailType}
-            placeholder={detailLabel ?? 'Detalhar...'}
-            value={detail ?? ''}
-            onChange={e => onDetail(e.target.value)} />
+    <div style={{ display: 'grid', gap: 12, marginTop: 12 }}>
+      <div className="page-sub">
+        Documento somente leitura · schema {version.form_schema_version}
+        {version.migration_source === 'legacy' ? ' · migrado do modelo anterior' : ''}
+      </div>
+      {sections.map((section, sectionIndex) => (
+        <div className="card" key={`${section.key ?? sectionIndex}`} style={{ padding: 12 }}>
+          <strong style={{ display: 'block', marginBottom: 8 }}>{section.title ?? 'Seção'}</strong>
+          <div style={{ display: 'grid', gap: 6 }}>
+            {(section.fields ?? []).map((field, fieldIndex) => (
+              <div key={`${field.key ?? fieldIndex}`} style={{ display: 'grid', gridTemplateColumns: 'minmax(150px, .8fr) minmax(0, 1.2fr)', gap: 10, borderBottom: '1px solid var(--border)', paddingBottom: 6 }}>
+                <span className="page-sub">{field.label ?? field.key}</span>
+                <span style={{ fontSize: 13, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
+                  {displayValue(version.answers_snapshot, section.key ?? '', field)}
+                </span>
+              </div>
+            ))}
+          </div>
         </div>
-      )}
-    </div>
-  );
-}
-
-function YesNo({ label, value, onChange }: { label: string; value?: boolean; onChange: (v: boolean) => void }) {
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 12, minHeight: 44 }}>
-      <span style={{ flex: 1, fontSize: '0.9rem', color: 'var(--text)' }}>{label}</span>
-      {(['Sim', 'Não'] as const).map(opt => (
-        <label key={opt} style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
-          <input type="radio" name={label} checked={value === (opt === 'Sim')} onChange={() => onChange(opt === 'Sim')}
-            style={{ accentColor: 'var(--primary)', width: 18, height: 18 }} />
-          <span style={{ fontSize: '0.9rem' }}>{opt}</span>
-        </label>
       ))}
     </div>
   );
 }
 
-const emptyC = (): AnamnesisConditions => ({});
-const emptyS = (): AnamnosisSurgicalHistory => ({});
-const emptyH = (): AnamnesisHabits => ({});
-const emptyA = (): AnamnesisAesthetics => ({});
-
 export function AnamneseTab({ patientId }: Props) {
-  const { anamnese, loading, error, load, save } = useAnamnese(patientId);
-  const [conditions, setConditions] = useState<AnamnesisConditions>(emptyC());
-  const [surgical, setSurgical] = useState<AnamnosisSurgicalHistory>(emptyS());
-  const [habits, setHabits] = useState<AnamnesisHabits>(emptyH());
-  const [aesthetics, setAesthetics] = useState<AnamnesisAesthetics>(emptyA());
-  const [medications, setMedications] = useState('');
-  const [allergies, setAllergies] = useState('');
-  const [saving, setSaving] = useState(false);
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const [current, setCurrent] = useState<AnamnesisCurrentRow | null>(null);
+  const [versions, setVersions] = useState<AnamnesisVersion[]>([]);
+  const [selectedVersionId, setSelectedVersionId] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => { load(); }, [load]);
-
-  useEffect(() => {
-    if (!anamnese) return;
-    setConditions(anamnese.conditions ?? emptyC());
-    setSurgical(anamnese.surgical_history ?? emptyS());
-    setHabits(anamnese.habits ?? emptyH());
-    setAesthetics(anamnese.aesthetics ?? emptyA());
-    setMedications(anamnese.medications ?? '');
-    setAllergies(anamnese.allergies ?? '');
-  }, [anamnese]);
-
-  const setC = (k: keyof AnamnesisConditions, v: boolean) =>
-    setConditions(p => ({ ...p, [k]: v }));
-  const setS = (k: keyof AnamnosisSurgicalHistory, v: boolean | string) =>
-    setSurgical(p => ({ ...p, [k]: v }));
-  const setH = (k: keyof AnamnesisHabits, v: boolean | string) =>
-    setHabits(p => ({ ...p, [k]: v }));
-  const setA = (k: keyof AnamnesisAesthetics, v: boolean | string) =>
-    setAesthetics(p => ({ ...p, [k]: v }));
-
-  const handleSave = async () => {
-    setSaving(true);
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
     try {
-      await save({
-        patient_id: patientId,
-        conditions,
-        medications: medications || null,
-        allergies: allergies || null,
-        surgical_history: surgical,
-        habits,
-        aesthetics,
-      });
+      const [currentResult, versionsResult] = await Promise.all([
+        supabase.from('anamnesis').select('*').eq('patient_id', patientId).maybeSingle(),
+        supabase
+          .from('anamnesis_versions')
+          .select('id,anamnesis_id,user_id,patient_id,version_number,form_schema_version,answers_snapshot,form_schema_snapshot,completed_at,author_user_id,source_type,migration_source,supersedes_version_id,created_at')
+          .eq('patient_id', patientId)
+          .order('version_number', { ascending: false }),
+      ]);
+      if (currentResult.error) throw currentResult.error;
+      if (versionsResult.error) throw versionsResult.error;
+
+      const nextCurrent = (currentResult.data ?? null) as AnamnesisCurrentRow | null;
+      const nextVersions = (versionsResult.data ?? []) as AnamnesisVersion[];
+      setCurrent(nextCurrent);
+      setVersions(nextVersions);
+
+      const requested = Number(searchParams.get('version') ?? 0);
+      const requestedVersion = nextVersions.find(version => version.version_number === requested);
+      setSelectedVersionId(requestedVersion?.id ?? null);
+    } catch {
+      setError('Não foi possível carregar a anamnese.');
     } finally {
-      setSaving(false);
+      setLoading(false);
     }
-  };
+  }, [patientId, searchParams]);
 
-  if (error) {
-    return (
-      <div className="empty-state" style={{ padding: '48px 20px' }}>
-        <p>{error}</p>
-      </div>
-    );
-  }
+  useEffect(() => { void load(); }, [load]);
 
+  const latest = versions[0] ?? null;
   if (loading) return <div className="loading-state">Carregando...</div>;
-
-  const SaveBtn = () => (
-    <button className="btn btn--primary btn--sm" onClick={handleSave} disabled={saving}
-      style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-      <Save size={14} />{saving ? 'Salvando...' : 'Salvar anamnese'}
-    </button>
-  );
+  if (error) return <div className="empty-state"><p>{error}</p></div>;
 
   return (
-    <div style={{ padding: 20 }}>
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
-        <SaveBtn />
-      </div>
-
-      {/* Condições de Saúde */}
-      <SectionTitle>Condições de Saúde</SectionTitle>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '0 16px' }}>
-        {([
-          ['hipertensao', 'Hipertensão'],
-          ['hipotensao', 'Hipotensão'],
-          ['diabetes', 'Diabetes'],
-          ['cancer', 'Câncer'],
-          ['problemas_cardiacos', 'Problemas cardíacos'],
-          ['disfuncao_renal', 'Disfunção renal'],
-          ['problemas_vasculares', 'Problemas vasculares'],
-          ['epilepsia', 'Epilepsia'],
-          ['problemas_respiratorios', 'Prob. respiratórios'],
-          ['problemas_tireoide', 'Prob. tireoide'],
-          ['problemas_coagulacao', 'Prob. coagulação'],
-          ['marcapasso', 'Marcapasso'],
-          ['fumante', 'Fumante'],
-          ['hiv_aids', 'HIV/AIDS'],
-          ['hepatite', 'Hepatite'],
-        ] as [keyof AnamnesisConditions, string][]).map(([key, label]) => (
-          <CheckItem key={key} label={label}
-            checked={!!conditions[key]} onChange={v => setC(key, v)} />
-        ))}
-      </div>
-
-      {/* Medicamentos e Alergias */}
-      <SectionTitle>Medicamentos e Alergias</SectionTitle>
-      <div className="form-grid">
-        <div className="field field--full">
-          <label className="field-label">Medicamentos em uso</label>
-          <textarea className="field-input" rows={2} value={medications}
-            onChange={e => setMedications(e.target.value)}
-            placeholder="Nome, dose, frequência..." />
-        </div>
-        <div className="field field--full">
-          <label className="field-label">Alergias conhecidas</label>
-          <textarea className="field-input" rows={2} value={allergies}
-            onChange={e => setAllergies(e.target.value)}
-            placeholder="Alergias a medicamentos, produtos, alimentos..." />
-        </div>
-      </div>
-
-      {/* Histórico Médico */}
-      <SectionTitle>Histórico Médico</SectionTitle>
-      <CondField label="Cirurgias recentes" checked={!!surgical.cirurgias_recentes}
-        onCheck={v => setS('cirurgias_recentes', v)}
-        detail={surgical.cirurgias_recentes_detalhe} detailLabel="Qual/quando?"
-        onDetail={v => setS('cirurgias_recentes_detalhe', v)} />
-      <CondField label="Prótese metálica" checked={!!surgical.protese_metalica}
-        onCheck={v => setS('protese_metalica', v)}
-        detail={surgical.protese_metalica_regiao} detailLabel="Região"
-        onDetail={v => setS('protese_metalica_regiao', v)} />
-      <CondField label="Desmaios/convulsões" checked={!!surgical.desmaios}
-        onCheck={v => setS('desmaios', v)}
-        detail={surgical.desmaio_porque} detailLabel="Por quê?"
-        onDetail={v => setS('desmaio_porque', v)} />
-      <CondField label="Herpes" checked={!!surgical.herpes}
-        onCheck={v => setS('herpes', v)}
-        detail={surgical.herpes_detalhe} detailLabel="Com que frequência?"
-        onDetail={v => setS('herpes_detalhe', v)} />
-      <CondField label="Alergia a anestesia" checked={!!surgical.alergia_anestesia}
-        onCheck={v => setS('alergia_anestesia', v)}
-        detail={surgical.alergia_anestesia_detalhe} detailLabel="Qual?"
-        onDetail={v => setS('alergia_anestesia_detalhe', v)} />
-      <CondField label="Alergia a abelha/insetos" checked={!!surgical.alergia_abelha}
-        onCheck={v => setS('alergia_abelha', v)}
-        detail={surgical.alergia_abelha_detalhe} detailLabel="Reação"
-        onDetail={v => setS('alergia_abelha_detalhe', v)} />
-      <CondField label="Em tratamento médico" checked={!!surgical.tratamento_medico}
-        onCheck={v => setS('tratamento_medico', v)}
-        detail={surgical.tratamento_medico_detalhe} detailLabel="Qual tratamento?"
-        onDetail={v => setS('tratamento_medico_detalhe', v)} />
-      <YesNo label="Ansiedade" value={surgical.ansioso} onChange={v => setS('ansioso', v)} />
-      <YesNo label="Estresse elevado" value={surgical.estressado} onChange={v => setS('estressado', v)} />
-      <YesNo label="Enxaqueca" value={surgical.enxaqueca} onChange={v => setS('enxaqueca', v)} />
-      <YesNo label="Intestino regular" value={surgical.intestino_regular} onChange={v => setS('intestino_regular', v)} />
-
-      {/* Saúde Feminina */}
-      <SectionTitle>Saúde Feminina</SectionTitle>
-      <div style={{ marginBottom: 8 }}>
-        <div style={{ fontSize: '0.9rem', color: 'var(--text-2)', marginBottom: 6 }}>Gestante?</div>
-        <div style={{ display: 'flex', gap: 20 }}>
-          {(['Sim', 'Não', 'Tentando'] as const).map(opt => (
-            <label key={opt} style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', minHeight: 44 }}>
-              <input type="radio" name="gestante" checked={surgical.gestante === opt.toLowerCase()}
-                onChange={() => setS('gestante', opt.toLowerCase())}
-                style={{ accentColor: 'var(--primary)', width: 18, height: 18 }} />
-              <span style={{ fontSize: '0.9rem' }}>{opt}</span>
-            </label>
-          ))}
-        </div>
-      </div>
-      {surgical.gestante === 'sim' && (
-        <div className="form-grid" style={{ marginBottom: 8 }}>
-          <div className="field">
-            <label className="field-label">Quantas gestações?</label>
-            <input className="field-input" value={surgical.quantas_gestacoes ?? ''}
-              onChange={e => setS('quantas_gestacoes', e.target.value)} />
+    <div style={{ padding: 18, display: 'grid', gap: 12 }}>
+      <div className="card" style={{ padding: 14 }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, flexWrap: 'wrap' }}>
+          <div style={{ flex: 1, minWidth: 220 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+              <FileCheck2 size={17} />
+              <strong>Anamnese atual</strong>
+            </div>
+            {latest ? (
+              <div className="page-sub" style={{ marginTop: 6 }}>
+                Versão {latest.version_number} · concluída em {dateTime(latest.completed_at)}
+              </div>
+            ) : (
+              <div className="page-sub" style={{ marginTop: 6 }}>Nenhuma versão concluída.</div>
+            )}
+            {current?.status === 'draft' && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8, fontSize: 13 }}>
+                <Clock3 size={14} />
+                <strong>Anamnese em atualização</strong>
+                <span className="page-sub">· rascunho salvo {dateTime(current.last_saved_at)}</span>
+              </div>
+            )}
           </div>
-          <div className="field">
-            <label className="field-label">Tipo de parto</label>
-            <input className="field-input" value={surgical.tipo_parto ?? ''}
-              onChange={e => setS('tipo_parto', e.target.value)} placeholder="Normal / Cesárea" />
+          <button
+            className="btn btn--primary btn--sm"
+            type="button"
+            onClick={() => navigate(`/pacientes/${patientId}/anamnese`)}
+          >
+            <PencilLine size={15} />
+            {latest ? 'Atualizar anamnese' : current?.status === 'draft' ? 'Continuar anamnese' : 'Preencher anamnese'}
+          </button>
+        </div>
+      </div>
+
+      <div className="card" style={{ padding: 14 }}>
+        <strong>Histórico</strong>
+        {versions.length === 0 ? (
+          <p className="page-sub" style={{ marginTop: 8 }}>Nenhuma versão concluída ainda.</p>
+        ) : (
+          <div style={{ display: 'grid', gap: 7, marginTop: 10 }}>
+            {versions.map(version => {
+              const open = selectedVersionId === version.id;
+              return (
+                <div key={version.id} style={{ border: '1px solid var(--border)', borderRadius: 9, overflow: 'hidden' }}>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedVersionId(open ? null : version.id)}
+                    style={{ width: '100%', minHeight: 48, display: 'flex', alignItems: 'center', gap: 8, padding: '9px 11px', border: 0, background: 'var(--bg-2)', color: 'var(--text)', textAlign: 'left', cursor: 'pointer' }}
+                  >
+                    <div style={{ flex: 1 }}>
+                      <strong>Versão {version.version_number}</strong>
+                      <div className="page-sub">{dateTime(version.completed_at)}{version.migration_source === 'legacy' ? ' · legado preservado' : ''}</div>
+                    </div>
+                    {open ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                  </button>
+                  {open && <div style={{ padding: '0 10px 10px' }}><HistoricalVersion version={version} /></div>}
+                </div>
+              );
+            })}
           </div>
-        </div>
-      )}
-      <YesNo label="Menstruação regular" value={surgical.menstruacao_regular}
-        onChange={v => setS('menstruacao_regular', v)} />
-      <div className="field" style={{ marginTop: 8 }}>
-        <label className="field-label">Método contraceptivo</label>
-        <input className="field-input" value={surgical.metodo_contraceptivo ?? ''}
-          onChange={e => setS('metodo_contraceptivo', e.target.value)} />
-      </div>
-      <CondField label="TPM intensa" checked={!!surgical.tpm}
-        onCheck={v => setS('tpm', v)}
-        detail={surgical.tpm_o_que_faz} detailLabel="O que costuma fazer?"
-        onDetail={v => setS('tpm_o_que_faz', v)} />
-
-      {/* Hábitos Alimentares */}
-      <SectionTitle>Hábitos Alimentares</SectionTitle>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '0 16px' }}>
-        {([
-          ['refrigerante', 'Refrigerante'],
-          ['fast_food', 'Fast food'],
-          ['doces', 'Doces'],
-          ['frituras', 'Frituras'],
-          ['cigarros', 'Cigarros'],
-          ['bebidas_alcoolicas', 'Bebidas alcoólicas'],
-        ] as [keyof AnamnesisHabits, string][]).map(([key, label]) => (
-          <CheckItem key={key} label={label} checked={!!habits[key]}
-            onChange={v => setH(key, v)} />
-        ))}
-      </div>
-      <CondField label="Alimentação especial / dieta" checked={!!habits.alimentacao_especial}
-        onCheck={v => setH('alimentacao_especial', v)}
-        detail={habits.alimentacao_especial_qual} detailLabel="Qual dieta?"
-        onDetail={v => setH('alimentacao_especial_qual', v)} />
-      <CondField label="Suplementação" checked={!!habits.suplemento}
-        onCheck={v => setH('suplemento', v)}
-        detail={habits.suplemento_quais} detailLabel="Quais suplementos?"
-        onDetail={v => setH('suplemento_quais', v)} />
-      <CondField label="Atividade física" checked={!!habits.atividade_fisica}
-        onCheck={v => setH('atividade_fisica', v)}
-        detail={habits.atividade_fisica_detalhe} detailLabel="Tipo / frequência"
-        onDetail={v => setH('atividade_fisica_detalhe', v)} />
-      <div className="field" style={{ marginTop: 8 }}>
-        <label className="field-label">Quantidade de água por dia</label>
-        <input className="field-input" value={habits.quantidade_agua ?? ''}
-          onChange={e => setH('quantidade_agua', e.target.value)} placeholder="Ex: 2 litros" />
-      </div>
-
-      {/* Rotina Estética */}
-      <SectionTitle>Rotina Estética</SectionTitle>
-      <div className="form-grid">
-        <div className="field field--full">
-          <label className="field-label">Cuidados diários em casa</label>
-          <textarea className="field-input" rows={2} value={aesthetics.cuidados_diarios ?? ''}
-            onChange={e => setA('cuidados_diarios', e.target.value)} placeholder="Sabonete, hidratante, protetor..." />
-        </div>
-        <div className="field field--full">
-          <label className="field-label">Produtos em uso no rosto</label>
-          <textarea className="field-input" rows={2} value={aesthetics.produtos_em_uso ?? ''}
-            onChange={e => setA('produtos_em_uso', e.target.value)} />
-        </div>
-      </div>
-      <CondField label="Usa produto com ácido" checked={!!aesthetics.produto_com_acido}
-        onCheck={v => setA('produto_com_acido', v)}
-        detail={aesthetics.produto_com_acido_detalhe} detailLabel="Qual ácido / concentração?"
-        onDetail={v => setA('produto_com_acido_detalhe', v)} />
-      <CondField label="Limpeza de pele recente" checked={!!aesthetics.limpeza_pele}
-        onCheck={v => setA('limpeza_pele', v)}
-        detail={aesthetics.limpeza_pele_data} detailLabel="Data" detailType="date"
-        onDetail={v => setA('limpeza_pele_data', v)} />
-      <CondField label="Microagulhamento recente" checked={!!aesthetics.microagulhamento}
-        onCheck={v => setA('microagulhamento', v)}
-        detail={aesthetics.microagulhamento_data} detailLabel="Data" detailType="date"
-        onDetail={v => setA('microagulhamento_data', v)} />
-      <CondField label="Peeling recente" checked={!!aesthetics.peeling}
-        onCheck={v => setA('peeling', v)}
-        detail={aesthetics.peeling_detalhe} detailLabel="Tipo / data"
-        onDetail={v => setA('peeling_detalhe', v)} />
-      <CondField label="Toxina botulínica" checked={!!aesthetics.toxina_botulinica}
-        onCheck={v => setA('toxina_botulinica', v)}
-        detail={aesthetics.toxina_botulinica_data} detailLabel="Última aplicação" detailType="date"
-        onDetail={v => setA('toxina_botulinica_data', v)} />
-      <CondField label="Fios de sustentação" checked={!!aesthetics.fios_sustentacao}
-        onCheck={v => setA('fios_sustentacao', v)}
-        detail={aesthetics.fios_sustentacao_data} detailLabel="Quando?" detailType="date"
-        onDetail={v => setA('fios_sustentacao_data', v)} />
-      <CondField label="Preenchimento com ácido hialurônico" checked={!!aesthetics.preenchimento_hialuronico}
-        onCheck={v => setA('preenchimento_hialuronico', v)}
-        detail={aesthetics.preenchimento_hialuronico_data} detailLabel="Quando?" detailType="date"
-        onDetail={v => setA('preenchimento_hialuronico_data', v)} />
-      <CondField label="Bioestimulador" checked={!!aesthetics.bioestimulador}
-        onCheck={v => setA('bioestimulador', v)}
-        detail={aesthetics.bioestimulador_data} detailLabel="Quando?" detailType="date"
-        onDetail={v => setA('bioestimulador_data', v)} />
-      <CondField label="Plástica facial" checked={!!aesthetics.plastica_facial}
-        onCheck={v => setA('plastica_facial', v)}
-        detail={aesthetics.plastica_facial_detalhe} detailLabel="Qual / quando?"
-        onDetail={v => setA('plastica_facial_detalhe', v)} />
-      <CondField label="PMMA" checked={!!aesthetics.pmma}
-        onCheck={v => setA('pmma', v)}
-        detail={aesthetics.pmma_regiao} detailLabel="Região"
-        onDetail={v => setA('pmma_regiao', v)} />
-      <CondField label="Outros tratamentos estéticos" checked={!!aesthetics.outros_tratamentos}
-        onCheck={v => setA('outros_tratamentos', v)}
-        detail={aesthetics.outros_tratamentos_detalhe} detailLabel="Quais?"
-        onDetail={v => setA('outros_tratamentos_detalhe', v)} />
-      <CondField label="Alterações recentes na pele" checked={!!aesthetics.alteracoes_recentes}
-        onCheck={v => setA('alteracoes_recentes', v)}
-        detail={aesthetics.alteracoes_recentes_detalhe} detailLabel="Descrever"
-        onDetail={v => setA('alteracoes_recentes_detalhe', v)} />
-
-      <div style={{ display: 'flex', justifyContent: 'center', marginTop: 24, marginBottom: 8 }}>
-        <SaveBtn />
+        )}
       </div>
     </div>
   );
