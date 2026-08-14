@@ -7,6 +7,7 @@ import { useProcedures } from '../../hooks/useProcedures';
 import { useInjetaveis } from '../../hooks/useInjetaveis';
 import { useMaquininhaConfig, getFeePct } from '../../hooks/useMaquininhaConfig';
 import { useToast } from '../../hooks/useToast';
+import { clearAttendanceInjectableDraft, clearAttendanceInjectablePoints } from '../../lib/attendanceRuntime';
 import type { Patient, Service, PaymentMethod, MaquininhaRates, PaymentEntryUI, CardBrand, SimplePaymentMethod, InjectablePoint } from '../../types';
 const InjetaveisScreen = lazy(() => import('./InjetaveisScreen').then(m => ({ default: m.InjetaveisScreen })));
 import { format } from 'date-fns';
@@ -248,7 +249,6 @@ function EntryCard({
       border: `1.5px solid ${isScheduled ? '#fde68a' : 'var(--border)'}`,
       borderRadius: 12, padding: 16, marginBottom: 12,
     }}>
-      {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
         <span style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--text)' }}>
           Pagamento {index + 1}{isScheduled ? ' 📅' : ''}
@@ -263,7 +263,6 @@ function EntryCard({
         )}
       </div>
 
-      {/* Method selector */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6, marginBottom: 14 }}>
         {(Object.entries(METHOD_LABELS) as [SimplePaymentMethod, string][]).map(([m, label]) => (
           <button
@@ -280,7 +279,6 @@ function EntryCard({
         ))}
       </div>
 
-      {/* Amount */}
       <div style={{ marginBottom: 12 }}>
         <label style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-2)', display: 'block', marginBottom: 4 }}>
           {feePct > 0 && !entry.absorveTaxa ? 'Valor que quero receber (líquido)' : 'Valor cobrado'}
@@ -296,7 +294,6 @@ function EntryCard({
         />
       </div>
 
-      {/* Card brand */}
       {isCard && (
         <div style={{ marginBottom: 12 }}>
           <label style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-2)', display: 'block', marginBottom: 6 }}>Bandeira</label>
@@ -319,7 +316,6 @@ function EntryCard({
         </div>
       )}
 
-      {/* Installments */}
       {isCredit && (
         <div style={{ marginBottom: 12 }}>
           <label style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-2)', display: 'block', marginBottom: 6 }}>Parcelas</label>
@@ -343,7 +339,7 @@ function EntryCard({
               );
             })}
           </div>
-          {isCredit && entry.installments > 1 && clientPays > 0 && (
+          {entry.installments > 1 && clientPays > 0 && (
             <p style={{ marginTop: 6, fontSize: '0.75rem', color: 'var(--text-3)' }}>
               {entry.installments}x de R$ {(clientPays / entry.installments).toFixed(2)}
             </p>
@@ -351,7 +347,6 @@ function EntryCard({
         </div>
       )}
 
-      {/* Fee absorption toggle */}
       {feePct > 0 && (
         <div style={{ marginBottom: 12 }}>
           <label style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-2)', display: 'block', marginBottom: 6 }}>Quem absorve a taxa?</label>
@@ -380,7 +375,6 @@ function EntryCard({
         </div>
       )}
 
-      {/* Date */}
       <div>
         <label style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-2)', display: 'block', marginBottom: 4 }}>
           {isScheduled ? 'Data combinada (agendado)' : 'Data do pagamento'}
@@ -430,7 +424,6 @@ function StepPagamento({
     <div>
       <h2 style={{ fontSize: '1.1rem', fontWeight: 600, marginBottom: 16 }}>Forma de pagamento</h2>
 
-      {/* Summary chips */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginBottom: 20 }}>
         {[
           { label: 'Total', value: total, color: 'var(--text)' },
@@ -444,7 +437,6 @@ function StepPagamento({
         ))}
       </div>
 
-      {/* Entry cards */}
       {entries.map((e, i) => (
         <EntryCard
           key={e.tempId}
@@ -457,7 +449,6 @@ function StepPagamento({
         />
       ))}
 
-      {/* Add entry + balance indicator */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 4 }}>
         <button
           onClick={addEntry}
@@ -663,7 +654,6 @@ export function RegistrarPage() {
     }
   }, [getById, loadingPacientes, loadingServicos, pacientes, patient, routeState.appointmentId, routeState.patient, routeState.patientId, routeState.serviceId, searchParams, services.length, servicos]);
 
-  // Initialize payment entries when entering step 2
   useEffect(() => {
     if (step === 2 && paymentEntries.length === 0 && services.length > 0) {
       const total = services.reduce((s, x) => s + x.price, 0);
@@ -671,10 +661,20 @@ export function RegistrarPage() {
     }
   }, [step, paymentEntries.length, services]);
 
+  useEffect(() => {
+    if (hasInjectables) return;
+    clearAttendanceInjectableDraft();
+    clearAttendanceInjectablePoints();
+    setInjectablePoints([]);
+    setInjetaveisDone(false);
+  }, [hasInjectables]);
+
   const toggleService = (s: Service) =>
     setServices(prev => prev.some(x => x.id === s.id) ? prev.filter(x => x.id !== s.id) : [...prev, s]);
 
   const reset = () => {
+    clearAttendanceInjectableDraft();
+    clearAttendanceInjectablePoints();
     setStep(0);
     setPatient(null);
     setServices([]);
@@ -811,9 +811,10 @@ export function RegistrarPage() {
         )}
       </div>
 
-      {showInjetaveisScreen && (
+      {showInjetaveisScreen && patient && (
         <Suspense fallback={<div className="full-loader">Carregando mapa...</div>}>
           <InjetaveisScreen
+            patientId={patient.id}
             injectableServices={services.filter(s => s.is_injectable)}
             onDone={pts => {
               setInjectablePoints(pts);
@@ -822,6 +823,12 @@ export function RegistrarPage() {
               setStep(2);
             }}
             onCancel={() => {
+              setInjetaveisDone(false);
+              setShowInjetaveisScreen(false);
+              setStep(1);
+            }}
+            onSkip={() => {
+              setInjectablePoints([]);
               setInjetaveisDone(true);
               setShowInjetaveisScreen(false);
               setStep(2);

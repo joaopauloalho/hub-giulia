@@ -4,8 +4,10 @@ import type { Procedure, PaymentMethod } from '../types';
 import { useAtomicAttendance } from './useAtomicAttendance';
 import { POSTGREST_SELECT } from '../lib/postgrestRelationshipHints';
 import {
+  clearAttendanceInjectableDraft,
   clearAttendanceInjectablePoints,
   consumePendingAttendanceError,
+  getAttendanceInjectableDraft,
   getAttendanceInjectablePoints,
   markAtomicAttendanceProcedure,
   setPendingAttendanceError,
@@ -123,6 +125,7 @@ export function useProcedures(patientId?: string) {
           scheduled_date: entry.scheduled_date,
         }));
 
+        const injectableDraft = getAttendanceInjectableDraft();
         const injectablePoints = getAttendanceInjectablePoints(input.services_ids);
         const procedure = await createAtomic({
           idempotency_key: idempotencyKey,
@@ -131,17 +134,20 @@ export function useProcedures(patientId?: string) {
           performed_at: input.performed_at ?? new Date().toISOString(),
           items,
           payment_entries: paymentEntries,
-          injectable_maps: injectablePoints.length > 0 ? [{ points: injectablePoints }] : [],
+          injectable_maps: injectableDraft ? [] : (injectablePoints.length > 0 ? [{ points: injectablePoints }] : []),
+          injectable_draft_id: injectableDraft?.mapId ?? null,
+          injectable_draft_revision: injectableDraft?.revision ?? null,
           notes: input.notes ?? null,
         });
 
-        if (injectablePoints.length > 0) markAtomicAttendanceProcedure(procedure.id);
+        if (injectableDraft || injectablePoints.length > 0) markAtomicAttendanceProcedure(procedure.id);
+        clearAttendanceInjectableDraft();
         clearAttendanceInjectablePoints();
         idempotencyKeyRef.current = null;
         await refresh();
         return procedure;
       } catch (err) {
-        console.error('[attendance:create_procedure_v2]', err);
+        console.error('[attendance:create]', err);
         setPendingAttendanceError(getAttendanceErrorMessage(err));
         throw err;
       }
