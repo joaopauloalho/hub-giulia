@@ -180,15 +180,14 @@ export function useInjectablesV2(patientId?: string) {
 
     const nextMap = data as InjectableDraftMapV2;
     setDraft(nextMap);
-    setApplications(nextApplications);
     return nextMap;
   }, [draft]);
 
-  const discardDraft = useCallback(async () => {
+  const discardDraft = useCallback(async (expectedRevision?: number) => {
     if (!draft) return true;
     const { data, error: discardError } = await supabase.rpc('discard_injectable_draft_v2', {
       p_map_id: draft.id,
-      p_expected_revision: draft.revision,
+      p_expected_revision: expectedRevision ?? draft.revision,
     });
     if (discardError) throw discardError;
     setDraft(null);
