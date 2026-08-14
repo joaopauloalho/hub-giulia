@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from '../lib/supabase';
-import { agendaRange } from '../lib/agendaTime';
+import { agendaRange, clinicDateIso } from '../lib/agendaTime';
 import type { Appointment } from '../types';
 
 export type AgendaStatus = 'pendente' | 'confirmado' | 'realizado' | 'cancelado' | 'nao_compareceu';
@@ -37,13 +37,11 @@ export interface AgendaInput {
 
 type AgendaRange = { from: string; to: string };
 
-function sessionExpiredError() {
-  return new Error('Sua sessão expirou. Entre novamente.');
-}
+function sessionExpiredError() { return new Error('Sua sessão expirou. Entre novamente.'); }
 
 function friendlyAgendaError(error: unknown) {
   const value = error as { code?: string; message?: string } | null;
-  if (value?.code === '23P01' || /appointments_no_active_overlap|exclusion/i.test(value?.message ?? '')) {
+  if (value?.code === '23P01' || /appointments_no_active_overlap|exclusion|APPOINTMENT_TIME_CONFLICT/i.test(value?.message ?? '')) {
     return new Error('Já existe um atendimento nesse horário.');
   }
   if (/APPOINTMENT_STATUS_TRANSITION_INVALID/i.test(value?.message ?? '')) {
@@ -54,8 +52,7 @@ function friendlyAgendaError(error: unknown) {
 
 function normalizeRange(input: AgendaRange | Date): AgendaRange {
   if (!(input instanceof Date)) return input;
-  const dateIso = input.toISOString().slice(0, 10);
-  const range = agendaRange(dateIso, 'day');
+  const range = agendaRange(clinicDateIso(input), 'day');
   return { from: range.from, to: range.to };
 }
 
@@ -82,19 +79,20 @@ export function useAgenda(input: AgendaRange | Date) {
     } catch (err) {
       setAgendamentos([]);
       setError(err instanceof Error ? err.message : 'Erro ao carregar agenda.');
-    } finally {
-      setLoading(false);
-    }
+    } finally { setLoading(false); }
   }, [range.from, range.to]);
 
   useEffect(() => { void refresh(); }, [refresh]);
 
   const syncGoogle = useCallback(async (id: string) => {
-    try {
-      await supabase.functions.invoke('google-calendar-upsert', { body: { appointment_id: id } });
-    } finally {
-      await refresh();
-    }
+    const { error: syncError } = await supabase.functions.invoke('google-calendar-upsert', { body: { appointment_id: id } });
+    const syncedAt = new Date().toISOString();
+    const syncMeta = syncError
+      ? { google_sync_status: 'error', google_sync_error_code: 'google_sync_failed' }
+      : { google_sync_status: 'synced', google_sync_error_code: null, google_last_synced_at: syncedAt };
+    await supabase.from('appointments').update(syncMeta).eq('id', id);
+    await refresh();
+    if (syncError) throw new Error('Agendamento salvo no Hub, mas não sincronizado com o Google.');
   }, [refresh]);
 
   const create = async (data: AgendaInput) => {
@@ -127,11 +125,8 @@ export function useAgenda(input: AgendaRange | Date) {
       return appointment!;
     })();
     createInFlightRef.current = operation;
-    try {
-      return await operation;
-    } finally {
-      if (createInFlightRef.current === operation) createInFlightRef.current = null;
-    }
+    try { return await operation; }
+    finally { if (createInFlightRef.current === operation) createInFlightRef.current = null; }
   };
 
   const update = async (id: string, data: Partial<AgendaInput & { cancellation_reason: string | null }>) => {
