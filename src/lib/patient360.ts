@@ -14,7 +14,7 @@ export function mergeTimelineEvents(current: PatientTimelineEvent[], incoming: P
 }
 
 export function getTimelineCursor(events: PatientTimelineEvent[]) {
-  const last = events.at(-1);
+  const last = events.length > 0 ? events[events.length - 1] : undefined;
   return last ? { at: last.occurredAt, key: last.eventKey } : null;
 }
 

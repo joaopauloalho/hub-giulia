@@ -53,14 +53,27 @@ export function useProcedures(patientId?: string) {
     setError(null);
 
     try {
-      let q = supabase
-        .from('procedures')
-        .select(patientId ? '*, items:procedure_items(*), payments:procedure_payments(*)' : '*')
-        .order('performed_at', { ascending: false });
-      if (patientId) q = q.eq('patient_id', patientId);
-      const { data, error: proceduresError } = await q;
-      if (proceduresError) throw proceduresError;
-      setProcedures((data ?? []) as Procedure[]);
+      if (patientId) {
+        const { data, error: proceduresError } = await supabase
+          .from('procedures')
+          .select('*, procedure_items(*), procedure_payments(*)')
+          .eq('patient_id', patientId)
+          .order('performed_at', { ascending: false });
+        if (proceduresError) throw proceduresError;
+        const rows = (data ?? []).map(row => ({
+          ...row,
+          items: row.procedure_items ?? [],
+          payments: row.procedure_payments ?? [],
+        }));
+        setProcedures(rows as unknown as Procedure[]);
+      } else {
+        const { data, error: proceduresError } = await supabase
+          .from('procedures')
+          .select('*')
+          .order('performed_at', { ascending: false });
+        if (proceduresError) throw proceduresError;
+        setProcedures((data ?? []) as Procedure[]);
+      }
     } catch (err) {
       console.error('[useProcedures.refresh]', err);
       setProcedures([]);
@@ -81,9 +94,7 @@ export function useProcedures(patientId?: string) {
 
     const operation = (async () => {
       try {
-        if (!input.payment_entries || input.payment_entries.length === 0) {
-          throw new Error('ATTENDANCE_PAYMENTS_REQUIRED');
-        }
+        if (!input.payment_entries || input.payment_entries.length === 0) throw new Error('ATTENDANCE_PAYMENTS_REQUIRED');
 
         const { data: serviceRows, error: servicesError } = await supabase
           .from('services')
@@ -91,15 +102,10 @@ export function useProcedures(patientId?: string) {
           .in('id', input.services_ids);
         if (servicesError) throw servicesError;
 
-        const priceByService = new Map(
-          (serviceRows ?? []).map(service => [service.id, Number(service.price)]),
-        );
-
+        const priceByService = new Map((serviceRows ?? []).map(service => [service.id, Number(service.price)]));
         const items = input.services_ids.map(serviceId => {
           const price = priceByService.get(serviceId);
-          if (price === undefined || !Number.isFinite(price)) {
-            throw new Error('ATTENDANCE_SERVICE_FORBIDDEN');
-          }
+          if (price === undefined || !Number.isFinite(price)) throw new Error('ATTENDANCE_SERVICE_FORBIDDEN');
           return { service_id: serviceId, qty: 1, final_price: price };
         });
 

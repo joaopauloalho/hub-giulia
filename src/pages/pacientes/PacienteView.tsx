@@ -30,7 +30,8 @@ interface Props {
 
 const TABS = [
   ['Visão geral', 'overview'],
-  ['Histórico', 'timeline'],
+  ['Histórico 360', 'timeline'],
+  ['Atendimentos', 'procedures'],
   ['Anamnese', 'anamnesis'],
   ['Fotos', 'photos'],
   ['Injetáveis', 'injectables'],
@@ -66,7 +67,7 @@ export function PacienteView({ patient, archived = false, sourceAppointmentId, o
       message: archived ? `Restaurar ${patient.name} para a lista ativa?` : `Arquivar ${patient.name}? O histórico clínico e financeiro será preservado e poderá ser restaurado.`,
       confirmLabel: archived ? 'Restaurar' : 'Arquivar',
       cancelLabel: 'Cancelar',
-      tone: archived ? 'warning' : 'warning',
+      tone: 'warning',
     });
     if (!ok) return;
     try {
@@ -81,7 +82,7 @@ export function PacienteView({ patient, archived = false, sourceAppointmentId, o
   const openTimelineEvent = (eventType: string) => {
     if (eventType === 'appointment') { navigate('/agenda'); return; }
     if (eventType === 'return') { navigate(`/retornos?patient_id=${patient.id}`); return; }
-    if (eventType === 'procedure') setTab('timeline');
+    if (eventType === 'procedure') setTab('procedures');
     if (eventType === 'photo') setTab('photos');
     if (eventType === 'note') setTab('notes');
     if (eventType === 'contract') setTab('contracts');
@@ -122,8 +123,9 @@ export function PacienteView({ patient, archived = false, sourceAppointmentId, o
       </div>
 
       <div className="drawer-body">
-        {tab === 'overview' ? <OverviewTab patientId={patient.id} onAgenda={schedule} onReturns={() => navigate(`/retornos?patient_id=${patient.id}`)} onHistory={() => setTab('timeline')} onFinance={() => setTab('finance')} onNotes={() => setTab('notes')} onAnamnesis={() => setTab('anamnesis')} onTimeline={() => setTab('timeline')} /> : <Suspense fallback={<div className="loading-state">Carregando...</div>}>
+        {tab === 'overview' ? <OverviewTab patientId={patient.id} onAgenda={schedule} onReturns={() => navigate(`/retornos?patient_id=${patient.id}`)} onHistory={() => setTab('procedures')} onFinance={() => setTab('finance')} onNotes={() => setTab('notes')} onAnamnesis={() => setTab('anamnesis')} onTimeline={() => setTab('timeline')} /> : <Suspense fallback={<div className="loading-state">Carregando...</div>}>
           {tab === 'timeline' && <TimelineTab patientId={patient.id} onOpen={openTimelineEvent} />}
+          {tab === 'procedures' && <HistoricoTab patientId={patient.id} onPhotos={() => setTab('photos')} onInjectables={() => setTab('injectables')} />}
           {tab === 'anamnesis' && <AnamneseTab patientId={patient.id} />}
           {tab === 'photos' && <FotosTab patientId={patient.id} />}
           {tab === 'injectables' && <InjetaveisTab patientId={patient.id} patientName={patient.name} />}
