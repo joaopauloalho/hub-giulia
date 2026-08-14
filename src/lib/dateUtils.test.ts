@@ -58,6 +58,12 @@ describe('Agenda timezone America/Sao_Paulo', () => {
     expect(displayEndTime(start, 30)).toBe('14:30');
   });
 
+  it('keeps midnight on the intended clinic date', () => {
+    const start = clinicLocalToIso('2026-08-13', '00:00');
+    expect(start).toBe('2026-08-13T03:00:00.000Z');
+    expect(clinicDateIso(start)).toBe('2026-08-13');
+  });
+
   it('keeps 23:30 on the intended clinic date across a month boundary', () => {
     const start = clinicLocalToIso('2026-08-31', '23:30');
     expect(start).toBe('2026-09-01T02:30:00.000Z');
