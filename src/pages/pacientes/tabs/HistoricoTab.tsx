@@ -1,23 +1,32 @@
-import { useMemo, useState } from 'react';
-import { Camera, ChevronRight, ClipboardList, Loader2, MapPin } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { Camera, ChevronRight, ClipboardList, FileText, Loader2, MapPin } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { useProcedures } from '../../../hooks/useProcedures';
+import { useContracts } from '../../../hooks/useContracts';
 import { getProcedureFinancials, procedureServiceNames } from '../../../lib/financeIntegrity';
-import type { Procedure, ProcedurePayment } from '../../../types';
+import type { Contract, Procedure, ProcedurePayment } from '../../../types';
 
 interface Props {
   patientId: string;
   onPhotos?: () => void;
   onInjectables?: () => void;
+  onContract?: (procedureId: string) => void;
 }
 
 const PAYMENT_LABELS: Record<string, string> = {
   dinheiro: 'Dinheiro',
+  pix: 'PIX',
   cartao_credito: 'Crédito',
   cartao_debito: 'Débito',
-  pix: 'PIX',
   pix_parcelado: 'PIX parcelado',
+};
+
+const CONTRACT_STATUS: Record<Contract['status'], string> = {
+  draft: 'Rascunho',
+  ready: 'Aguardando assinatura',
+  signed: 'Assinado',
+  voided: 'Anulado',
 };
 
 function currency(value: number) {
@@ -30,7 +39,7 @@ function paymentLabel(payment: ProcedurePayment) {
   return base;
 }
 
-function ProcedureCard({ proc, onPhotos, onInjectables }: { proc: Procedure; onPhotos?: () => void; onInjectables?: () => void }) {
+function ProcedureCard({ proc, contracts, onPhotos, onInjectables, onContract }: { proc: Procedure; contracts: Contract[]; onPhotos?: () => void; onInjectables?: () => void; onContract?: (procedureId: string) => void }) {
   const [open, setOpen] = useState(false);
   const finance = getProcedureFinancials(proc);
   const items = proc.items ?? [];
@@ -69,16 +78,41 @@ function ProcedureCard({ proc, onPhotos, onInjectables }: { proc: Procedure; onP
         <div style={{ display: 'flex', justifyContent: 'space-between' }}><span className="page-sub">Pendente</span><strong>{currency(finance.pendente)}</strong></div>
       </section>
 
+      <section>
+        <strong style={{ fontSize: 12, textTransform: 'uppercase', letterSpacing: '.04em' }}>Documentos</strong>
+        <div style={{ display: 'grid', gap: 7, marginTop: 8 }}>
+          {contracts.length > 0 ? contracts.map(contract => <div key={contract.id} style={{ display: 'flex', gap: 8, alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap' }}>
+            <div><span style={{ fontSize: 13 }}>{contract.document_name_snapshot ?? contract.template?.name ?? 'Contrato'}</span><div className="page-sub">{CONTRACT_STATUS[contract.status]}</div></div>
+            {contract.pdf_download_url && <a className="btn btn--ghost btn--sm" href={contract.pdf_download_url} target="_blank" rel="noopener noreferrer">Abrir PDF</a>}
+          </div>) : <span className="page-sub">Nenhum documento vinculado a este atendimento.</span>}
+        </div>
+      </section>
+
       {proc.notes && <section><strong style={{ fontSize: 12, textTransform: 'uppercase', letterSpacing: '.04em' }}>Observações</strong><p style={{ fontSize: 13, marginTop: 6, lineHeight: 1.5 }}>{proc.notes}</p></section>}
       {proc.appointment_id && <div className="page-sub">Originado do agendamento {proc.appointment_id.slice(0, 8)}…</div>}
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>{onPhotos && <button className="btn btn--ghost btn--sm" onClick={onPhotos}><Camera size={14} /> Fotos</button>}{onInjectables && <button className="btn btn--ghost btn--sm" onClick={onInjectables}><MapPin size={14} /> Injetáveis</button>}</div>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        {onContract && <button className="btn btn--secondary btn--sm" onClick={() => onContract(proc.id)}><FileText size={14} /> Gerar documento</button>}
+        {onPhotos && <button className="btn btn--ghost btn--sm" onClick={onPhotos}><Camera size={14} /> Fotos</button>}
+        {onInjectables && <button className="btn btn--ghost btn--sm" onClick={onInjectables}><MapPin size={14} /> Injetáveis</button>}
+      </div>
     </div>}
   </div>;
 }
 
-export function HistoricoTab({ patientId, onPhotos, onInjectables }: Props) {
+export function HistoricoTab({ patientId, onPhotos, onInjectables, onContract }: Props) {
   const { procedures, loading, error } = useProcedures(patientId);
+  const { contracts, load: loadContracts } = useContracts(patientId);
   const total = useMemo(() => procedures.reduce((sum, proc) => sum + getProcedureFinancials(proc).venda, 0), [procedures]);
+  const contractsByProcedure = useMemo(() => {
+    const map = new Map<string, Contract[]>();
+    for (const contract of contracts) {
+      if (!contract.procedure_id) continue;
+      map.set(contract.procedure_id, [...(map.get(contract.procedure_id) ?? []), contract]);
+    }
+    return map;
+  }, [contracts]);
+
+  useEffect(() => { void loadContracts(); }, [loadContracts]);
 
   if (error) return <div className="empty-state" style={{ padding: '48px 20px' }}><p>{error}</p></div>;
   if (loading) return <div style={{ display: 'flex', justifyContent: 'center', padding: 48 }}><Loader2 size={24} className="spin" style={{ color: 'var(--primary)' }} /></div>;
@@ -86,6 +120,6 @@ export function HistoricoTab({ patientId, onPhotos, onInjectables }: Props) {
 
   return <div style={{ padding: '0 0 16px' }}>
     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14, padding: '10px 14px', background: 'var(--bg-2)', borderRadius: 10, border: '1px solid var(--border)' }}><span className="page-sub">{procedures.length} atendimento{procedures.length !== 1 ? 's' : ''}</span><strong style={{ color: 'var(--primary)' }}>Total: {currency(total)}</strong></div>
-    {procedures.map(proc => <ProcedureCard key={proc.id} proc={proc} onPhotos={onPhotos} onInjectables={onInjectables} />)}
+    {procedures.map(proc => <ProcedureCard key={proc.id} proc={proc} contracts={contractsByProcedure.get(proc.id) ?? []} onPhotos={onPhotos} onInjectables={onInjectables} onContract={onContract} />)}
   </div>;
 }

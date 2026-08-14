@@ -43,13 +43,19 @@ const TABS = [
 ] as const;
 export type TabKey = typeof TABS[number][1];
 
+type SignatureRequest = {
+  contractId?: string;
+  procedureId?: string;
+  appointmentId?: string;
+};
+
 const initials = (name: string) => name.split(' ').slice(0, 2).map(word => word[0]).join('').toUpperCase();
 
 export function PacienteView({ patient, archived = false, sourceAppointmentId, initialTab, onClose, onUpdate, onArchive, onRestore }: Props) {
   const navigate = useNavigate();
   const { confirm, toast } = useToast();
   const [tab, setTab] = useState<TabKey>(initialTab ?? 'overview');
-  const [showSignature, setShowSignature] = useState(false);
+  const [signatureRequest, setSignatureRequest] = useState<SignatureRequest | null>(null);
 
   useEffect(() => {
     if (initialTab) setTab(initialTab);
@@ -95,8 +101,17 @@ export function PacienteView({ patient, archived = false, sourceAppointmentId, i
     if (eventType === 'injectable') setTab('injectables');
   };
 
-  if (showSignature) {
-    return <Suspense fallback={<div className="full-loader">Carregando assinatura...</div>}><SignatureScreen patient={patient} onClose={() => setShowSignature(false)} onDone={() => { setShowSignature(false); setTab('contracts'); }} /></Suspense>;
+  if (signatureRequest) {
+    return <Suspense fallback={<div className="full-loader">Carregando assinatura...</div>}>
+      <SignatureScreen
+        patient={patient}
+        contractId={signatureRequest.contractId ?? null}
+        initialProcedureId={signatureRequest.procedureId ?? null}
+        initialAppointmentId={signatureRequest.appointmentId ?? null}
+        onClose={() => setSignatureRequest(null)}
+        onDone={() => { setSignatureRequest(null); setTab('contracts'); }}
+      />
+    </Suspense>;
   }
 
   return <div className="drawer-overlay" onClick={onClose}>
@@ -130,12 +145,12 @@ export function PacienteView({ patient, archived = false, sourceAppointmentId, i
       <div className="drawer-body">
         {tab === 'overview' ? <OverviewTab patientId={patient.id} onAgenda={schedule} onReturns={() => navigate(`/retornos?patient_id=${patient.id}`)} onHistory={() => setTab('procedures')} onFinance={() => setTab('finance')} onNotes={() => setTab('notes')} onAnamnesis={() => setTab('anamnesis')} onTimeline={() => setTab('timeline')} /> : <Suspense fallback={<div className="loading-state">Carregando...</div>}>
           {tab === 'timeline' && <TimelineTab patientId={patient.id} onOpen={openTimelineEvent} />}
-          {tab === 'procedures' && <HistoricoTab patientId={patient.id} onPhotos={() => setTab('photos')} onInjectables={() => setTab('injectables')} />}
+          {tab === 'procedures' && <HistoricoTab patientId={patient.id} onPhotos={() => setTab('photos')} onInjectables={() => setTab('injectables')} onContract={procedureId => setSignatureRequest({ procedureId })} />}
           {tab === 'anamnesis' && <AnamneseTab patientId={patient.id} />}
           {tab === 'photos' && <FotosTab patientId={patient.id} />}
           {tab === 'injectables' && <InjetaveisTab patientId={patient.id} patientName={patient.name} />}
           {tab === 'finance' && <FinanceiroPacienteTab patientId={patient.id} />}
-          {tab === 'contracts' && <ContratosTab patientId={patient.id} onSignNew={() => setShowSignature(true)} />}
+          {tab === 'contracts' && <ContratosTab patientId={patient.id} onSignNew={contractId => setSignatureRequest(contractId ? { contractId } : sourceAppointmentId ? { appointmentId: sourceAppointmentId } : {})} />}
           {tab === 'notes' && <NotasTab patientId={patient.id} />}
           {tab === 'data' && <DadosTab patient={patient} onUpdate={onUpdate} />}
         </Suspense>}

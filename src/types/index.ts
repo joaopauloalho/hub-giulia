@@ -157,7 +157,61 @@ export interface ContractTemplate {
   user_id: string;
   name: string;
   body: string;
+  active: boolean;
+  current_version_id: string | null;
   created_at: string;
+  updated_at: string;
+}
+
+export interface ContractTemplateVersion {
+  id: string;
+  template_id: string;
+  user_id: string;
+  version_number: number;
+  name_snapshot: string;
+  body: string;
+  variables: string[];
+  created_by: string;
+  created_at: string;
+}
+
+export interface ProfessionalProfile {
+  user_id: string;
+  display_name: string;
+  profession: string | null;
+  professional_registration: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export type ContractStatus = 'draft' | 'ready' | 'signed' | 'voided';
+
+export interface PreparedContract {
+  id: string;
+  status: ContractStatus;
+  template_id: string;
+  template_version_id: string;
+  document_name: string;
+  rendered_content: string;
+  patient_snapshot: { name: string; cpf: string | null };
+  professional_snapshot: {
+    display_name: string;
+    profession: string;
+    professional_registration: string;
+  };
+  services_snapshot: Array<{
+    procedure_item_id?: string;
+    service_id?: string;
+    name: string;
+    quantity: number;
+    list_price?: number;
+    final_price?: number;
+    discount?: number;
+  }>;
+  financial_snapshot: { currency: 'BRL'; total_value: number } | null;
+  context_snapshot: Record<string, unknown>;
+  content_sha256: string;
+  ready_at: string;
 }
 
 export interface Contract {
@@ -165,10 +219,34 @@ export interface Contract {
   patient_id: string;
   user_id: string;
   template_id: string | null;
-  signed_at: string;
+  template_version_id: string | null;
+  appointment_id: string | null;
+  procedure_id: string | null;
+  status: ContractStatus;
+  source_type: 'legacy' | 'v2';
+  document_schema_version: number;
+  document_name_snapshot: string | null;
+  patient_snapshot: PreparedContract['patient_snapshot'] | null;
+  professional_snapshot: PreparedContract['professional_snapshot'] | null;
+  services_snapshot: PreparedContract['services_snapshot'] | null;
+  financial_snapshot: PreparedContract['financial_snapshot'];
+  context_snapshot: Record<string, unknown> | null;
+  variables_snapshot: Record<string, string> | null;
+  rendered_content_snapshot: string | null;
+  content_sha256: string | null;
+  signed_at: string | null;
+  ready_at: string | null;
+  voided_at: string | null;
+  void_reason: string | null;
   signature_data: string | null;
+  signature_path: string | null;
+  signature_sha256: string | null;
   pdf_url: string | null;
-  template?: Pick<ContractTemplate, 'name'>;
+  pdf_path: string | null;
+  pdf_sha256: string | null;
+  created_at: string | null;
+  template?: Pick<ContractTemplate, 'name'> | null;
+  pdf_download_url?: string | null;
 }
 
 export type ServiceType = 'servico' | 'combo' | 'plano' | 'produto';

@@ -181,7 +181,7 @@ export function usePatientTimeline(patientId: string, pageSize = 20) {
     setError(null);
     try {
       const cursor = append ? getTimelineCursor(events) : null;
-      const { data, error: rpcError } = await supabase.rpc('list_patient_timeline_v2', {
+      const { data, error: rpcError } = await supabase.rpc('list_patient_timeline_v3', {
         p_patient_id: patientId,
         p_limit: pageSize,
         p_cursor_at: cursor?.at ?? null,
