@@ -3,7 +3,6 @@ import { supabase } from '../lib/supabase';
 import {
   ANAMNESIS_AUTOSAVE_MS,
   ANAMNESIS_FORM_SCHEMA_VERSION,
-  clearAllAnamnesisRecoveries,
   clearAnamnesisRecovery,
   currentRowToDraft,
   draftToRpcAnswers,
@@ -305,13 +304,6 @@ export function useAnamneseDraftV2(patientId: string) {
     };
     window.addEventListener('beforeunload', beforeUnload);
     return () => window.removeEventListener('beforeunload', beforeUnload);
-  }, []);
-
-  useEffect(() => {
-    const { data } = supabase.auth.onAuthStateChange(event => {
-      if (event === 'SIGNED_OUT') void clearAllAnamnesisRecoveries();
-    });
-    return () => data.subscription.unsubscribe();
   }, []);
 
   const retry = useCallback(async () => {
