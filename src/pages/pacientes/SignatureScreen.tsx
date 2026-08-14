@@ -134,7 +134,7 @@ export function SignatureScreen({ patient, contractId, initialProcedureId, initi
       window.removeEventListener('orientationchange', resize);
       cancelAnimationFrame(frame);
     };
-  }, [prepared?.id]);
+  }, [prepared]);
 
   const selectedTemplate = templates.find(item => item.id === selectedTemplateId) ?? null;
   const selectedContext = contexts.find(item => item.key === selectedContextKey) ?? contexts[0];
