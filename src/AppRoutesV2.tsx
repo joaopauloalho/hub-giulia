@@ -7,6 +7,7 @@ const LoginPage = lazy(() => import('./pages/auth/LoginPage').then(module => ({ 
 const AgendaPage = lazy(() => import('./pages/agenda/AgendaPage').then(module => ({ default: module.AgendaPage })));
 const DashboardPage = lazy(() => import('./pages/dashboard/DashboardPage').then(module => ({ default: module.DashboardPage })));
 const PacientesPage = lazy(() => import('./pages/pacientes/PacientesPage').then(module => ({ default: module.PacientesPage })));
+const AnamneseEditorPage = lazy(() => import('./pages/pacientes/AnamneseEditorPage').then(module => ({ default: module.AnamneseEditorPage })));
 const RegistrarPage = lazy(() => import('./pages/registrar/RegistrarPage').then(module => ({ default: module.RegistrarPage })));
 const FinanceiroPage = lazy(() => import('./pages/financeiro/FinanceiroPage').then(module => ({ default: module.FinanceiroPage })));
 const CatalogoPage = lazy(() => import('./pages/catalogo/CatalogoPage').then(module => ({ default: module.CatalogoPage })));
@@ -32,6 +33,7 @@ export default function AppRoutesV2() {
             <Route path="agenda" element={<AgendaPage />} />
             <Route path="retornos" element={<RetornosHubPage />} />
             <Route path="pacientes" element={<PacientesPage />} />
+            <Route path="pacientes/:patientId/anamnese" element={<AnamneseEditorPage />} />
             <Route path="registrar" element={<RegistrarPage />} />
             <Route path="financeiro" element={<FinanceiroPage />} />
             <Route path="catalogo" element={<CatalogoPage />} />
