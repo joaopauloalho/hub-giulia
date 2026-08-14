@@ -8,6 +8,9 @@ import type {
   VoucherRecord,
 } from '../types/packages';
 
+type DatabaseRow = Record<string, unknown>;
+type PackageMutationResult = DatabaseRow;
+
 const numberFields = [
   'quantity_granted',
   'commercial_value_snapshot',
@@ -19,22 +22,22 @@ const numberFields = [
   'available_balance',
 ] as const;
 
-function normalizeEntitlement(row: any): PatientEntitlement {
-  const next = { ...row } as any;
+function normalizeEntitlement(row: DatabaseRow): PatientEntitlement {
+  const next: DatabaseRow = { ...row };
   for (const field of numberFields) {
     if (next[field] != null) next[field] = Number(next[field]);
   }
-  return next as PatientEntitlement;
+  return next as unknown as PatientEntitlement;
 }
 
-function normalizeSummary(row: any): PatientPackageSummary {
+function normalizeSummary(row: DatabaseRow): PatientPackageSummary {
   return {
     ...row,
     item_count: Number(row.item_count ?? 0),
     quantity_granted: Number(row.quantity_granted ?? 0),
     raw_balance: Number(row.raw_balance ?? 0),
     available_balance: Number(row.available_balance ?? 0),
-  } as PatientPackageSummary;
+  } as unknown as PatientPackageSummary;
 }
 
 export async function fetchPatientEntitlements(patientId: string, serviceIds?: string[]) {
@@ -48,7 +51,7 @@ export async function fetchPatientEntitlements(patientId: string, serviceIds?: s
   if (serviceIds?.length) query = query.in('service_id', serviceIds);
   const { data, error } = await query;
   if (error) throw error;
-  return (data ?? []).map(normalizeEntitlement);
+  return ((data ?? []) as DatabaseRow[]).map(normalizeEntitlement);
 }
 
 export function usePatientEntitlements(patientId?: string | null, serviceIds?: string[]) {
@@ -102,8 +105,11 @@ export function usePatientPackages(patientId?: string | null) {
       ]);
       if (packageError) throw packageError;
       if (ledgerError) throw ledgerError;
-      setPackages((packageRows ?? []).map(normalizeSummary));
-      setLedger((ledgerRows ?? []).map((row: any) => ({ ...row, quantity_delta: Number(row.quantity_delta) })) as PackageLedgerMovement[]);
+      setPackages(((packageRows ?? []) as DatabaseRow[]).map(normalizeSummary));
+      setLedger(((ledgerRows ?? []) as DatabaseRow[]).map(row => ({
+        ...row,
+        quantity_delta: Number(row.quantity_delta),
+      })) as unknown as PackageLedgerMovement[]);
     } finally {
       setLoading(false);
     }
@@ -140,7 +146,7 @@ export function usePackagesActions() {
     reason: string;
     notes?: string | null;
     idempotencyKey?: string;
-  }) => call<any>('create_manual_package_v1', {
+  }) => call<PackageMutationResult>('create_manual_package_v1', {
     p_idempotency_key: input.idempotencyKey ?? crypto.randomUUID(),
     p_patient_id: input.patientId,
     p_title: input.title,
@@ -153,7 +159,7 @@ export function usePackagesActions() {
   }), [call]);
 
   const createFromProposal = useCallback((proposalVersionId: string, options?: { validFrom?: string | null; validUntil?: string | null; notes?: string | null; idempotencyKey?: string }) =>
-    call<any>('create_package_from_proposal_v1', {
+    call<PackageMutationResult>('create_package_from_proposal_v1', {
       p_proposal_version_id: proposalVersionId,
       p_idempotency_key: options?.idempotencyKey ?? crypto.randomUUID(),
       p_valid_from: options?.validFrom ?? null,
@@ -161,19 +167,19 @@ export function usePackagesActions() {
       p_notes: options?.notes ?? null,
     }), [call]);
 
-  const activate = useCallback((packageId: string) => call<any>('activate_package_v1', {
+  const activate = useCallback((packageId: string) => call<PackageMutationResult>('activate_package_v1', {
     p_package_id: packageId,
     p_idempotency_key: crypto.randomUUID(),
   }), [call]);
 
-  const adjust = useCallback((packageItemId: string, quantityDelta: number, reason: string) => call<any>('adjust_package_credit_v1', {
+  const adjust = useCallback((packageItemId: string, quantityDelta: number, reason: string) => call<PackageMutationResult>('adjust_package_credit_v1', {
     p_package_item_id: packageItemId,
     p_quantity_delta: quantityDelta,
     p_reason: reason,
     p_idempotency_key: crypto.randomUUID(),
   }), [call]);
 
-  const voidPackage = useCallback((packageId: string, reason: string) => call<any>('void_package_v1', {
+  const voidPackage = useCallback((packageId: string, reason: string) => call<PackageMutationResult>('void_package_v1', {
     p_package_id: packageId,
     p_reason: reason,
   }), [call]);
@@ -198,7 +204,7 @@ export function usePackagesActions() {
     p_note: input.note ?? null,
   }), [call]);
 
-  const redeemVoucher = useCallback((code: string, patientId: string) => call<any>('redeem_voucher_v1', {
+  const redeemVoucher = useCallback((code: string, patientId: string) => call<PackageMutationResult>('redeem_voucher_v1', {
     p_code: code,
     p_patient_id: patientId,
   }), [call]);
@@ -208,7 +214,7 @@ export function usePackagesActions() {
     p_reason: reason,
   }), [call]);
 
-  const recordSale = useCallback((packageId: string, entries: PackagePaymentEntry[], idempotencyKey?: string) => call<any>('record_package_sale_v1', {
+  const recordSale = useCallback((packageId: string, entries: PackagePaymentEntry[], idempotencyKey?: string) => call<PackageMutationResult>('record_package_sale_v1', {
     p_package_id: packageId,
     p_idempotency_key: idempotencyKey ?? crypto.randomUUID(),
     p_payment_entries: entries,
