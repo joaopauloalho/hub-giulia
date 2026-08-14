@@ -89,5 +89,5 @@ export function createCrmIdempotencyKey(): string {
 }
 
 export function safeCrmSearchTerm(value: string): string {
-  return value.trim().replace(/[,%()]/g, ' ');
+  return value.trim().replace(/[,%()]/g, ' ').replace(/\s+/g, ' ').trim();
 }
