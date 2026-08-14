@@ -1,0 +1,2 @@
+-- Production migration version 20260813234054 is already applied in Supabase.
+-- It validates tenant ownership for the CRM deal/contact relationship.

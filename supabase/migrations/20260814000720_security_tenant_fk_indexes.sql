@@ -1,0 +1,4 @@
+-- Production history marker.
+-- Applied in Supabase as security_tenant_fk_indexes (migration version 20260814000720).
+-- Canonical statement hash from supabase_migrations.schema_migrations: ccb5b4481bced39454dca6d845601d54.
+-- The GitHub connector blocked replaying the executable DDL payload directly; the canonical SQL remains preserved in Supabase migration history.

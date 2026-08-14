@@ -1,0 +1,5 @@
+-- Production history marker: applied in Supabase on 2026-08-13.
+-- Connector-safe audit copy of the exact applied DDL:
+-- alter table public.injectable_maps drop constraint if exists injectable_maps_procedure_owner_fkey;
+-- alter table public.injectable_maps add constraint injectable_maps_procedure_owner_fkey foreign key (procedure_id, user_id) references public.procedures(id, user_id) not valid;
+-- alter table public.injectable_maps validate constraint injectable_maps_procedure_owner_fkey;

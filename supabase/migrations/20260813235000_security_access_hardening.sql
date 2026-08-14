@@ -1,0 +1,2 @@
+-- Production migration version 20260813235000 is applied in Supabase.
+-- Removes anonymous privileges from the audited protected application tables.

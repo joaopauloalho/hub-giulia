@@ -9,6 +9,10 @@ export interface AppointmentConflict {
   service?: { duration_minutes: number | null } | null;
 }
 
+function sessionExpiredError() {
+  return new Error('Sua sessão expirou. Entre novamente.');
+}
+
 export function useAgenda(date: Date) {
   const [agendamentos, setAgendamentos] = useState<Appointment[]>([]);
   const [loading, setLoading] = useState(true);
@@ -44,37 +48,46 @@ export function useAgenda(date: Date) {
   useEffect(() => { refresh(); }, [refresh]);
 
   const create = async (data: Omit<Appointment, 'id' | 'user_id' | 'created_at' | 'google_event_id' | 'patient' | 'service'>) => {
-    const { data: { user } } = await supabase.auth.getUser();
-    const { data: row, error } = await supabase
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    if (userError || !user) throw sessionExpiredError();
+
+    // user_id is intentionally omitted: Postgres derives it from auth.uid().
+    const { data: row, error: insertError } = await supabase
       .from('appointments')
-      .insert({ ...data, user_id: user!.id })
+      .insert(data)
       .select()
       .single();
-    if (error) throw error;
+    if (insertError) throw insertError;
     await refresh();
     const apt = row as Appointment;
 
-    // Best-effort Google Calendar sync — never blocks the main flow
+    // Best-effort Google Calendar sync — never blocks the local agenda flow.
     supabase.functions.invoke('google-calendar-upsert', {
       body: { appointment_id: apt.id },
-    }).catch(() => {/* silent */});
+    }).catch(() => {/* local agenda remains authoritative */});
 
     return apt;
   };
 
   const update = async (id: string, data: Partial<Omit<Appointment, 'id' | 'user_id' | 'created_at' | 'patient' | 'service'>>) => {
-    const { error } = await supabase.from('appointments').update(data).eq('id', id);
-    if (error) throw error;
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    if (userError || !user) throw sessionExpiredError();
+
+    const { error: updateError } = await supabase.from('appointments').update(data).eq('id', id);
+    if (updateError) throw updateError;
     await refresh();
 
     supabase.functions.invoke('google-calendar-upsert', {
       body: { appointment_id: id },
-    }).catch(() => {/* silent */});
+    }).catch(() => {/* local agenda remains authoritative */});
   };
 
   const remove = async (id: string) => {
-    const { error } = await supabase.from('appointments').delete().eq('id', id);
-    if (error) throw error;
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    if (userError || !user) throw sessionExpiredError();
+
+    const { error: deleteError } = await supabase.from('appointments').delete().eq('id', id);
+    if (deleteError) throw deleteError;
     await refresh();
   };
 

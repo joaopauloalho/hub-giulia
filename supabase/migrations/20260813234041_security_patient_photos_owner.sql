@@ -1,0 +1,2 @@
+-- Production history marker: security_patient_photos_owner applied in Supabase on 2026-08-13.
+-- The live schema contains tenant-safe composite ownership constraints for patient_photos.

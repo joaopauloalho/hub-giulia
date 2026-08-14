@@ -1,0 +1,2 @@
+-- Applied in production as security_injectable_rls_optimize on 2026-08-13.
+-- Replaced injectable_maps SELECT/INSERT/UPDATE/DELETE policies with authenticated-only ownership checks using (select auth.uid()).

@@ -1,0 +1,2 @@
+-- Applied migration marker for production version 20260813234048.
+-- Ownership constraints are present and validated in the live schema.

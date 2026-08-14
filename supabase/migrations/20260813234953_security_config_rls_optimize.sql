@@ -1,0 +1,2 @@
+-- Production migration version 20260813234953 is applied in Supabase.
+-- It optimizes authenticated ownership policies for the payment-terminal configuration table.

@@ -1,61 +1,84 @@
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { createClient } from 'npm:@supabase/supabase-js@2';
 
-const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
-const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-const GOOGLE_CLIENT_ID = Deno.env.get('GOOGLE_CLIENT_ID')!;
-const GOOGLE_CLIENT_SECRET = Deno.env.get('GOOGLE_CLIENT_SECRET')!;
-const GOOGLE_REDIRECT_URI = Deno.env.get('GOOGLE_REDIRECT_URI')!;
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const APP_URL = (Deno.env.get('APP_URL') ?? 'https://hub-giulia.vercel.app').replace(/\/$/, '');
+const STATE_RE = /^[A-Za-z0-9_-]{43}$/;
 
-Deno.serve(async (req) => {
+function redirect(result: 'connected' | 'error' | 'cancelled') {
+  const target = new URL('/agenda', `${APP_URL}/`);
+  target.searchParams.set('google_calendar', result);
+  return Response.redirect(target.toString(), 302);
+}
+
+async function hashState(value: string) {
+  const bytes = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value));
+  return Array.from(new Uint8Array(bytes), byte => byte.toString(16).padStart(2, '0')).join('');
+}
+
+Deno.serve(async (req: Request) => {
+  if (req.method !== 'GET') return new Response('Method Not Allowed', { status: 405 });
+
   const url = new URL(req.url);
+  const state = url.searchParams.get('state');
+  if (!state || !STATE_RE.test(state)) return redirect('error');
+
+  const admin = createClient(
+    Deno.env.get('SUPABASE_URL') ?? '',
+    Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
+    { auth: { persistSession: false, autoRefreshToken: false } },
+  );
+  const stateHash = await hashState(state);
+  const now = new Date().toISOString();
+
+  const { data: claimed } = await admin
+    .from('oauth_states')
+    .update({ consumed_at: now })
+    .eq('state_hash', stateHash)
+    .eq('provider', 'google')
+    .is('consumed_at', null)
+    .gt('expires_at', now)
+    .select('user_id')
+    .maybeSingle();
+
+  if (!claimed) return redirect('error');
+  if (url.searchParams.get('error')) return redirect('cancelled');
+
   const code = url.searchParams.get('code');
-  const userId = url.searchParams.get('state');
-
-  const appUrl = Deno.env.get('APP_URL') ?? 'https://hub-giulia.vercel.app';
-
-  if (!code || !userId) {
-    return Response.redirect(`${appUrl}/?google_error=missing_params`);
-  }
-
-  // TODO(security): replace direct user_id state with a persisted one-time nonce.
-  if (!UUID_RE.test(userId)) {
-    return Response.redirect(`${appUrl}/?google_error=invalid_state`);
-  }
+  const clientId = Deno.env.get('GOOGLE_CLIENT_ID');
+  const clientSecret = Deno.env.get('GOOGLE_CLIENT_SECRET');
+  const redirectUri = Deno.env.get('GOOGLE_REDIRECT_URI');
+  if (!code || !clientId || !clientSecret || !redirectUri) return redirect('error');
 
   try {
-    const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
+    const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({
         code,
-        client_id: GOOGLE_CLIENT_ID,
-        client_secret: GOOGLE_CLIENT_SECRET,
-        redirect_uri: GOOGLE_REDIRECT_URI,
+        client_id: clientId,
+        client_secret: clientSecret,
+        redirect_uri: redirectUri,
         grant_type: 'authorization_code',
       }),
     });
+    if (!tokenResponse.ok) return redirect('error');
 
-    if (!tokenRes.ok) {
-      throw new Error(`Token exchange failed: ${tokenRes.status}`);
-    }
+    const token = await tokenResponse.json() as {
+      access_token?: string;
+      refresh_token?: string;
+      expires_in?: number;
+    };
+    if (!token.access_token || !Number.isFinite(token.expires_in) || Number(token.expires_in) <= 0) return redirect('error');
 
-    const tokens = await tokenRes.json();
-    const expiresAt = new Date(Date.now() + tokens.expires_in * 1000).toISOString();
-
-    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-    const { error } = await supabase.from('google_calendar_tokens').upsert({
-      user_id: userId,
-      access_token: tokens.access_token,
-      refresh_token: tokens.refresh_token,
-      expires_at: expiresAt,
+    const { error } = await admin.rpc('finalize_google_oauth_callback', {
+      p_state_hash: stateHash,
+      p_access_token: token.access_token,
+      p_refresh_token: token.refresh_token ?? '',
+      p_expires_at: new Date(Date.now() + Number(token.expires_in) * 1000).toISOString(),
     });
+    if (error) return redirect('error');
 
-    if (error) throw error;
-
-    return Response.redirect(`${appUrl}/?google_connected=true`);
-  } catch (err) {
-    console.error('google-oauth-callback error:', err);
-    return Response.redirect(`${appUrl}/?google_error=callback_failed`);
+    return redirect('connected');
+  } catch {
+    return redirect('error');
   }
 });

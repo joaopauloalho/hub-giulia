@@ -1,198 +1,240 @@
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import {
+  GOOGLE_REDIRECT_URI,
+  HttpError,
+  assertMethod,
+  authenticate,
+  createAdminClient,
+  json,
+  logSafe,
+  preflight,
+} from '../_shared/google-calendar-security.ts';
 
-const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
-const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!;
-const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-const GOOGLE_CLIENT_ID = Deno.env.get('GOOGLE_CLIENT_ID')!;
-const GOOGLE_CLIENT_SECRET = Deno.env.get('GOOGLE_CLIENT_SECRET')!;
-const GOOGLE_REDIRECT_URI = Deno.env.get('GOOGLE_REDIRECT_URI')!;
-const APP_URL = Deno.env.get('APP_URL');
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const REFRESH_MARGIN_MS = 60_000;
 
-async function refreshAccessToken(refreshToken: string): Promise<{ access_token: string; expires_at: string }> {
+async function markNeedsReauth(admin: ReturnType<typeof createAdminClient>, userId: string) {
+  const { error } = await admin.rpc('mark_google_calendar_needs_reauth', { p_user_id: userId });
+  if (error) logSafe('google-calendar-upsert', 'reauth_marker_failed');
+}
+
+async function refreshAccessToken(
+  admin: ReturnType<typeof createAdminClient>,
+  userId: string,
+  refreshToken: string,
+) {
+  const clientId = Deno.env.get('GOOGLE_CLIENT_ID');
+  const clientSecret = Deno.env.get('GOOGLE_CLIENT_SECRET');
+  if (!clientId || !clientSecret) {
+    throw new HttpError(500, 'server_config', 'Configuracao do Google Calendar indisponivel.');
+  }
+
   const res = await fetch('https://oauth2.googleapis.com/token', {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({
       refresh_token: refreshToken,
-      client_id: GOOGLE_CLIENT_ID,
-      client_secret: GOOGLE_CLIENT_SECRET,
-      redirect_uri: GOOGLE_REDIRECT_URI,
+      client_id: clientId,
+      client_secret: clientSecret,
+      ...(GOOGLE_REDIRECT_URI ? { redirect_uri: GOOGLE_REDIRECT_URI } : {}),
       grant_type: 'refresh_token',
     }),
   });
-  if (!res.ok) throw new Error(`Refresh failed: ${res.status}`);
-  const data = await res.json();
-  return {
+
+  const data = await res.json().catch(() => ({})) as {
+    access_token?: string;
+    refresh_token?: string;
+    expires_in?: number;
+    error?: string;
+  };
+
+  if (!res.ok || data.error === 'invalid_grant') {
+    if (data.error === 'invalid_grant' || res.status === 400 || res.status === 401) {
+      await markNeedsReauth(admin, userId);
+      throw new HttpError(409, 'google_reauth_required', 'Reconecte seu Google Calendar para continuar sincronizando.');
+    }
+    throw new HttpError(502, 'google_refresh_failed', 'Nao foi possivel sincronizar com o Google Calendar agora.');
+  }
+
+  if (!data.access_token || !Number.isFinite(data.expires_in) || Number(data.expires_in) <= 0) {
+    throw new HttpError(502, 'google_refresh_invalid', 'Nao foi possivel sincronizar com o Google Calendar agora.');
+  }
+
+  const expiresAt = new Date(Date.now() + Number(data.expires_in) * 1000).toISOString();
+  const update: Record<string, string> = {
     access_token: data.access_token,
-    expires_at: new Date(Date.now() + data.expires_in * 1000).toISOString(),
+    expires_at: expiresAt,
+    updated_at: new Date().toISOString(),
   };
+  if (data.refresh_token) update.refresh_token = data.refresh_token;
+
+  const { error: updateError } = await admin
+    .from('google_calendar_tokens')
+    .update(update)
+    .eq('user_id', userId);
+  if (updateError) {
+    throw new HttpError(500, 'token_store_failed', 'Nao foi possivel sincronizar com o Google Calendar agora.');
+  }
+
+  return data.access_token;
 }
 
-function isLocalOrigin(origin: string) {
-  try {
-    const { hostname } = new URL(origin);
-    return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1';
-  } catch {
-    return false;
+async function handleGoogleAuthFailure(
+  admin: ReturnType<typeof createAdminClient>,
+  userId: string,
+  status: number,
+) {
+  if (status === 401) {
+    await markNeedsReauth(admin, userId);
+    throw new HttpError(409, 'google_reauth_required', 'Reconecte seu Google Calendar para continuar sincronizando.');
   }
+  throw new HttpError(502, 'google_calendar_failed', 'Nao foi possivel sincronizar com o Google Calendar agora.');
 }
 
-function corsHeaders(req: Request) {
-  const origin = req.headers.get('Origin');
-  const allowOrigin = APP_URL && origin
-    ? (origin === APP_URL || isLocalOrigin(origin) ? origin : APP_URL)
-    : APP_URL ?? '*';
-
-  return {
-    'Access-Control-Allow-Origin': allowOrigin,
-    'Access-Control-Allow-Methods': 'POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-  };
-}
-
-Deno.serve(async (req) => {
-  const cors = corsHeaders(req);
-  const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), {
-    status,
-    headers: { ...cors, 'Content-Type': 'application/json' },
-  });
-
-  if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: cors, status: 204 });
-  }
-
-  if (req.method !== 'POST') {
-    return json({ error: 'Method not allowed' }, 405);
-  }
-
-  const authorization = req.headers.get('Authorization');
-  if (!authorization?.startsWith('Bearer ')) {
-    return json({ synced: false, error: 'Unauthorized' }, 401);
-  }
-
-  const authClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-    global: { headers: { Authorization: authorization } },
-  });
-  const { data: { user }, error: userErr } = await authClient.auth.getUser();
-
-  if (userErr || !user) {
-    return json({ synced: false, error: 'Unauthorized' }, 401);
-  }
-
-  let appointmentId: string;
-  try {
-    const body = await req.json();
-    appointmentId = body.appointment_id;
-    if (!appointmentId) throw new Error('missing appointment_id');
-  } catch {
-    return json({ synced: false, error: 'Invalid body' }, 400);
-  }
+Deno.serve(async (req: Request) => {
+  const cors = preflight(req);
+  if (cors) return cors;
 
   try {
-    const { data: ownerRow, error: ownerErr } = await authClient
-      .from('appointments')
-      .select('id,user_id')
-      .eq('id', appointmentId)
-      .single();
+    assertMethod(req, 'POST');
+    const { user, client } = await authenticate(req);
 
-    if (ownerErr || !ownerRow || ownerRow.user_id !== user.id) {
-      return json({ synced: false, error: 'Forbidden' }, 403);
+    let appointmentId = '';
+    try {
+      const body = await req.json() as { appointment_id?: string };
+      appointmentId = body.appointment_id ?? '';
+    } catch {
+      throw new HttpError(400, 'invalid_body', 'Agendamento invalido.');
+    }
+    if (!UUID_RE.test(appointmentId)) {
+      throw new HttpError(400, 'invalid_appointment', 'Agendamento invalido.');
     }
 
-    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-    const { data: apt, error: aptErr } = await supabase
+    // This read runs in the caller's RLS context. The event id is obtained only
+    // from an appointment the authenticated user owns; it is never accepted from the client.
+    const { data: apt, error: aptError } = await client
       .from('appointments')
-      .select('*, patient:patients(id,name), service:services(id,name,duration_minutes)')
+      .select('id,user_id,patient_id,service_id,scheduled_at,status,google_event_id,patient:patients(id,name),service:services(id,name,duration_minutes)')
       .eq('id', appointmentId)
-      .single();
+      .maybeSingle();
 
-    if (aptErr || !apt) throw new Error(aptErr?.message ?? 'appointment not found');
-    if (apt.user_id !== ownerRow.user_id) {
-      return json({ synced: false, error: 'Forbidden' }, 403);
+    if (aptError || !apt || apt.user_id !== user.id) {
+      throw new HttpError(403, 'appointment_forbidden', 'Agendamento indisponivel.');
     }
 
-    const { data: tokenRow, error: tokenErr } = await supabase
+    const admin = createAdminClient();
+    const { data: tokenRow, error: tokenError } = await admin
       .from('google_calendar_tokens')
-      .select('*')
-      .eq('user_id', apt.user_id)
-      .single();
+      .select('access_token,refresh_token,expires_at')
+      .eq('user_id', user.id)
+      .maybeSingle();
 
-    if (tokenErr || !tokenRow) {
-      return json({ synced: false, error: 'not_connected' });
+    if (tokenError) {
+      throw new HttpError(500, 'token_lookup_failed', 'Nao foi possivel verificar o Google Calendar.');
+    }
+    if (!tokenRow) {
+      return json(req, {
+        synced: false,
+        error: 'google_not_connected',
+        message: 'Conecte seu Google Calendar para sincronizar este agendamento.',
+      }, 409);
     }
 
     let accessToken = tokenRow.access_token;
-    const expiresAt = new Date(tokenRow.expires_at).getTime();
-    if (Date.now() + 60_000 >= expiresAt) {
-      const refreshed = await refreshAccessToken(tokenRow.refresh_token);
-      accessToken = refreshed.access_token;
-      await supabase.from('google_calendar_tokens').update({
-        access_token: refreshed.access_token,
-        expires_at: refreshed.expires_at,
-      }).eq('user_id', apt.user_id);
+    if (Date.now() + REFRESH_MARGIN_MS >= new Date(tokenRow.expires_at).getTime()) {
+      accessToken = await refreshAccessToken(admin, user.id, tokenRow.refresh_token);
     }
 
+    const encodedEventId = apt.google_event_id ? encodeURIComponent(apt.google_event_id) : null;
+
     if (apt.status === 'cancelado') {
-      if (apt.google_event_id) {
+      if (encodedEventId) {
         const deleteRes = await fetch(
-          `https://www.googleapis.com/calendar/v3/calendars/primary/events/${apt.google_event_id}`,
+          `https://www.googleapis.com/calendar/v3/calendars/primary/events/${encodedEventId}`,
           { method: 'DELETE', headers: { Authorization: `Bearer ${accessToken}` } },
         );
         if (!deleteRes.ok && deleteRes.status !== 404 && deleteRes.status !== 410) {
-          throw new Error(`DELETE event failed: ${deleteRes.status}`);
+          await handleGoogleAuthFailure(admin, user.id, deleteRes.status);
         }
-        await supabase
+
+        const { error: clearError } = await client
           .from('appointments')
           .update({ google_event_id: null })
           .eq('id', appointmentId);
+        if (clearError) throw new HttpError(500, 'appointment_sync_store_failed', 'O agendamento local foi mantido, mas a sincronizacao nao foi concluida.');
       }
-      return json({ synced: true, cancelled: true });
+
+      await admin
+        .from('google_calendar_connections')
+        .update({ last_sync_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+        .eq('user_id', user.id);
+      return json(req, { synced: true, cancelled: true });
     }
 
-    const startDt = new Date(apt.scheduled_at);
-    const endDt = new Date(startDt.getTime() + (apt.service?.duration_minutes ?? 60) * 60_000);
-
+    const patient = apt.patient as unknown as { id: string; name: string } | null;
+    const service = apt.service as unknown as { id: string; name: string; duration_minutes: number | null } | null;
+    const start = new Date(apt.scheduled_at);
+    const end = new Date(start.getTime() + (service?.duration_minutes ?? 60) * 60_000);
     const eventBody = {
-      summary: `💆 ${apt.patient?.name ?? 'Paciente'} — ${apt.service?.name ?? 'Consulta'}`,
-      start: { dateTime: startDt.toISOString() },
-      end: { dateTime: endDt.toISOString() },
-      description: apt.notes ? `Observações: ${apt.notes}` : undefined,
+      summary: `${patient?.name ?? 'Paciente'} — ${service?.name ?? 'Consulta'}`,
+      start: { dateTime: start.toISOString() },
+      end: { dateTime: end.toISOString() },
+      description: 'Agendamento sincronizado pelo Hub Giulia.',
     };
 
-    let calEventId: string;
+    let eventId: string | null = null;
 
-    if (apt.google_event_id) {
+    if (encodedEventId) {
       const patchRes = await fetch(
-        `https://www.googleapis.com/calendar/v3/calendars/primary/events/${apt.google_event_id}`,
+        `https://www.googleapis.com/calendar/v3/calendars/primary/events/${encodedEventId}`,
         {
           method: 'PATCH',
           headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
           body: JSON.stringify(eventBody),
-        }
+        },
       );
-      if (!patchRes.ok) throw new Error(`PATCH event failed: ${patchRes.status}`);
-      calEventId = (await patchRes.json()).id;
-    } else {
+
+      if (patchRes.ok) {
+        const patched = await patchRes.json() as { id?: string };
+        eventId = patched.id ?? apt.google_event_id;
+      } else if (patchRes.status !== 404 && patchRes.status !== 410) {
+        await handleGoogleAuthFailure(admin, user.id, patchRes.status);
+      }
+    }
+
+    if (!eventId) {
       const createRes = await fetch(
         'https://www.googleapis.com/calendar/v3/calendars/primary/events',
         {
           method: 'POST',
           headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
           body: JSON.stringify(eventBody),
-        }
+        },
       );
-      if (!createRes.ok) throw new Error(`POST event failed: ${createRes.status}`);
-      calEventId = (await createRes.json()).id;
+      if (!createRes.ok) await handleGoogleAuthFailure(admin, user.id, createRes.status);
+      const created = await createRes.json() as { id?: string };
+      if (!created.id) throw new HttpError(502, 'google_event_invalid', 'Nao foi possivel sincronizar com o Google Calendar agora.');
+      eventId = created.id;
     }
 
-    await supabase
+    const { error: appointmentUpdateError } = await client
       .from('appointments')
-      .update({ google_event_id: calEventId })
+      .update({ google_event_id: eventId })
       .eq('id', appointmentId);
+    if (appointmentUpdateError) {
+      throw new HttpError(500, 'appointment_sync_store_failed', 'O agendamento local foi mantido, mas a sincronizacao nao foi concluida.');
+    }
 
-    return json({ synced: true, google_event_id: calEventId });
-  } catch (err) {
-    console.error('google-calendar-upsert error:', err);
-    return json({ synced: false, error: err instanceof Error ? err.message : String(err) });
+    await admin
+      .from('google_calendar_connections')
+      .update({ connected: true, needs_reauth: false, last_sync_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+      .eq('user_id', user.id);
+
+    return json(req, { synced: true });
+  } catch (error) {
+    const httpError = error instanceof HttpError
+      ? error
+      : new HttpError(500, 'google_sync_failed', 'O agendamento local foi mantido, mas a sincronizacao com o Google nao foi concluida.');
+    logSafe('google-calendar-upsert', httpError.code, httpError.status);
+    return json(req, { synced: false, error: httpError.code, message: httpError.message }, httpError.status);
   }
 });
