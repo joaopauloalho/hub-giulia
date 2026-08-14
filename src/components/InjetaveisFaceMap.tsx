@@ -1,307 +1,198 @@
-import { useRef, useState } from 'react';
-import { Check, X } from 'lucide-react';
-import type { InjectablePoint } from '../types';
+import { useRef } from 'react';
+import { clampNormalized, unitLabel } from '../lib/injectablesV2';
 
 const VB_W = 300;
 const VB_H = 380;
 
-function getServiceConfig(name: string): { step: number; unit: string; min: number } {
-  const n = name.toLowerCase();
-  if (n.includes('botox') || n.includes('toxina') || n.includes('botulin')) {
-    return { step: 1, unit: 'U', min: 1 };
-  }
-  if (n.includes('preenchi') || n.includes('filler') || n.includes('hialur')) {
-    return { step: 0.1, unit: 'ml', min: 0.1 };
-  }
-  if (n.includes('bio') || n.includes('estimulad') || n.includes('bioestimul')) {
-    return { step: 0.1, unit: 'ml', min: 0.1 };
-  }
-  return { step: 1, unit: 'U', min: 1 };
+export interface FaceMapPoint {
+  id: string;
+  applicationId: string;
+  x: number;
+  y: number;
+  quantity: string;
+  unit: string;
+  color: string;
+  label: string;
+  region?: string;
+  side?: string;
 }
 
 interface Props {
-  points: InjectablePoint[];
-  activeServiceId: string | null;
+  points: FaceMapPoint[];
+  activeApplicationId: string | null;
   activeColor: string;
-  activeServiceName: string;
+  selectedPointId: string | null;
   showQuantities: boolean;
-  onAddPoint: (p: Omit<InjectablePoint, 'id'>) => void;
-  onUpdatePoint: (id: string, quantity: number) => void;
-  onDeletePoint: (id: string) => void;
+  readOnly?: boolean;
+  onAddCoordinate: (x: number, y: number) => void;
+  onSelectPoint: (id: string) => void;
+  onMovePoint: (id: string, x: number, y: number) => void;
 }
 
-interface Pending {
-  svgX: number;
-  svgY: number;
-  normX: number;
-  normY: number;
-  clientX: number;
-  clientY: number;
-}
-
-interface Editing {
-  point: InjectablePoint;
-  clientX: number;
-  clientY: number;
+interface DragState {
+  pointId: string;
+  pointerId: number;
+  startX: number;
+  startY: number;
+  moved: boolean;
 }
 
 export function InjetaveisFaceMap({
   points,
-  activeServiceId,
+  activeApplicationId,
   activeColor,
-  activeServiceName,
+  selectedPointId,
   showQuantities,
-  onAddPoint,
-  onUpdatePoint,
-  onDeletePoint,
+  readOnly = false,
+  onAddCoordinate,
+  onSelectPoint,
+  onMovePoint,
 }: Props) {
   const svgRef = useRef<SVGSVGElement>(null);
-  const wrapRef = useRef<HTMLDivElement>(null);
-  const [pending, setPending] = useState<Pending | null>(null);
-  const [pendingQty, setPendingQty] = useState('');
-  const [editing, setEditing] = useState<Editing | null>(null);
-  const [editQty, setEditQty] = useState('');
+  const dragRef = useRef<DragState | null>(null);
 
-  const activeConfig = getServiceConfig(activeServiceName);
-
-  const toRelative = (clientX: number, clientY: number) => {
-    const svg = svgRef.current!;
+  const toNormalized = (clientX: number, clientY: number) => {
+    const svg = svgRef.current;
+    if (!svg) return { x: 0, y: 0 };
     const rect = svg.getBoundingClientRect();
-    const scaleX = VB_W / rect.width;
-    const scaleY = VB_H / rect.height;
     return {
-      svgX: (clientX - rect.left) * scaleX,
-      svgY: (clientY - rect.top) * scaleY,
-      normX: ((clientX - rect.left) * scaleX) / VB_W,
-      normY: ((clientY - rect.top) * scaleY) / VB_H,
+      x: clampNormalized((clientX - rect.left) / rect.width),
+      y: clampNormalized((clientY - rect.top) / rect.height),
     };
   };
 
-  const handleSvgClick = (e: React.MouseEvent<SVGSVGElement>) => {
-    if (!activeServiceId || pending || editing) return;
-    const target = e.target as SVGElement;
-    if (target.closest('[data-point]')) return;
-    const coords = toRelative(e.clientX, e.clientY);
-    setPending({ ...coords, clientX: e.clientX, clientY: e.clientY });
-    setPendingQty('');
+  const handleBackgroundPointerDown = (event: React.PointerEvent<SVGSVGElement>) => {
+    if (readOnly || !activeApplicationId) return;
+    const target = event.target as SVGElement;
+    if (target.closest('[data-injectable-point]')) return;
+    const coordinate = toNormalized(event.clientX, event.clientY);
+    onAddCoordinate(coordinate.x, coordinate.y);
   };
 
-  const handlePointClick = (e: React.MouseEvent, p: InjectablePoint) => {
-    e.stopPropagation();
-    if (pending) return;
-    setEditing({ point: p, clientX: e.clientX, clientY: e.clientY });
-    setEditQty(String(p.quantity));
+  const handlePointPointerDown = (event: React.PointerEvent<SVGGElement>, point: FaceMapPoint) => {
+    event.stopPropagation();
+    onSelectPoint(point.id);
+    if (readOnly) return;
+
+    event.currentTarget.setPointerCapture(event.pointerId);
+    dragRef.current = {
+      pointId: point.id,
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      moved: false,
+    };
   };
 
-  const confirmAdd = () => {
-    if (!pending || !activeServiceId) return;
-    const qty = parseFloat(pendingQty) || activeConfig.min;
-    onAddPoint({
-      x: pending.normX,
-      y: pending.normY,
-      service_id: activeServiceId,
-      service_name: activeServiceName,
-      color: activeColor,
-      quantity: qty,
-      unit: activeConfig.unit,
-    });
-    setPending(null);
-    setPendingQty('');
+  const handlePointPointerMove = (event: React.PointerEvent<SVGGElement>) => {
+    const drag = dragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId || readOnly) return;
+
+    const distance = Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY);
+    if (distance > 3) drag.moved = true;
+    if (!drag.moved) return;
+
+    const coordinate = toNormalized(event.clientX, event.clientY);
+    onMovePoint(drag.pointId, coordinate.x, coordinate.y);
   };
 
-  const confirmEdit = () => {
-    if (!editing) return;
-    onUpdatePoint(editing.point.id, parseFloat(editQty) || editing.point.quantity);
-    setEditing(null);
-  };
-
-  const dismissAll = () => {
-    setPending(null);
-    setEditing(null);
-  };
-
-  const popupStyle = (clientX: number, clientY: number): React.CSSProperties => {
-    const wrap = wrapRef.current?.getBoundingClientRect();
-    if (!wrap) return { position: 'absolute', top: 0, left: 0 };
-    let left = clientX - wrap.left - 65;
-    let top = clientY - wrap.top - 80;
-    if (left < 4) left = 4;
-    if (left + 170 > wrap.width) left = wrap.width - 174;
-    if (top < 4) top = 4;
-    return { position: 'absolute', left, top, zIndex: 20 };
+  const handlePointPointerUp = (event: React.PointerEvent<SVGGElement>) => {
+    const drag = dragRef.current;
+    if (drag?.pointerId === event.pointerId) {
+      try {
+        event.currentTarget.releasePointerCapture(event.pointerId);
+      } catch {
+        // Pointer capture may already have been released by the browser.
+      }
+      dragRef.current = null;
+    }
   };
 
   return (
-    <div ref={wrapRef} style={{ position: 'relative', userSelect: 'none', width: 'min(100%, calc((100svh - 215px) * 0.7895))', margin: '0 auto' }}>
-      {(pending || editing) && (
-        <div
-          style={{ position: 'absolute', inset: 0, zIndex: 15 }}
-          onClick={dismissAll}
-        />
-      )}
-
+    <div className="injectables-map-wrap">
       <svg
         ref={svgRef}
         viewBox={`0 0 ${VB_W} ${VB_H}`}
-        style={{
-          display: 'block',
-          width: '100%',
-          height: 'auto',
-          cursor: activeServiceId && !pending && !editing ? 'crosshair' : 'default',
-          touchAction: 'none',
-        }}
-        onClick={handleSvgClick}
+        className="injectables-face-svg"
+        onPointerDown={handleBackgroundPointerDown}
+        role="img"
+        aria-label="Mapa facial de pontos de aplicação"
       >
-        {/* ── Face image ── */}
-        <image href="/face-botox.png" x="0" y="0" width="300" height="380" preserveAspectRatio="xMidYMid meet"/>
+        <image
+          href="/face-botox.png"
+          x="0"
+          y="0"
+          width={VB_W}
+          height={VB_H}
+          preserveAspectRatio="xMidYMid meet"
+          style={{ pointerEvents: 'none' }}
+        />
 
-        {/* ── Injection points ── */}
-        {points.map(p => (
-          <g
-            key={p.id}
-            data-point="1"
-            onClick={e => handlePointClick(e as React.MouseEvent, p)}
-            style={{ cursor: 'pointer' }}
-          >
-            <circle
-              cx={p.x * VB_W}
-              cy={p.y * VB_H}
-              r={5}
-              fill={p.color}
-              stroke="white"
-              strokeWidth={1.5}
-            />
-            {showQuantities && (
-              <text
-                x={p.x * VB_W}
-                y={p.y * VB_H + 0.5}
-                textAnchor="middle"
-                dominantBaseline="middle"
-                fontSize={5}
-                fontWeight="bold"
-                fill="white"
-                style={{ pointerEvents: 'none' }}
-              >
-                {p.quantity}
-              </text>
-            )}
-          </g>
-        ))}
-
-        {/* Pending preview dot */}
-        {pending && (
-          <circle
-            cx={pending.svgX}
-            cy={pending.svgY}
-            r={5}
-            fill={activeColor}
-            stroke="white"
-            strokeWidth={1.5}
-            opacity={0.6}
-          />
-        )}
-      </svg>
-
-      {/* ── New point quantity input ── */}
-      {pending && (
-        <div style={{
-          ...popupStyle(pending.clientX, pending.clientY),
-          background: 'var(--bg)',
-          border: '1.5px solid var(--border)',
-          borderRadius: 10,
-          padding: '8px 10px',
-          boxShadow: '0 4px 16px rgba(0,0,0,0.18)',
-          display: 'flex',
-          gap: 6,
-          alignItems: 'center',
-          minWidth: 150,
-        }}>
-          <span style={{ width: 10, height: 10, borderRadius: '50%', background: activeColor, flexShrink: 0, display: 'inline-block' }} />
-          <input
-            autoFocus
-            type="number"
-            min={activeConfig.min}
-            step={activeConfig.step}
-            value={pendingQty}
-            onChange={e => setPendingQty(e.target.value)}
-            onKeyDown={e => { if (e.key === 'Enter') confirmAdd(); if (e.key === 'Escape') setPending(null); }}
-            placeholder="Qtd"
-            style={{
-              width: 56, padding: '4px 6px',
-              border: '1px solid var(--border)', borderRadius: 6,
-              fontSize: '0.88rem', background: 'var(--bg-2)', color: 'var(--text)',
-            }}
-          />
-          <span style={{ fontSize: '0.74rem', color: 'var(--text-3)' }}>{activeConfig.unit}</span>
-          <button
-            onClick={confirmAdd}
-            style={{ width: 26, height: 26, borderRadius: '50%', background: 'var(--primary)', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
-          >
-            <Check size={13} color="white" strokeWidth={3} />
-          </button>
-          <button
-            onClick={() => setPending(null)}
-            style={{ width: 26, height: 26, borderRadius: '50%', background: 'var(--bg-2)', border: '1px solid var(--border)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
-          >
-            <X size={12} color="var(--text-3)" />
-          </button>
-        </div>
-      )}
-
-      {/* ── Edit existing point ── */}
-      {editing && (() => {
-        const editConfig = getServiceConfig(editing.point.service_name);
-        return (
-          <div style={{
-            ...popupStyle(editing.clientX, editing.clientY),
-            background: 'var(--bg)',
-            border: '1.5px solid var(--border)',
-            borderRadius: 10,
-            padding: '10px 12px',
-            boxShadow: '0 4px 16px rgba(0,0,0,0.18)',
-            minWidth: 170,
-          }}>
-            <div style={{ fontSize: '0.74rem', color: 'var(--text-3)', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 5 }}>
-              <span style={{ width: 10, height: 10, borderRadius: '50%', background: editing.point.color, flexShrink: 0, display: 'inline-block' }} />
-              {editing.point.service_name}
-            </div>
-            <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 8 }}>
-              <input
-                autoFocus
-                type="number"
-                min={editConfig.min}
-                step={editConfig.step}
-                value={editQty}
-                onChange={e => setEditQty(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter') confirmEdit(); if (e.key === 'Escape') setEditing(null); }}
-                style={{
-                  width: 64, padding: '4px 6px',
-                  border: '1px solid var(--border)', borderRadius: 6,
-                  fontSize: '0.88rem', background: 'var(--bg-2)', color: 'var(--text)',
-                }}
-              />
-              <span style={{ fontSize: '0.74rem', color: 'var(--text-3)' }}>{editing.point.unit || editConfig.unit}</span>
-              <button
-                onClick={confirmEdit}
-                style={{ width: 26, height: 26, borderRadius: '50%', background: 'var(--primary)', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
-              >
-                <Check size={13} color="white" strokeWidth={3} />
-              </button>
-            </div>
-            <button
-              onClick={() => { onDeletePoint(editing.point.id); setEditing(null); }}
-              style={{
-                width: '100%', padding: '5px 0',
-                background: '#fff5f5', border: '1px solid #fecaca',
-                borderRadius: 6, cursor: 'pointer',
-                fontSize: '0.78rem', color: 'var(--red)', fontWeight: 600,
+        {points.map(point => {
+          const selected = point.id === selectedPointId;
+          const label = `${point.label}${point.region ? `, ${point.region}` : ''} — ${point.quantity || 'quantidade não informada'} ${unitLabel(point.unit)}`;
+          return (
+            <g
+              key={point.id}
+              data-injectable-point="true"
+              role="button"
+              tabIndex={0}
+              aria-label={label}
+              onPointerDown={event => handlePointPointerDown(event, point)}
+              onPointerMove={handlePointPointerMove}
+              onPointerUp={handlePointPointerUp}
+              onPointerCancel={() => { dragRef.current = null; }}
+              onKeyDown={event => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault();
+                  onSelectPoint(point.id);
+                }
               }}
+              className="injectables-map-point"
             >
-              Remover ponto
-            </button>
-          </div>
-        );
-      })()}
+              <circle
+                cx={point.x * VB_W}
+                cy={point.y * VB_H}
+                r={12}
+                fill="transparent"
+              />
+              {selected && (
+                <circle
+                  cx={point.x * VB_W}
+                  cy={point.y * VB_H}
+                  r={8}
+                  fill="none"
+                  stroke={point.color}
+                  strokeWidth={1.5}
+                  opacity={0.55}
+                />
+              )}
+              <circle
+                cx={point.x * VB_W}
+                cy={point.y * VB_H}
+                r={selected ? 5.8 : 5}
+                fill={point.color || activeColor}
+                stroke="white"
+                strokeWidth={1.5}
+              />
+              {showQuantities && point.quantity && (
+                <text
+                  x={point.x * VB_W}
+                  y={point.y * VB_H + 0.5}
+                  textAnchor="middle"
+                  dominantBaseline="middle"
+                  fontSize={4.8}
+                  fontWeight="700"
+                  fill="white"
+                  style={{ pointerEvents: 'none' }}
+                >
+                  {point.quantity}
+                </text>
+              )}
+            </g>
+          );
+        })}
+      </svg>
     </div>
   );
 }
