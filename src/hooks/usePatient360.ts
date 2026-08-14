@@ -44,6 +44,9 @@ export interface Patient360Overview {
     allergies: string | null;
     medications: string | null;
     updatedAt: string | null;
+    versionNumber: number | null;
+    draftInProgress: boolean;
+    draftSavedAt: string | null;
   };
 }
 
@@ -71,6 +74,10 @@ type TimelineRow = {
 const number = (value: unknown) => Number(value ?? 0);
 const string = (value: unknown) => typeof value === 'string' ? value : '';
 const nullableString = (value: unknown) => typeof value === 'string' && value ? value : null;
+const nullableNumber = (value: unknown) => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+};
 
 function mapOverview(row: OverviewRow): Patient360Overview {
   const next = row.next_appointment;
@@ -121,6 +128,9 @@ function mapOverview(row: OverviewRow): Patient360Overview {
       allergies: nullableString(anamnesis.allergies),
       medications: nullableString(anamnesis.medications),
       updatedAt: nullableString(anamnesis.updated_at),
+      versionNumber: nullableNumber(anamnesis.version_number),
+      draftInProgress: Boolean(anamnesis.draft_in_progress),
+      draftSavedAt: nullableString(anamnesis.draft_saved_at),
     },
   };
 }
@@ -141,7 +151,7 @@ export function usePatient360Overview(patientId: string) {
     setLoading(true);
     setError(null);
     try {
-      const { data, error: rpcError } = await supabase.rpc('get_patient_360_overview_v1', { p_patient_id: patientId });
+      const { data, error: rpcError } = await supabase.rpc('get_patient_360_overview_v2', { p_patient_id: patientId });
       if (rpcError) throw rpcError;
       const row = (data as OverviewRow[] | null)?.[0];
       setOverview(row ? mapOverview(row) : null);
@@ -171,7 +181,7 @@ export function usePatientTimeline(patientId: string, pageSize = 20) {
     setError(null);
     try {
       const cursor = append ? getTimelineCursor(events) : null;
-      const { data, error: rpcError } = await supabase.rpc('list_patient_timeline_v1', {
+      const { data, error: rpcError } = await supabase.rpc('list_patient_timeline_v2', {
         p_patient_id: patientId,
         p_limit: pageSize,
         p_cursor_at: cursor?.at ?? null,
