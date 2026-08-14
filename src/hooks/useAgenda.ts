@@ -36,6 +36,7 @@ export interface AgendaInput {
 }
 
 type AgendaRange = { from: string; to: string };
+type CalendarStatus = { connected?: boolean; needs_reauth?: boolean };
 
 function sessionExpiredError() { return new Error('Sua sessão expirou. Entre novamente.'); }
 
@@ -85,6 +86,18 @@ export function useAgenda(input: AgendaRange | Date) {
   useEffect(() => { void refresh(); }, [refresh]);
 
   const syncGoogle = useCallback(async (id: string) => {
+    const { data: calendarStatus, error: statusError } = await supabase.functions.invoke<CalendarStatus>('google-calendar-status', { body: {} });
+    if (!statusError && (!calendarStatus?.connected || calendarStatus?.needs_reauth)) {
+      const needsReauth = Boolean(calendarStatus?.needs_reauth);
+      await supabase.from('appointments').update({
+        google_sync_status: needsReauth ? 'error' : 'disconnected',
+        google_sync_error_code: needsReauth ? 'google_reauth_required' : null,
+      }).eq('id', id);
+      await refresh();
+      if (needsReauth) throw new Error('Agendamento salvo no Hub. Reconecte o Google Calendar para sincronizar.');
+      return;
+    }
+
     const { error: syncError } = await supabase.functions.invoke('google-calendar-upsert', { body: { appointment_id: id } });
     const syncedAt = new Date().toISOString();
     const syncMeta = syncError
