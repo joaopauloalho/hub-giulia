@@ -29,7 +29,8 @@ const styles = StyleSheet.create({
 function qtyLabel(item: TreatmentProposalItem) {
   const quantity = Number(item.quantity);
   const display = Number.isInteger(quantity) ? String(quantity) : String(quantity).replace('.', ',');
-  return `${display} ${item.unit_label}${quantity > 1 && item.unit_label === 'sessão' ? 'ões' : ''}`;
+  const unit = item.unit_label === 'sessão' && quantity !== 1 ? 'sessões' : item.unit_label;
+  return `${display} ${unit}`;
 }
 
 export function ProposalPDF({ version, items }: { version: TreatmentProposalVersion; items: TreatmentProposalItem[] }) {
