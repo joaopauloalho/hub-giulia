@@ -26,6 +26,7 @@ interface Props {
   readOnly?: boolean;
   onAddCoordinate: (x: number, y: number) => void;
   onSelectPoint: (id: string) => void;
+  onMoveStart?: (id: string) => void;
   onMovePoint: (id: string, x: number, y: number) => void;
 }
 
@@ -46,6 +47,7 @@ export function InjetaveisFaceMap({
   readOnly = false,
   onAddCoordinate,
   onSelectPoint,
+  onMoveStart,
   onMovePoint,
 }: Props) {
   const svgRef = useRef<SVGSVGElement>(null);
@@ -89,7 +91,10 @@ export function InjetaveisFaceMap({
     if (!drag || drag.pointerId !== event.pointerId || readOnly) return;
 
     const distance = Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY);
-    if (distance > 3) drag.moved = true;
+    if (distance > 3 && !drag.moved) {
+      drag.moved = true;
+      onMoveStart?.(drag.pointId);
+    }
     if (!drag.moved) return;
 
     const coordinate = toNormalized(event.clientX, event.clientY);
@@ -150,12 +155,7 @@ export function InjetaveisFaceMap({
               }}
               className="injectables-map-point"
             >
-              <circle
-                cx={point.x * VB_W}
-                cy={point.y * VB_H}
-                r={12}
-                fill="transparent"
-              />
+              <circle cx={point.x * VB_W} cy={point.y * VB_H} r={12} fill="transparent" />
               {selected && (
                 <circle
                   cx={point.x * VB_W}
