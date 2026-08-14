@@ -26,7 +26,6 @@ import {
   calculateProposalItem,
   calculateProposalTotals,
   centsToMoney,
-  proposalDate,
   proposalEffectiveStatus,
   proposalErrorMessage,
   proposalMoney,
