@@ -6,6 +6,7 @@ import {
   formatBirthDateInput,
   parseBirthDateInput,
 } from './dateUtils';
+import { agendaRange, clinicDateIso, clinicLocalToIso, displayEndTime } from './agendaTime';
 
 describe('dateUtils', () => {
   beforeEach(() => {
@@ -47,5 +48,26 @@ describe('dateUtils', () => {
     expect(calculateAge(null)).toBeNull();
     expect(ageLabel('2025-06-17')).toBe('1 ano');
     expect(ageLabel('2000-06-17')).toBe('26 anos');
+  });
+});
+
+describe('Agenda timezone America/Sao_Paulo', () => {
+  it('keeps 14:00 with a 30 minute end time', () => {
+    const start = clinicLocalToIso('2026-08-13', '14:00');
+    expect(start).toBe('2026-08-13T17:00:00.000Z');
+    expect(displayEndTime(start, 30)).toBe('14:30');
+  });
+
+  it('keeps 23:30 on the intended clinic date across a month boundary', () => {
+    const start = clinicLocalToIso('2026-08-31', '23:30');
+    expect(start).toBe('2026-09-01T02:30:00.000Z');
+    expect(clinicDateIso(start)).toBe('2026-08-31');
+  });
+
+  it('builds a daily half-open range in clinic timezone', () => {
+    expect(agendaRange('2026-08-13', 'day')).toMatchObject({
+      from: '2026-08-13T03:00:00.000Z',
+      to: '2026-08-14T03:00:00.000Z',
+    });
   });
 });
