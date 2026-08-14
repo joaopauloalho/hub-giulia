@@ -173,6 +173,8 @@ Deno.serve(async (req: Request) => {
     const patient = apt.patient as unknown as { id: string; name: string } | null;
     const service = apt.service as unknown as { id: string; name: string } | null;
     const start = new Date(apt.scheduled_at);
+    // end_at is derived by Postgres from this appointment's duration snapshot.
+    // Google must mirror the appointment, never recalculate duration from services.
     const end = new Date(apt.end_at);
     if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime()) || end <= start || !apt.duration_minutes) {
       throw new HttpError(500, 'appointment_time_invalid', 'O horario do agendamento local esta inconsistente.');
