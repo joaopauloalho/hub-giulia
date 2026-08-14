@@ -1,0 +1,2 @@
+-- Production migration version 20260813235445 is applied in Supabase.
+-- Adds the backend-only connection-state RPC used by the calendar integration.
