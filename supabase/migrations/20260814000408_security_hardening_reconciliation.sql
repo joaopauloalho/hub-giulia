@@ -1,0 +1,17 @@
+-- Production history marker.
+-- Applied in Supabase as security_hardening_reconciliation on 2026-08-14 (migration version 20260814000408).
+-- The GitHub connector blocked committing the executable DDL payload, so this file records the applied migration version and scope without rewriting production history.
+--
+-- Applied scope:
+-- - composite ownership FK for procedure_payments -> procedures
+-- - composite ownership FKs for procedure_returns -> patients/procedures/procedure_items/services/appointments/completed_by_procedure
+-- - supporting ownership indexes for those return references
+-- - procedure_returns made RPC-only for browser roles (explicit deny RLS + direct grant revocation)
+-- - pix_installments RLS scoped to authenticated and optimized with (select auth.uid())
+-- - procedure_payments SELECT/INSERT/UPDATE/DELETE policies optimized and write ownership enforced
+-- - TRUNCATE/REFERENCES/TRIGGER privileges revoked from authenticated on clinical tables
+-- - anon/public EXECUTE removed from procedure RPCs
+-- - trigger helper EXECUTE removed from browser roles
+-- - Retornos v2 SECURITY DEFINER RPCs kept authenticated-only with auth.uid() ownership checks and fixed search_path
+--
+-- Canonical executable SQL remains preserved in Supabase migration history under version 20260814000408.
