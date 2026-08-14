@@ -20,11 +20,33 @@ export interface CreateAtomicAttendanceInput {
     scheduled_date: string | null;
   }>;
   injectable_maps: Array<{ points: InjectablePoint[] }>;
+  injectable_draft_id?: string | null;
+  injectable_draft_revision?: number | null;
   notes: string | null;
 }
 
 export function useAtomicAttendance() {
   const createAtomic = async (input: CreateAtomicAttendanceInput): Promise<Procedure> => {
+    const hasStructuredDraft = Boolean(input.injectable_draft_id && input.injectable_draft_revision);
+
+    if (hasStructuredDraft) {
+      const { data, error } = await supabase.rpc('create_procedure_with_injectable_draft_v2', {
+        p_idempotency_key: input.idempotency_key,
+        p_patient_id: input.patient_id,
+        p_appointment_id: input.appointment_id,
+        p_performed_at: input.performed_at,
+        p_items: input.items,
+        p_payment_entries: input.payment_entries,
+        p_notes: input.notes,
+        p_injectable_draft_id: input.injectable_draft_id,
+        p_injectable_draft_revision: input.injectable_draft_revision,
+      });
+
+      if (error) throw error;
+      if (!data) throw new Error('ATTENDANCE_EMPTY_RESPONSE');
+      return data as Procedure;
+    }
+
     const { data, error } = await supabase.rpc('create_procedure_v2', {
       p_idempotency_key: input.idempotency_key,
       p_patient_id: input.patient_id,
