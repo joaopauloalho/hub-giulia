@@ -17,7 +17,7 @@ import { AGENDA_STATUS_BAR, AGENDA_STATUS_LABEL, agendaStatusStyle } from './age
 type View = 'day' | 'week' | 'month';
 type Filter = 'all' | AgendaStatus;
 type PatientSeed = Pick<Patient, 'id' | 'name' | 'phone'>;
-type FormState = { date: string; time: string; appointment: AgendaAppointment | null; initialPatientId?: string | null; initialPatient?: PatientSeed | null };
+type FormState = { date: string; time: string; appointment: AgendaAppointment | null; initialPatientId?: string | null; initialPatient?: PatientSeed | null; initialServiceId?: string | null };
 const noon = (date: string) => new Date(`${date}T12:00:00Z`);
 
 function Event({ appointment, onOpen }: { appointment: AgendaAppointment; onOpen: () => void }) {
@@ -36,13 +36,15 @@ function DayTimeline({ rows, onOpen, onCreate }: { rows: AgendaAppointment[]; on
 export function AgendaV2Page() {
   const location = useLocation();
   const { toast } = useToast();
-  const requestedPatientId = new URLSearchParams(location.search).get('patient_id');
+  const searchParams = new URLSearchParams(location.search);
+  const requestedPatientId = searchParams.get('patient_id');
+  const requestedServiceId = searchParams.get('service_id');
   const routePatient = (location.state as { patient?: PatientSeed } | null)?.patient ?? null;
   const [view, setView] = useState<View>(() => window.matchMedia('(max-width: 767px)').matches ? 'day' : 'week');
   const [anchor, setAnchor] = useState(clinicDateIso());
   const [filter, setFilter] = useState<Filter>('all');
   const [search, setSearch] = useState('');
-  const [form, setForm] = useState<FormState | null>(() => requestedPatientId ? { date: clinicDateIso(), time: '09:00', appointment: null, initialPatientId: requestedPatientId, initialPatient: routePatient } : null);
+  const [form, setForm] = useState<FormState | null>(() => requestedPatientId ? { date: clinicDateIso(), time: '09:00', appointment: null, initialPatientId: requestedPatientId, initialPatient: routePatient, initialServiceId: requestedServiceId } : null);
   const [detail, setDetail] = useState<AgendaAppointment | null>(null);
   const range = useMemo(() => agendaRange(anchor, view), [anchor, view]);
   const agenda = useAgenda({ from: range.from, to: range.to });
@@ -67,7 +69,7 @@ export function AgendaV2Page() {
     {!google.loading && (!google.connected || google.needsReauth) && <div className="card" style={{ padding: 10, marginBottom: 10, display: 'flex', gap: 8, alignItems: 'center' }}><Calendar size={16} /><span style={{ flex: 1, fontSize: 12 }}>{google.needsReauth ? 'Google Calendar precisa ser reconectado. A Agenda local continua funcionando.' : 'Google Calendar desconectado. A Agenda local continua funcionando.'}</span><button className="btn btn--ghost btn--sm" onClick={() => void google.connect().catch(error => toast.error(error instanceof Error ? error.message : 'Falha ao conectar.'))}>{google.needsReauth ? 'Reconectar' : 'Conectar'}</button></div>}
     <div className="card" style={{ padding: 10, marginBottom: 10 }}><div style={{ position: 'relative', marginBottom: 8 }}><Search size={16} style={{ position: 'absolute', left: 11, top: 12 }} /><input className="field-input" style={{ paddingLeft: 34 }} value={search} onChange={event => setSearch(event.target.value)} placeholder="Buscar paciente ou telefone" /></div><div style={{ display: 'flex', gap: 5, overflowX: 'auto' }}>{(['all','pendente','confirmado','realizado','cancelado','nao_compareceu'] as Filter[]).map(status => <button key={status} className={`btn btn--sm ${filter === status ? 'btn--primary' : 'btn--ghost'}`} onClick={() => setFilter(status)}>{status === 'all' ? 'Todos' : AGENDA_STATUS_LABEL[status]}</button>)}</div></div>
     {agenda.loading ? <div className="card" style={{ padding: 16 }}>Carregando agenda…</div> : agenda.error ? <div className="empty-state"><p>{agenda.error}</p><button className="btn btn--secondary btn--sm" onClick={() => void agenda.refresh()}>Tentar novamente</button></div> : view === 'day' ? <DayTimeline rows={grouped.get(anchor) ?? []} onOpen={setDetail} onCreate={time => openCreate(anchor, time)} /> : <div style={{ display: 'grid', gridTemplateColumns: view === 'week' && !mobile ? 'repeat(7,minmax(135px,1fr))' : 'repeat(auto-fit,minmax(150px,1fr))', gap: 7, overflowX: 'auto' }}>{days.map(day => { const items = grouped.get(day) ?? []; if (view === 'month' && mobile && !items.length) return null; return <div className="card" key={day} style={{ padding: 8, minHeight: view === 'week' ? 180 : 90 }}><button type="button" onClick={() => { setAnchor(day); setView('day'); }} style={{ border: 0, background: 'transparent', cursor: 'pointer', fontWeight: 700 }}>{format(noon(day), view === 'week' ? 'EEE d' : 'd', { locale: ptBR })}</button><div style={{ display: 'grid', gap: 5, marginTop: 7 }}>{items.slice(0, view === 'month' ? 3 : items.length).map(item => <Event key={item.id} appointment={item} onOpen={() => setDetail(item)} />)}</div>{view === 'month' && items.length > 3 && <div className="page-sub">+{items.length - 3}</div>}</div>; })}</div>}
-    {form && <AgendaFormDrawer initialDate={form.date} initialTime={form.time} initialPatientId={form.initialPatientId} initialPatient={form.initialPatient} appointment={form.appointment} findConflict={agenda.findConflict} onCreate={agenda.create} onUpdate={agenda.update} onClose={() => setForm(null)} />}
+    {form && <AgendaFormDrawer initialDate={form.date} initialTime={form.time} initialPatientId={form.initialPatientId} initialPatient={form.initialPatient} initialServiceId={form.initialServiceId} appointment={form.appointment} findConflict={agenda.findConflict} onCreate={agenda.create} onUpdate={agenda.update} onClose={() => setForm(null)} />}
     {detail && <AppointmentDetailDrawer appointment={detail} isReturn={detail.source === 'return' || returnIds.has(detail.id)} googleConnected={google.connected} needsReauth={google.needsReauth} onEdit={() => { const item = detail; setDetail(null); setForm({ date: clinicDateIso(item.scheduled_at), time: clinicTime(item.scheduled_at), appointment: item }); }} onConfirm={() => agenda.confirm(detail.id)} onCancel={reason => agenda.cancel(detail.id, reason)} onNoShow={() => agenda.markNoShow(detail.id)} onRetryGoogle={() => agenda.retryGoogle(detail.id)} onClose={() => { setDetail(null); void agenda.refresh(); }} />}
     <button className="fab" onClick={() => openCreate()} aria-label="Nova consulta"><Plus size={26} /></button>
   </div>;
