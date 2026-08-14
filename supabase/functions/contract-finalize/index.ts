@@ -2,6 +2,7 @@ import {
   HttpError,
   assertMethod,
   authenticate,
+  createAdminClient,
   json,
   logSafe,
   preflight,
@@ -44,7 +45,9 @@ Deno.serve(async (req: Request) => {
     }
 
     const [signatureHash, pdfHash] = await Promise.all([sha256Hex(signature), sha256Hex(pdf)]);
-    const { data, error } = await client.rpc('finalize_contract_v2', {
+    const admin = createAdminClient();
+    const { data, error } = await admin.rpc('finalize_contract_backend_v2', {
+      p_user_id: user.id,
       p_contract_id: contractId,
       p_signature_path: signaturePath,
       p_signature_sha256: signatureHash,
