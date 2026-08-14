@@ -1,0 +1,2 @@
+-- Production migration version 20260813235631 is applied in Supabase.
+-- Disabling the calendar integration now removes its stored token and marks the connection disabled without touching local appointments.
