@@ -7,9 +7,15 @@ set search_path = public
 as $function$
 declare
   v_service_duration integer;
+  v_sync_relevant_change boolean := false;
 begin
   if new.scheduled_at is null then
     raise exception using errcode = '22023', message = 'APPOINTMENT_SCHEDULE_REQUIRED';
+  end if;
+
+  if tg_op = 'UPDATE' then
+    v_sync_relevant_change := row(new.patient_id, new.service_id, new.scheduled_at, new.duration_minutes, new.status, new.notes)
+      is distinct from row(old.patient_id, old.service_id, old.scheduled_at, old.duration_minutes, old.status, old.notes);
   end if;
 
   if new.duration_minutes is null or new.duration_minutes <= 0 then
@@ -68,9 +74,7 @@ begin
     end if;
   end if;
 
-  if row(new.patient_id, new.service_id, new.scheduled_at, new.duration_minutes, new.status, new.notes)
-     is distinct from
-     row(old.patient_id, old.service_id, old.scheduled_at, old.duration_minutes, old.status, old.notes) then
+  if v_sync_relevant_change then
     new.google_sync_status := 'pending';
     new.google_sync_error_code := null;
   end if;
