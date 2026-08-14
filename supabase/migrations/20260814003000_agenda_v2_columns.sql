@@ -1,0 +1,16 @@
+alter table public.appointments
+  add column if not exists duration_minutes integer,
+  add column if not exists end_at timestamptz,
+  add column if not exists updated_at timestamptz not null default now(),
+  add column if not exists confirmed_at timestamptz,
+  add column if not exists canceled_at timestamptz,
+  add column if not exists cancellation_reason text,
+  add column if not exists no_show_at timestamptz,
+  add column if not exists source text not null default 'manual',
+  add column if not exists google_sync_status text not null default 'pending',
+  add column if not exists google_last_synced_at timestamptz,
+  add column if not exists google_sync_error_code text,
+  add column if not exists idempotency_key uuid,
+  add column if not exists previous_scheduled_at timestamptz,
+  add column if not exists previous_duration_minutes integer,
+  add column if not exists last_rescheduled_at timestamptz;
