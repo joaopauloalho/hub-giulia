@@ -37,10 +37,6 @@ set google_sync_status = case when google_event_id is not null then 'synced' els
     google_last_synced_at = case when google_event_id is not null then coalesce(updated_at, created_at) else null end;
 
 alter table public.appointments
-  alter column duration_minutes set not null,
-  alter column end_at set not null;
-
-alter table public.appointments
   drop constraint if exists appointments_status_check;
 
 alter table public.appointments
