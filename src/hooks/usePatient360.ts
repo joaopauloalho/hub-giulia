@@ -166,7 +166,8 @@ export function usePatientTimeline(patientId: string, pageSize = 20) {
   const [hasMore, setHasMore] = useState(false);
 
   const fetchPage = useCallback(async (append: boolean) => {
-    append ? setLoadingMore(true) : setLoading(true);
+    if (append) setLoadingMore(true);
+    else setLoading(true);
     setError(null);
     try {
       const cursor = append ? getTimelineCursor(events) : null;
