@@ -384,7 +384,7 @@ export function useAnamneseDraftV2(patientId: string) {
     } finally {
       setFinalizing(false);
     }
-  }, [flush, patientId, saveMessage, saveStatus]);
+  }, [flush, patientId, saveMessage]);
 
   return {
     draft,

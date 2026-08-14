@@ -2,6 +2,7 @@ import { useState, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import type { Contract } from '../types';
 import { createSignedStorageUrl } from '../lib/storage';
+import { POSTGREST_SELECT } from '../lib/postgrestRelationshipHints';
 
 export function useContracts(patientId: string) {
   const [contracts, setContracts] = useState<Contract[]>([]);
@@ -15,7 +16,7 @@ export function useContracts(patientId: string) {
     try {
       const { data, error: contractsError } = await supabase
         .from('contracts')
-        .select('*, template:contract_templates(name)')
+        .select(POSTGREST_SELECT.contracts)
         .eq('patient_id', patientId)
         .order('signed_at', { ascending: false });
 

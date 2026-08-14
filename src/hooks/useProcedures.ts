@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 import type { Procedure, PaymentMethod } from '../types';
 import { useAtomicAttendance } from './useAtomicAttendance';
+import { POSTGREST_SELECT } from '../lib/postgrestRelationshipHints';
 import {
   clearAttendanceInjectablePoints,
   consumePendingAttendanceError,
@@ -56,7 +57,7 @@ export function useProcedures(patientId?: string) {
       if (patientId) {
         const { data, error: proceduresError } = await supabase
           .from('procedures')
-          .select('*, procedure_items(*), procedure_payments(*)')
+          .select(POSTGREST_SELECT.patientProcedures)
           .eq('patient_id', patientId)
           .order('performed_at', { ascending: false });
         if (proceduresError) throw proceduresError;

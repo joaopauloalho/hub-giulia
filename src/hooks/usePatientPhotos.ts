@@ -2,6 +2,7 @@ import { useState, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import type { PatientPhoto } from '../types';
 import { createSignedStorageUrl, storagePathFromValue } from '../lib/storage';
+import { POSTGREST_SELECT } from '../lib/postgrestRelationshipHints';
 
 export function usePatientPhotos(patientId: string) {
   const [photos, setPhotos] = useState<PatientPhoto[]>([]);
@@ -15,7 +16,7 @@ export function usePatientPhotos(patientId: string) {
     try {
       const { data, error: photosError } = await supabase
         .from('patient_photos')
-        .select('*, procedure:procedures(id, performed_at, services_ids)')
+        .select(POSTGREST_SELECT.patientPhotos)
         .eq('patient_id', patientId)
         .order('taken_at', { ascending: false });
 

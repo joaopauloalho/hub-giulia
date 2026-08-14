@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase';
 import type { Procedure, PixInstallment, ProcedurePayment } from '../types';
 import { startOfMonth, endOfMonth, format } from 'date-fns';
 import { summarizeFinance } from '../lib/financeIntegrity';
+import { POSTGREST_SELECT } from '../lib/postgrestRelationshipHints';
 
 export interface FinanceiroSummary {
   receitaTotal: number;
@@ -35,18 +36,18 @@ export function useFinanceiro(month: Date) {
       ] = await Promise.all([
         supabase
           .from('procedures')
-          .select('*, patient:patients(id, name), payments:procedure_payments(*), items:procedure_items(*)')
+          .select(POSTGREST_SELECT.financeProcedures)
           .gte('performed_at', `${start}T00:00:00`)
           .lte('performed_at', `${end}T23:59:59`)
           .order('performed_at', { ascending: false }),
         supabase
           .from('pix_installments')
-          .select('*, procedure:procedures(id, patient_id, total_value, patient:patients(id, name))')
+          .select(POSTGREST_SELECT.financePixPending)
           .is('paid_at', null)
           .order('due_date', { ascending: true }),
         supabase
           .from('procedure_payments')
-          .select('*, procedure:procedures(id, patient_id, total_value, patient:patients(id, name))')
+          .select(POSTGREST_SELECT.financeScheduledPayments)
           .is('paid_at', null)
           .not('scheduled_date', 'is', null)
           .order('scheduled_date', { ascending: true }),

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { format } from 'date-fns';
 import { supabase } from '../lib/supabase';
+import { POSTGREST_SELECT } from '../lib/postgrestRelationshipHints';
 import type { PatientNote } from '../types';
 
 interface UsePatientNotesOptions {
@@ -21,7 +22,7 @@ export function usePatientNotes(options: UsePatientNotesOptions = {}) {
     try {
       let query = supabase
         .from('patient_notes')
-        .select('*, patient:patients(id,name)')
+        .select(POSTGREST_SELECT.patientNotes)
         .order('created_at', { ascending: false });
 
       if (patientId) query = query.eq('patient_id', patientId);

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { agendaRange, clinicDateIso } from '../lib/agendaTime';
+import { POSTGREST_SELECT } from '../lib/postgrestRelationshipHints';
 import type { Appointment } from '../types';
 
 export type AgendaStatus = 'pendente' | 'confirmado' | 'realizado' | 'cancelado' | 'nao_compareceu';
@@ -71,7 +72,7 @@ export function useAgenda(input: AgendaRange | Date) {
     try {
       const { data, error: agendaError } = await supabase
         .from('appointments')
-        .select('*, patient:patients(id,name,phone), service:services(id,name,duration_minutes)')
+        .select(POSTGREST_SELECT.agenda)
         .gte('scheduled_at', range.from)
         .lt('scheduled_at', range.to)
         .order('scheduled_at');
@@ -164,7 +165,7 @@ export function useAgenda(input: AgendaRange | Date) {
     const windowTo = new Date(end.getTime() + 24 * 60 * 60_000).toISOString();
     let query = supabase
       .from('appointments')
-      .select('id, scheduled_at, duration_minutes, status, patient:patients(id,name)')
+      .select(POSTGREST_SELECT.agendaConflict)
       .gte('scheduled_at', windowFrom)
       .lt('scheduled_at', windowTo)
       .in('status', ['pendente', 'confirmado']);
