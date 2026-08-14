@@ -23,3 +23,24 @@ Os mapas antigos continuam em `injectable_maps.points` como `source_type = legac
 ## Segurança
 
 Todas as tabelas v2 usam RLS e ownership por `user_id`; `anon` não possui acesso. FKs compostas impedem vínculo cross-tenant e lote de produto incorreto. Mutações críticas após `finalized` são bloqueadas.
+
+## Rollout e validação
+
+Migrations aplicadas em produção:
+
+- `20260814142500_injectables_v2_core.sql`
+- `20260814142600_injectables_v2_api.sql`
+- `20260814142700_injectables_v2_hardening.sql`
+- migration aditiva de correção da idempotência de finalização
+- migration aditiva de índices para FKs compostas de ownership
+- migration aditiva de compatibilidade do insert legado (`finalized_at`)
+
+Validações executadas antes do merge:
+
+- `npm test`, typecheck, lint e build verdes no CI.
+- Teste transacional de `U` e `mL`, lote/produto, soma decimal, revision conflict, quantidade inválida, `procedure_item`, idempotência e imutabilidade.
+- RLS/cross-user/anon validados.
+- Security e Performance Advisor revisados; nenhuma FK nova permanece sem índice.
+- Compatibilidade com o `create_procedure_v2` legado validada em transação com rollback.
+- Nenhum dado sintético persistido após os testes.
+- Os 3 mapas legados e 5 pontos mantiveram o fingerprint `02a85ed55d40c8ad4a57d2071772835a` após todas as migrations.
