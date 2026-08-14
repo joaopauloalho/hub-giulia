@@ -1,236 +1,91 @@
 import { useMemo, useState } from 'react';
-import { ChevronRight, ClipboardList, Loader2, Trash2 } from 'lucide-react';
+import { Camera, ChevronRight, ClipboardList, Loader2, MapPin } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { useProcedures } from '../../../hooks/useProcedures';
-import { useServicos } from '../../../hooks/useServicos';
-import { useToast } from '../../../hooks/useToast';
-import type { Procedure, Service } from '../../../types';
+import { getProcedureFinancials, procedureServiceNames } from '../../../lib/financeIntegrity';
+import type { Procedure, ProcedurePayment } from '../../../types';
 
-interface Props { patientId: string; }
+interface Props {
+  patientId: string;
+  onPhotos?: () => void;
+  onInjectables?: () => void;
+}
 
 const PAYMENT_LABELS: Record<string, string> = {
   dinheiro: 'Dinheiro',
-  cartao_credito: 'Cartão Crédito',
-  cartao_debito: 'Cartão Débito',
+  cartao_credito: 'Crédito',
+  cartao_debito: 'Débito',
   pix: 'PIX',
-  pix_parcelado: 'PIX Parcelado',
+  pix_parcelado: 'PIX parcelado',
 };
 
 function currency(value: number) {
-  return `R$ ${value.toFixed(2)}`;
+  return Number(value || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
 
-function serviceNames(proc: Procedure, services: Service[]) {
-  const names = proc.services_ids
-    .map(id => services.find(service => service.id === id)?.name)
-    .filter(Boolean);
-
-  return names.length > 0 ? names.join(', ') : 'Serviços registrados';
+function paymentLabel(payment: ProcedurePayment) {
+  const base = PAYMENT_LABELS[payment.method] ?? payment.method;
+  if (payment.method === 'cartao_credito' && payment.installments > 1) return `${base} ${payment.installments}x`;
+  return base;
 }
 
-function RetornoChip({ proc, services }: { proc: Procedure; services: Service[] }) {
-  const procServices = proc.services_ids
-    .map(id => services.find(s => s.id === id))
-    .filter((s): s is Service => s !== undefined);
-
-  const minValues = procServices
-    .map(s => s.return_min_days)
-    .filter((d): d is number => d !== null);
-  const maxValues = procServices
-    .map(s => s.return_max_days)
-    .filter((d): d is number => d !== null);
-
-  if (minValues.length === 0 || maxValues.length === 0) return null;
-
-  return (
-    <span style={{ fontSize: '0.7rem', color: 'var(--text-3)', marginTop: 2, display: 'inline-block' }}>
-      ↩ {Math.min(...minValues)}–{Math.max(...maxValues)}d
-    </span>
-  );
-}
-
-function ProcedureCard({ proc, services, onRemove }: { proc: Procedure; services: Service[]; onRemove: (proc: Procedure) => void }) {
+function ProcedureCard({ proc, onPhotos, onInjectables }: { proc: Procedure; onPhotos?: () => void; onInjectables?: () => void }) {
   const [open, setOpen] = useState(false);
-  const lucro = proc.net_value - proc.total_cost;
+  const finance = getProcedureFinancials(proc);
+  const items = proc.items ?? [];
+  const payments = [...(proc.payments ?? [])].sort((a, b) => (a.created_at ?? '').localeCompare(b.created_at ?? ''));
 
-  const details = [
-    { label: 'Cobrado', value: currency(proc.total_value) },
-    ...(proc.card_fee_value ? [{ label: 'Taxa maquininha', value: `-${currency(proc.card_fee_value)}` }] : []),
-    { label: 'Custo', value: `-${currency(proc.total_cost)}` },
-    { label: 'Lucro', value: currency(lucro) },
-  ];
+  return <div className="card" style={{ overflow: 'hidden', marginBottom: 8 }}>
+    <button type="button" onClick={() => setOpen(value => !value)} style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 12, padding: '14px 16px', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left' }}>
+      <div style={{ width: 40, height: 40, borderRadius: 10, flexShrink: 0, background: 'var(--bg-2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><ClipboardList size={18} style={{ color: 'var(--primary)' }} /></div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontWeight: 600, color: 'var(--text)', fontSize: '0.9rem' }}>{format(parseISO(proc.performed_at), "dd 'de' MMM 'de' yyyy", { locale: ptBR })}</div>
+        <div className="page-sub" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{procedureServiceNames(proc)}</div>
+        {finance.pendente > 0 && <span className="badge badge--amber" style={{ marginTop: 5 }}>Pendente {currency(finance.pendente)}</span>}
+      </div>
+      <div style={{ textAlign: 'right', flexShrink: 0 }}><strong style={{ color: 'var(--primary)' }}>{currency(finance.venda)}</strong><div className="page-sub">recebido {currency(finance.pago)}</div></div>
+      <ChevronRight size={16} style={{ color: 'var(--text-3)', transform: open ? 'rotate(90deg)' : 'none', transition: 'transform .2s' }} />
+    </button>
 
-  return (
-    <div style={{
-      background: '#fff',
-      border: '1px solid var(--border)',
-      borderRadius: 'var(--radius)',
-      overflow: 'hidden',
-      marginBottom: 8,
-    }}>
-      <button
-        onClick={() => setOpen(value => !value)}
-        style={{
-          width: '100%',
-          display: 'flex',
-          alignItems: 'center',
-          gap: 12,
-          padding: '14px 16px',
-          background: 'none',
-          border: 'none',
-          cursor: 'pointer',
-          textAlign: 'left',
-        }}
-      >
-        <div style={{
-          width: 40,
-          height: 40,
-          borderRadius: 10,
-          flexShrink: 0,
-          background: 'var(--bg-2)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-        }}>
-          <ClipboardList size={18} style={{ color: 'var(--primary)' }} />
+    {open && <div style={{ padding: '12px 16px 16px', borderTop: '1px solid var(--border)', display: 'grid', gap: 14 }}>
+      <section>
+        <strong style={{ fontSize: 12, textTransform: 'uppercase', letterSpacing: '.04em' }}>Serviços realizados</strong>
+        <div style={{ display: 'grid', gap: 7, marginTop: 8 }}>
+          {items.length > 0 ? items.map(item => <div key={item.id} style={{ display: 'flex', gap: 8, justifyContent: 'space-between' }}><span style={{ fontSize: 13 }}>{item.qty > 1 ? `${item.qty}× ` : ''}{item.name}</span><strong style={{ fontSize: 13 }}>{currency(item.final_price * item.qty)}</strong></div>) : <span className="page-sub">Snapshots detalhados não disponíveis neste registro legado.</span>}
         </div>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontWeight: 600, color: 'var(--text)', fontSize: '0.9rem' }}>
-            {format(parseISO(proc.performed_at), "dd 'de' MMM 'de' yyyy", { locale: ptBR })}
-          </div>
-          <div style={{
-            fontSize: '0.75rem',
-            color: 'var(--text-3)',
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
-          }}>
-            {serviceNames(proc, services)}
-          </div>
-          <RetornoChip proc={proc} services={services} />
-          <div style={{ fontSize: '0.72rem', color: 'var(--text-3)', marginTop: 2 }}>
-            {PAYMENT_LABELS[proc.payment_method]}
-          </div>
-        </div>
-        <div style={{ textAlign: 'right', flexShrink: 0 }}>
-          <div style={{ fontWeight: 700, color: 'var(--primary)', fontSize: '0.95rem' }}>
-            {currency(proc.total_value)}
-          </div>
-          <div style={{ fontSize: '0.72rem', color: lucro >= 0 ? 'var(--green)' : 'var(--red)' }}>
-            lucro {currency(lucro)}
-          </div>
-        </div>
-        <ChevronRight
-          size={16}
-          style={{
-            color: 'var(--text-3)',
-            flexShrink: 0,
-            transform: open ? 'rotate(90deg)' : 'none',
-            transition: 'transform 0.2s',
-          }}
-        />
-      </button>
+      </section>
 
-      {open && (
-        <div style={{ padding: '0 16px 14px', borderTop: '1px solid var(--border)' }}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, paddingTop: 10 }}>
-            {details.map(row => (
-              <div key={row.label} style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ fontSize: '0.8rem', color: 'var(--text-3)' }}>{row.label}</span>
-                <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text)' }}>{row.value}</span>
-              </div>
-            ))}
-          </div>
-          <button
-            type="button"
-            className="btn btn--danger btn--sm"
-            onClick={() => onRemove(proc)}
-            style={{ marginTop: 12 }}
-          >
-            <Trash2 size={14} /> Excluir atendimento
-          </button>
+      <section>
+        <strong style={{ fontSize: 12, textTransform: 'uppercase', letterSpacing: '.04em' }}>Pagamentos</strong>
+        <div style={{ display: 'grid', gap: 7, marginTop: 8 }}>
+          {payments.length > 0 ? payments.map(payment => <div key={payment.id} style={{ display: 'flex', gap: 8, justifyContent: 'space-between', alignItems: 'center' }}><div><span style={{ fontSize: 13 }}>{paymentLabel(payment)}</span><div className="page-sub">{payment.paid_at ? `Recebido em ${new Date(payment.paid_at).toLocaleDateString('pt-BR')}` : payment.scheduled_date ? `Previsto para ${new Date(`${payment.scheduled_date}T12:00:00`).toLocaleDateString('pt-BR')}` : 'Pendente'}</div></div><strong style={{ fontSize: 13 }}>{currency(payment.amount)}</strong></div>) : <span className="page-sub">Nenhum pagamento detalhado disponível.</span>}
         </div>
-      )}
-    </div>
-  );
+      </section>
+
+      <section style={{ display: 'grid', gap: 5 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between' }}><span className="page-sub">Valor vendido</span><strong>{currency(finance.venda)}</strong></div>
+        <div style={{ display: 'flex', justifyContent: 'space-between' }}><span className="page-sub">Recebido</span><strong>{currency(finance.pago)}</strong></div>
+        <div style={{ display: 'flex', justifyContent: 'space-between' }}><span className="page-sub">Pendente</span><strong>{currency(finance.pendente)}</strong></div>
+      </section>
+
+      {proc.notes && <section><strong style={{ fontSize: 12, textTransform: 'uppercase', letterSpacing: '.04em' }}>Observações</strong><p style={{ fontSize: 13, marginTop: 6, lineHeight: 1.5 }}>{proc.notes}</p></section>}
+      {proc.appointment_id && <div className="page-sub">Originado do agendamento {proc.appointment_id.slice(0, 8)}…</div>}
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>{onPhotos && <button className="btn btn--ghost btn--sm" onClick={onPhotos}><Camera size={14} /> Fotos</button>}{onInjectables && <button className="btn btn--ghost btn--sm" onClick={onInjectables}><MapPin size={14} /> Injetáveis</button>}</div>
+    </div>}
+  </div>;
 }
 
-export function HistoricoTab({ patientId }: Props) {
-  const { procedures, loading, error, remove } = useProcedures(patientId);
-  const { servicos, loading: loadingServices, error: servicesError } = useServicos();
-  const { confirm, toast } = useToast();
+export function HistoricoTab({ patientId, onPhotos, onInjectables }: Props) {
+  const { procedures, loading, error } = useProcedures(patientId);
+  const total = useMemo(() => procedures.reduce((sum, proc) => sum + getProcedureFinancials(proc).venda, 0), [procedures]);
 
-  const total = useMemo(
-    () => procedures.reduce((sum, proc) => sum + proc.total_value, 0),
-    [procedures]
-  );
+  if (error) return <div className="empty-state" style={{ padding: '48px 20px' }}><p>{error}</p></div>;
+  if (loading) return <div style={{ display: 'flex', justifyContent: 'center', padding: 48 }}><Loader2 size={24} className="spin" style={{ color: 'var(--primary)' }} /></div>;
+  if (procedures.length === 0) return <div className="empty-state" style={{ padding: '48px 20px' }}><ClipboardList size={48} strokeWidth={1} style={{ color: 'var(--primary-lt)' }} /><p>Nenhum atendimento realizado.</p></div>;
 
-  const handleRemove = async (proc: Procedure) => {
-    const ok = await confirm({
-      title: 'Excluir atendimento',
-      message: 'Excluir este atendimento? Os pagamentos e parcelas vinculados tambem serao removidos do financeiro. Fotos e mapas ficam preservados, apenas desvinculados.',
-      confirmLabel: 'Excluir',
-      tone: 'danger',
-    });
-    if (!ok) return;
-
-    try {
-      await remove(proc.id);
-      toast.success('Atendimento excluido.');
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Erro ao excluir atendimento.');
-    }
-  };
-
-  if (error || servicesError) {
-    return (
-      <div className="empty-state" style={{ padding: '48px 20px' }}>
-        <p>{error ?? servicesError}</p>
-      </div>
-    );
-  }
-
-  if (loading || loadingServices) {
-    return (
-      <div style={{ display: 'flex', justifyContent: 'center', padding: 48 }}>
-        <Loader2 size={24} className="spin" style={{ color: 'var(--primary)' }} />
-      </div>
-    );
-  }
-
-  if (procedures.length === 0) {
-    return (
-      <div className="empty-state" style={{ padding: '48px 20px' }}>
-        <ClipboardList size={48} strokeWidth={1} style={{ color: 'var(--primary-lt)' }} />
-        <p>Nenhum atendimento registrado ainda.</p>
-      </div>
-    );
-  }
-
-  return (
-    <div style={{ padding: '0 0 16px' }}>
-      <div style={{
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        marginBottom: 14,
-        padding: '10px 14px',
-        background: 'var(--bg-2)',
-        borderRadius: 10,
-        border: '1px solid var(--border)',
-      }}>
-        <span style={{ fontSize: '0.82rem', color: 'var(--text-3)' }}>
-          {procedures.length} atendimento{procedures.length !== 1 ? 's' : ''}
-        </span>
-        <span style={{ fontWeight: 700, color: 'var(--primary)' }}>
-          Total: {currency(total)}
-        </span>
-      </div>
-
-      {procedures.map(proc => (
-        <ProcedureCard key={proc.id} proc={proc} services={servicos} onRemove={handleRemove} />
-      ))}
-    </div>
-  );
+  return <div style={{ padding: '0 0 16px' }}>
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14, padding: '10px 14px', background: 'var(--bg-2)', borderRadius: 10, border: '1px solid var(--border)' }}><span className="page-sub">{procedures.length} atendimento{procedures.length !== 1 ? 's' : ''}</span><strong style={{ color: 'var(--primary)' }}>Total: {currency(total)}</strong></div>
+    {procedures.map(proc => <ProcedureCard key={proc.id} proc={proc} onPhotos={onPhotos} onInjectables={onInjectables} />)}
+  </div>;
 }

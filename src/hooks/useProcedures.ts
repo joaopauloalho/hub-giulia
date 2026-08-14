@@ -55,21 +55,22 @@ export function useProcedures(patientId?: string) {
     try {
       let q = supabase
         .from('procedures')
-        .select('*')
+        .select(patientId ? '*, items:procedure_items(*), payments:procedure_payments(*)' : '*')
         .order('performed_at', { ascending: false });
       if (patientId) q = q.eq('patient_id', patientId);
       const { data, error: proceduresError } = await q;
       if (proceduresError) throw proceduresError;
-      setProcedures(data ?? []);
+      setProcedures((data ?? []) as Procedure[]);
     } catch (err) {
+      console.error('[useProcedures.refresh]', err);
       setProcedures([]);
-      setError(err instanceof Error ? err.message : 'Erro ao carregar atendimentos.');
+      setError('Não foi possível carregar os atendimentos.');
     } finally {
       setLoading(false);
     }
   }, [patientId]);
 
-  useEffect(() => { refresh(); }, [refresh]);
+  useEffect(() => { void refresh(); }, [refresh]);
 
   const create = async (input: CreateProcedureInput): Promise<Procedure> => {
     if (inFlightCreateRef.current) return inFlightCreateRef.current;
@@ -88,7 +89,6 @@ export function useProcedures(patientId?: string) {
           .from('services')
           .select('id, price')
           .in('id', input.services_ids);
-
         if (servicesError) throw servicesError;
 
         const priceByService = new Map(
@@ -128,9 +128,7 @@ export function useProcedures(patientId?: string) {
           notes: input.notes ?? null,
         });
 
-        if (injectablePoints.length > 0) {
-          markAtomicAttendanceProcedure(procedure.id);
-        }
+        if (injectablePoints.length > 0) markAtomicAttendanceProcedure(procedure.id);
         clearAttendanceInjectablePoints();
         idempotencyKeyRef.current = null;
         await refresh();
@@ -146,63 +144,9 @@ export function useProcedures(patientId?: string) {
     try {
       return await operation;
     } finally {
-      if (inFlightCreateRef.current === operation) {
-        inFlightCreateRef.current = null;
-      }
+      if (inFlightCreateRef.current === operation) inFlightCreateRef.current = null;
     }
   };
 
-  const remove = async (procedureId: string) => {
-    const { error: rpcError } = await supabase.rpc('remove_procedure_cascade', {
-      p_procedure_id: procedureId,
-    });
-
-    if (!rpcError) {
-      await refresh();
-      return;
-    }
-
-    if (rpcError.code !== 'PGRST202' && rpcError.code !== '42883') {
-      throw rpcError;
-    }
-
-    const { data: proc, error: fetchError } = await supabase
-      .from('procedures')
-      .select('id, appointment_id')
-      .eq('id', procedureId)
-      .single();
-    if (fetchError) throw fetchError;
-
-    await supabase.from('patient_photos').update({ procedure_id: null }).eq('procedure_id', procedureId);
-    await supabase.from('injectable_maps').update({ procedure_id: null }).eq('procedure_id', procedureId);
-
-    const { error: paymentsError } = await supabase
-      .from('procedure_payments')
-      .delete()
-      .eq('procedure_id', procedureId);
-    if (paymentsError) throw paymentsError;
-
-    const { error: pixError } = await supabase
-      .from('pix_installments')
-      .delete()
-      .eq('procedure_id', procedureId);
-    if (pixError) throw pixError;
-
-    const { error: deleteError } = await supabase
-      .from('procedures')
-      .delete()
-      .eq('id', procedureId);
-    if (deleteError) throw deleteError;
-
-    if ((proc as Pick<Procedure, 'appointment_id'> | null)?.appointment_id) {
-      await supabase
-        .from('appointments')
-        .update({ status: 'confirmado' })
-        .eq('id', (proc as Pick<Procedure, 'appointment_id'>).appointment_id);
-    }
-
-    await refresh();
-  };
-
-  return { procedures, loading, error, create, remove, refresh };
+  return { procedures, loading, error, create, refresh };
 }
