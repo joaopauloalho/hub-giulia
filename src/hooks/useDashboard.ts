@@ -1,4 +1,3 @@
-import { useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from './useAuth';
 import { supabase } from '../lib/supabase';
@@ -75,13 +74,13 @@ export function useDashboard(period: DashboardPeriod) {
     },
   });
 
-  const refresh = useCallback(async () => {
+  const refresh = async () => {
     await Promise.all([
       attentionQuery.refetch(),
       overviewQuery.refetch(),
       seriesQuery.refetch(),
     ]);
-  }, [attentionQuery.refetch, overviewQuery.refetch, seriesQuery.refetch]);
+  };
 
   return {
     attention: attentionQuery.data ?? null,
