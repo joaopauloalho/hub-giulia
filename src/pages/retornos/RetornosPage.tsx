@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Clock3, Search } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { buildWhatsAppUrl } from '../../lib/whatsapp';
@@ -26,6 +26,8 @@ function EmptyState({ title, detail }: { title: string; detail: string }) {
 
 export function RetornosPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const patientId = searchParams.get('patient_id');
   const { toast, confirm } = useToast();
   const { servicos } = useServicos();
   const { retornos, loading, error, refresh, markContacted, complete, dismiss } = useRetornos();
@@ -41,15 +43,16 @@ export function RetornosPage() {
   const dayRange = agendaRange(scheduleDate, 'day');
   const agenda = useAgenda({ from: dayRange.from, to: dayRange.to });
 
-  const serviceOptions = useMemo(() => Array.from(new Set(retornos.map(item => item.serviceName))).sort(), [retornos]);
+  const serviceOptions = useMemo(() => Array.from(new Set(retornos.filter(item => !patientId || item.patientId === patientId).map(item => item.serviceName))).sort(), [retornos, patientId]);
   const base = useMemo(() => retornos.filter(item => {
+    if (patientId && item.patientId !== patientId) return false;
     const query = search.trim().toLocaleLowerCase('pt-BR');
     if (query && !`${item.patientName} ${item.serviceName}`.toLocaleLowerCase('pt-BR').includes(query)) return false;
     if (service && item.serviceName !== service) return false;
     if (fromDate && item.procedureDate < fromDate) return false;
     if (toDate && item.procedureDate > toDate) return false;
     return true;
-  }), [retornos, search, service, fromDate, toDate]);
+  }), [retornos, patientId, search, service, fromDate, toDate]);
 
   const filtered = useMemo(() => base.filter(item => {
     if (filter === 'all') return true;
@@ -65,18 +68,8 @@ export function RetornosPage() {
   const scheduled = base.filter(item => item.operationalStatus === 'scheduled');
   const history = base.filter(item => item.operationalStatus === 'completed' || item.operationalStatus === 'dismissed');
 
-  const runAction = async (action: () => Promise<unknown>, success: string) => {
-    try { await action(); toast.success(success); }
-    catch (actionError) { toast.error(actionError instanceof Error ? actionError.message : 'Não foi possível atualizar o retorno.'); }
-  };
-
-  const openSchedule = (item: RetornoInfo) => {
-    const today = clinicTodayIso();
-    setScheduleDate(item.windowStartIso > today ? item.windowStartIso : today);
-    setScheduleTime('09:00');
-    setScheduleReturn(item);
-  };
-
+  const runAction = async (action: () => Promise<unknown>, success: string) => { try { await action(); toast.success(success); } catch (actionError) { toast.error(actionError instanceof Error ? actionError.message : 'Não foi possível atualizar o retorno.'); } };
+  const openSchedule = (item: RetornoInfo) => { const today = clinicTodayIso(); setScheduleDate(item.windowStartIso > today ? item.windowStartIso : today); setScheduleTime('09:00'); setScheduleReturn(item); };
   const submitSchedule = async () => {
     if (!scheduleReturn) return;
     const serviceRow = servicos.find(item => item.id === scheduleReturn.serviceId);
@@ -86,46 +79,20 @@ export function RetornosPage() {
       const scheduledAt = clinicLocalToIso(scheduleDate, scheduleTime);
       const conflict = await agenda.findConflict(scheduledAt, duration);
       if (conflict) throw new Error(`Já existe um atendimento às ${clinicTime(conflict.scheduled_at)} nesse período.`);
-      const { data, error: scheduleError } = await supabase.rpc('schedule_procedure_return_v2', {
-        p_return_id: scheduleReturn.id, p_scheduled_at: scheduledAt, p_notes: `Retorno: ${scheduleReturn.serviceName}`,
-      });
-      if (scheduleError) {
-        const code = (scheduleError as { code?: string }).code;
-        if (code === '23P01') throw new Error('Já existe um atendimento nesse horário.');
-        throw scheduleError;
-      }
+      const { data, error: scheduleError } = await supabase.rpc('schedule_procedure_return_v2', { p_return_id: scheduleReturn.id, p_scheduled_at: scheduledAt, p_notes: `Retorno: ${scheduleReturn.serviceName}` });
+      if (scheduleError) { const code = (scheduleError as { code?: string }).code; if (code === '23P01') throw new Error('Já existe um atendimento nesse horário.'); throw scheduleError; }
       const appointment = data as { id?: string } | null;
       if (!appointment?.id) throw new Error('Agendamento criado sem identificação.');
       void supabase.functions.invoke('google-calendar-upsert', { body: { appointment_id: appointment.id } }).catch(() => undefined);
-      setScheduleReturn(null);
-      await refresh();
-      toast.success('Retorno agendado e vinculado à Agenda.');
-    } catch (scheduleError) {
-      console.error('[retornos] schedule failed', scheduleError);
-      toast.error(scheduleError instanceof Error ? scheduleError.message : 'Não foi possível agendar o retorno.');
-    } finally { setScheduling(false); }
+      setScheduleReturn(null); await refresh(); toast.success('Retorno agendado e vinculado à Agenda.');
+    } catch (scheduleError) { console.error('[retornos] schedule failed', scheduleError); toast.error(scheduleError instanceof Error ? scheduleError.message : 'Não foi possível agendar o retorno.'); } finally { setScheduling(false); }
   };
-
-  const openWhatsApp = (item: RetornoInfo) => {
-    if (!item.patientPhone) return;
-    const message = item.returnType === 'clinical_return'
-      ? `Olá ${item.patientName}! 🌷 Está chegando o período ideal para avaliarmos seu retorno de ${item.serviceName}. Quando puder, me chama por aqui para combinarmos.`
-      : `Olá ${item.patientName}! 🌷 Está chegando o período recomendado para sua próxima sessão de ${item.serviceName}. Quando puder, me chama por aqui para combinarmos.`;
-    window.open(buildWhatsAppUrl(item.patientPhone, message), '_blank', 'noopener,noreferrer');
-  };
-
-  const card = (item: RetornoInfo) => <RetornoCard key={item.id} item={item}
-    onPatient={() => navigate(`/pacientes?patient_id=${item.patientId}`)}
-    onContact={() => void runAction(() => markContacted(item.id, 'whatsapp'), 'Paciente marcada como contatada.')}
-    onWhatsApp={() => openWhatsApp(item)} onSchedule={() => openSchedule(item)} onAgenda={() => navigate('/agenda')}
-    onComplete={() => void runAction(() => complete(item.id), 'Retorno concluído.')}
-    onDismiss={() => void (async () => {
-      const ok = await confirm({ title: 'Dispensar retorno', message: 'O retorno sairá da fila ativa, mas continuará disponível no histórico.', confirmLabel: 'Dispensar', cancelLabel: 'Cancelar', tone: 'danger' });
-      if (ok) await runAction(() => dismiss(item.id, null), 'Retorno dispensado.');
-    })()} />;
+  const openWhatsApp = (item: RetornoInfo) => { if (!item.patientPhone) return; const message = item.returnType === 'clinical_return' ? `Olá ${item.patientName}! 🌷 Está chegando o período ideal para avaliarmos seu retorno de ${item.serviceName}. Quando puder, me chama por aqui para combinarmos.` : `Olá ${item.patientName}! 🌷 Está chegando o período recomendado para sua próxima sessão de ${item.serviceName}. Quando puder, me chama por aqui para combinarmos.`; window.open(buildWhatsAppUrl(item.patientPhone, message), '_blank', 'noopener,noreferrer'); };
+  const card = (item: RetornoInfo) => <RetornoCard key={item.id} item={item} onPatient={() => navigate(`/pacientes?patient_id=${item.patientId}`, { state: { from: patientId ? `/retornos?patient_id=${patientId}` : '/retornos' } })} onContact={() => void runAction(() => markContacted(item.id, 'whatsapp'), 'Paciente marcada como contatada.')} onWhatsApp={() => openWhatsApp(item)} onSchedule={() => openSchedule(item)} onAgenda={() => navigate('/agenda')} onComplete={() => void runAction(() => complete(item.id), 'Retorno concluído.')} onDismiss={() => void (async () => { const ok = await confirm({ title: 'Dispensar retorno', message: 'O retorno sairá da fila ativa, mas continuará disponível no histórico.', confirmLabel: 'Dispensar', cancelLabel: 'Cancelar', tone: 'danger' }); if (ok) await runAction(() => dismiss(item.id, null), 'Retorno dispensado.'); })()} />;
 
   return <div className="page">
-    <div className="page-header"><div><h1 className="page-title">Retornos</h1><p className="page-sub">Quem precisa da minha atenção hoje?</p></div><span className="badge badge--rose">{attention.length} para atenção</span></div>
+    <div className="page-header"><div><h1 className="page-title">Retornos</h1><p className="page-sub">{patientId ? 'Retornos desta paciente' : 'Quem precisa da minha atenção hoje?'}</p></div><span className="badge badge--rose">{attention.length} para atenção</span></div>
+    {patientId && <button className="btn btn--ghost btn--sm" style={{ marginBottom: 10 }} onClick={() => navigate('/retornos', { replace: true })}>Mostrar todas as pacientes</button>}
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(130px,1fr))', gap: 10, marginBottom: 16 }}><div className="card" style={{ padding: 14 }}><strong>{attention.length}</strong><div className="page-sub">Precisa atenção</div></div><div className="card" style={{ padding: 14 }}><strong>{upcoming.length}</strong><div className="page-sub">Próximos</div></div><div className="card" style={{ padding: 14 }}><strong>{scheduled.length}</strong><div className="page-sub">Agendados</div></div></div>
     <div className="card" style={{ padding: 14, marginBottom: 16 }}><div className="returns-filters-grid"><div style={{ position: 'relative' }}><Search size={16} style={{ position: 'absolute', left: 12, top: 14, color: 'var(--text-3)' }} /><input className="field-input" style={{ paddingLeft: 36 }} value={search} onChange={event => setSearch(event.target.value)} placeholder="Buscar paciente ou serviço" /></div><select className="field-input" value={service} onChange={event => setService(event.target.value)}><option value="">Todos os serviços</option>{serviceOptions.map(name => <option key={name}>{name}</option>)}</select><input className="field-input" type="date" value={fromDate} onChange={event => setFromDate(event.target.value)} /><input className="field-input" type="date" value={toDate} onChange={event => setToDate(event.target.value)} /></div><div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', marginTop: 10 }}>{FILTERS.map(option => <button key={option.value} className={`btn btn--sm ${filter === option.value ? 'btn--primary' : 'btn--ghost'}`} onClick={() => setFilter(option.value)}>{option.label}</button>)}</div></div>
     {loading && <div style={{ display: 'grid', gap: 10 }}><Skeleton height={180} /><Skeleton height={180} /></div>}

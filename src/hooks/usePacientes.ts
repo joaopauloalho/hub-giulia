@@ -9,15 +9,20 @@ import {
 } from '../lib/patientInput';
 import type { Patient } from '../types';
 
+type ArchiveMode = 'active' | 'archived' | 'all';
+export type PatientRecord = Patient & { archived_at: string | null };
+
 interface UsePacientesOptions {
   pageSize?: number;
   search?: string;
+  archiveMode?: ArchiveMode;
 }
 
 export function usePacientes(options: UsePacientesOptions = {}) {
   const pageSize = options.pageSize ?? 50;
   const search = options.search?.trim() ?? '';
-  const [pacientes, setPacientes] = useState<Patient[]>([]);
+  const archiveMode = options.archiveMode ?? 'active';
+  const [pacientes, setPacientes] = useState<PatientRecord[]>([]);
   const [page, setPage] = useState(0);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -33,8 +38,11 @@ export function usePacientes(options: UsePacientesOptions = {}) {
       let query = supabase
         .from('patients')
         .select('*', { count: 'exact' })
-        .order('created_at', { ascending: false })
+        .order(archiveMode === 'archived' ? 'archived_at' : 'created_at', { ascending: false })
         .range(from, to);
+
+      if (archiveMode === 'active') query = query.is('archived_at', null);
+      if (archiveMode === 'archived') query = query.not('archived_at', 'is', null);
 
       if (search.length >= 3) {
         const term = `%${search.replace(/[%_]/g, '\\$&')}%`;
@@ -44,22 +52,24 @@ export function usePacientes(options: UsePacientesOptions = {}) {
       const { data, error: patientsError, count } = await query;
       if (patientsError) throw patientsError;
 
-      setPacientes(current => append ? [...current, ...((data ?? []) as Patient[])] : ((data ?? []) as Patient[]));
+      const rows = (data ?? []) as PatientRecord[];
+      setPacientes(current => append ? [...current, ...rows] : rows);
       setTotal(count ?? 0);
       setPage(nextPage);
     } catch (err) {
       if (!append) setPacientes([]);
-      setError(err instanceof Error ? err.message : 'Erro ao carregar pacientes.');
+      console.error('[usePacientes.load]', err);
+      setError('Não foi possível carregar as pacientes.');
     } finally {
       setLoading(false);
     }
-  }, [pageSize, search]);
+  }, [archiveMode, pageSize, search]);
 
   const refresh = useCallback(async () => {
     await loadPage(0, false);
   }, [loadPage]);
 
-  useEffect(() => { refresh(); }, [refresh]);
+  useEffect(() => { void refresh(); }, [refresh]);
 
   const create = async (data: PatientCreateData) => {
     const normalized = normalizePatientCreateData(data);
@@ -84,22 +94,34 @@ export function usePacientes(options: UsePacientesOptions = {}) {
     }
 
     await refresh();
-    return row as Patient;
+    return row as PatientRecord;
   };
 
   const update = async (id: string, data: Partial<Omit<Patient, 'id' | 'user_id' | 'created_at'>>) => {
-    const { error } = await supabase.from('patients').update(data).eq('id', id);
-    if (error) throw error;
+    const { error: updateError } = await supabase.from('patients').update(data).eq('id', id);
+    if (updateError) throw updateError;
     await refresh();
   };
 
-  const remove = async (id: string) => {
-    const { error } = await supabase.from('patients').delete().eq('id', id);
-    if (error) throw error;
+  const archive = async (id: string) => {
+    const { error: archiveError } = await supabase
+      .from('patients')
+      .update({ archived_at: new Date().toISOString() })
+      .eq('id', id);
+    if (archiveError) throw archiveError;
     await refresh();
   };
 
-  const getById = useCallback(async (id: string): Promise<Patient | null> => {
+  const restore = async (id: string) => {
+    const { error: restoreError } = await supabase
+      .from('patients')
+      .update({ archived_at: null })
+      .eq('id', id);
+    if (restoreError) throw restoreError;
+    await refresh();
+  };
+
+  const getById = useCallback(async (id: string): Promise<PatientRecord | null> => {
     const local = pacientes.find(patient => patient.id === id);
     if (local) return local;
 
@@ -109,7 +131,7 @@ export function usePacientes(options: UsePacientesOptions = {}) {
       .eq('id', id)
       .maybeSingle();
     if (patientError) throw patientError;
-    return data as Patient | null;
+    return data as PatientRecord | null;
   }, [pacientes]);
 
   const nextPage = async () => {
@@ -127,7 +149,8 @@ export function usePacientes(options: UsePacientesOptions = {}) {
     error,
     create,
     update,
-    remove,
+    archive,
+    restore,
     getById,
     refresh,
     total,
