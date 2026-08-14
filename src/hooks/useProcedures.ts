@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 import type { Procedure, PaymentMethod } from '../types';
+import type { PackageCoverageSelection } from '../types/packages';
 import { useAtomicAttendance } from './useAtomicAttendance';
 import { POSTGREST_SELECT } from '../lib/postgrestRelationshipHints';
 import {
@@ -41,6 +42,8 @@ interface CreateProcedureInput {
   notes?: string | null;
   pix_installments_count?: number;
   payment_entries?: PaymentEntryInput[];
+  coverage_entries?: PackageCoverageSelection[];
+  item_values?: Array<{ service_id: string; qty?: number; final_price: number }>;
 }
 
 export function useProcedures(patientId?: string) {
@@ -97,7 +100,10 @@ export function useProcedures(patientId?: string) {
 
     const operation = (async () => {
       try {
-        if (!input.payment_entries || input.payment_entries.length === 0) throw new Error('ATTENDANCE_PAYMENTS_REQUIRED');
+        const coverageEntries = input.coverage_entries ?? [];
+        const paymentInput = input.payment_entries ?? [];
+        if (input.total_value > 0.02 && paymentInput.length === 0) throw new Error('ATTENDANCE_PAYMENTS_REQUIRED');
+        if (input.total_value <= 0.02 && coverageEntries.length === 0 && paymentInput.length === 0) throw new Error('ATTENDANCE_PAYMENTS_REQUIRED');
 
         const { data: serviceRows, error: servicesError } = await supabase
           .from('services')
@@ -106,13 +112,16 @@ export function useProcedures(patientId?: string) {
         if (servicesError) throw servicesError;
 
         const priceByService = new Map((serviceRows ?? []).map(service => [service.id, Number(service.price)]));
+        const explicitItems = new Map((input.item_values ?? []).map(item => [item.service_id, item]));
         const items = input.services_ids.map(serviceId => {
-          const price = priceByService.get(serviceId);
-          if (price === undefined || !Number.isFinite(price)) throw new Error('ATTENDANCE_SERVICE_FORBIDDEN');
-          return { service_id: serviceId, qty: 1, final_price: price };
+          const explicit = explicitItems.get(serviceId);
+          const price = explicit?.final_price ?? priceByService.get(serviceId);
+          const qty = explicit?.qty ?? 1;
+          if (price === undefined || !Number.isFinite(price) || !Number.isFinite(qty) || qty <= 0) throw new Error('ATTENDANCE_SERVICE_FORBIDDEN');
+          return { service_id: serviceId, qty, final_price: Number(price) };
         });
 
-        const paymentEntries = input.payment_entries.map(entry => ({
+        const paymentEntries = paymentInput.map(entry => ({
           method: entry.method,
           base_amount: entry.absorve_taxa ? entry.amount : entry.net_amount,
           amount: entry.amount,
@@ -134,6 +143,7 @@ export function useProcedures(patientId?: string) {
           performed_at: input.performed_at ?? new Date().toISOString(),
           items,
           payment_entries: paymentEntries,
+          coverages: coverageEntries,
           injectable_maps: injectableDraft ? [] : (injectablePoints.length > 0 ? [{ points: injectablePoints }] : []),
           injectable_draft_id: injectableDraft?.mapId ?? null,
           injectable_draft_revision: injectableDraft?.revision ?? null,

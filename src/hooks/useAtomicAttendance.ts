@@ -1,5 +1,6 @@
 import { supabase } from '../lib/supabase';
 import type { InjectablePoint, Procedure } from '../types';
+import type { PackageCoverageSelection } from '../types/packages';
 
 export interface CreateAtomicAttendanceInput {
   idempotency_key: string;
@@ -19,6 +20,7 @@ export interface CreateAtomicAttendanceInput {
     absorve_taxa: boolean;
     scheduled_date: string | null;
   }>;
+  coverages?: PackageCoverageSelection[];
   injectable_maps: Array<{ points: InjectablePoint[] }>;
   injectable_draft_id?: string | null;
   injectable_draft_revision?: number | null;
@@ -28,15 +30,17 @@ export interface CreateAtomicAttendanceInput {
 export function useAtomicAttendance() {
   const createAtomic = async (input: CreateAtomicAttendanceInput): Promise<Procedure> => {
     const hasStructuredDraft = Boolean(input.injectable_draft_id && input.injectable_draft_revision);
+    const coverages = input.coverages ?? [];
 
     if (hasStructuredDraft) {
-      const { data, error } = await supabase.rpc('create_procedure_with_injectable_draft_v2', {
+      const { data, error } = await supabase.rpc('create_procedure_with_injectable_draft_v3', {
         p_idempotency_key: input.idempotency_key,
         p_patient_id: input.patient_id,
         p_appointment_id: input.appointment_id,
         p_performed_at: input.performed_at,
         p_items: input.items,
         p_payment_entries: input.payment_entries,
+        p_coverages: coverages,
         p_notes: input.notes,
         p_injectable_draft_id: input.injectable_draft_id,
         p_injectable_draft_revision: input.injectable_draft_revision,
@@ -47,7 +51,7 @@ export function useAtomicAttendance() {
       return data as Procedure;
     }
 
-    const { data, error } = await supabase.rpc('create_procedure_v2', {
+    const { data, error } = await supabase.rpc('create_procedure_v3', {
       p_idempotency_key: input.idempotency_key,
       p_patient_id: input.patient_id,
       p_appointment_id: input.appointment_id,
@@ -55,6 +59,7 @@ export function useAtomicAttendance() {
       p_items: input.items,
       p_payment_entries: input.payment_entries,
       p_injectable_maps: input.injectable_maps,
+      p_coverages: coverages,
       p_notes: input.notes,
     });
 
