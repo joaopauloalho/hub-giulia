@@ -15,6 +15,7 @@ const FinanceiroPage = lazy(() => import('./pages/financeiro/FinanceiroPage').th
 const CatalogoPage = lazy(() => import('./pages/catalogo/CatalogoPage').then(module => ({ default: module.CatalogoPage })));
 const ServiceReturnSettingsPage = lazy(() => import('./pages/catalogo/ServiceReturnSettingsPage').then(module => ({ default: module.ServiceReturnSettingsPage })));
 const RetornosHubPage = lazy(() => import('./pages/retornos/RetornosHubPage').then(module => ({ default: module.RetornosHubPage })));
+const PacotesPage = lazy(() => import('./pages/pacotes/PacotesPage').then(module => ({ default: module.PacotesPage })));
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -40,6 +41,7 @@ export default function AppRoutesV2() {
             <Route path="pacientes/:patientId/anamnese" element={<AnamneseEditorPage />} />
             <Route path="registrar" element={<RegistrarPage />} />
             <Route path="financeiro" element={<FinanceiroPage />} />
+            <Route path="pacotes" element={<PacotesPage />} />
             <Route path="catalogo" element={<CatalogoPage />} />
             <Route path="catalogo/acompanhamentos" element={<ServiceReturnSettingsPage />} />
           </Route>
