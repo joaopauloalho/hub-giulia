@@ -90,3 +90,10 @@ drop trigger if exists trg_prepare_appointment_v2 on public.appointments;
 create trigger trg_prepare_appointment_v2
 before insert or update on public.appointments
 for each row execute function public.prepare_appointment_v2();
+
+alter table public.appointments
+  drop constraint if exists appointments_status_check;
+
+alter table public.appointments
+  add constraint appointments_status_check
+  check (status = any (array['pendente'::text, 'confirmado'::text, 'realizado'::text, 'cancelado'::text, 'nao_compareceu'::text]));
