@@ -1,4 +1,10 @@
 alter table public.appointments
+  drop constraint if exists appointments_duration_minutes_check,
+  drop constraint if exists appointments_end_after_start_check,
+  drop constraint if exists appointments_source_check,
+  drop constraint if exists appointments_google_sync_status_check;
+
+alter table public.appointments
   add constraint appointments_duration_minutes_check
     check (duration_minutes is null or (duration_minutes > 0 and duration_minutes <= 1440)),
   add constraint appointments_end_after_start_check
