@@ -1,9 +1,11 @@
 import { lazy, Suspense, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Archive, CalendarPlus, ClipboardPlus, Mail, MessageCircle, Pencil, Phone, RotateCcw, StickyNote, X } from 'lucide-react';
+import { Archive, CalendarPlus, ClipboardPlus, Mail, MessageCircle, Pencil, Phone, RotateCcw, StickyNote, TrendingUp, X } from 'lucide-react';
 import type { Patient } from '../../types';
 import { ageLabel } from '../../lib/dateUtils';
 import { buildWhatsAppUrl } from '../../lib/whatsapp';
+import { CRM_STAGE_LABEL } from '../../lib/crm';
+import { getCrmPatientSummary, type CrmPipelineCard } from '../../hooks/useCrm';
 import { useToast } from '../../hooks/useToast';
 import { OverviewTab } from './tabs/OverviewTab';
 
@@ -56,12 +58,22 @@ export function PacienteView({ patient, archived = false, sourceAppointmentId, i
   const { confirm, toast } = useToast();
   const [tab, setTab] = useState<TabKey>(initialTab ?? 'overview');
   const [signatureRequest, setSignatureRequest] = useState<SignatureRequest | null>(null);
+  const [crmSummary, setCrmSummary] = useState<CrmPipelineCard | null>(null);
 
   useEffect(() => {
     if (initialTab) setTab(initialTab);
   }, [initialTab]);
 
+  useEffect(() => {
+    let alive = true;
+    void getCrmPatientSummary(patient.id)
+      .then(summary => { if (alive) setCrmSummary(summary); })
+      .catch(error => console.warn('[patient360:crm-summary]', error));
+    return () => { alive = false; };
+  }, [patient.id]);
+
   const schedule = () => navigate(`/agenda?patient_id=${patient.id}`, { state: { patient: { id: patient.id, name: patient.name, phone: patient.phone }, from: '/pacientes' } });
+  const crmOpportunity = () => navigate(`/crm?patient_id=${patient.id}`);
   const register = () => {
     const query = new URLSearchParams({ patient_id: patient.id });
     if (sourceAppointmentId) query.set('appointment_id', sourceAppointmentId);
@@ -125,12 +137,14 @@ export function PacienteView({ patient, archived = false, sourceAppointmentId, i
             {ageLabel(patient.birth_date) && <span>{ageLabel(patient.birth_date)}</span>}
             {patient.phone && <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><Phone size={11} />{patient.phone}</span>}
             {patient.email && <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><Mail size={11} />{patient.email}</span>}
+            {crmSummary && <button type="button" className="badge badge--rose" style={{ border: 0, cursor: 'pointer' }} onClick={() => navigate('/crm')}><TrendingUp size={11} style={{ marginRight: 4 }} />CRM · {CRM_STAGE_LABEL[crmSummary.stage]}{crmSummary.next_followup_on ? ` · follow-up ${crmSummary.next_followup_on.split('-').reverse().join('/')}` : ''}</button>}
           </div>
         </div>
       </div>
 
       <div style={{ display: 'flex', gap: 7, padding: '10px 14px', borderBottom: '1px solid var(--border)', background: 'var(--bg-2)', overflowX: 'auto', flexShrink: 0 }}>
         <button className="btn btn--primary btn--sm" onClick={schedule}><CalendarPlus size={15} /> Agendar</button>
+        <button className="btn btn--secondary btn--sm" onClick={crmOpportunity}><TrendingUp size={15} /> Nova oportunidade</button>
         <button className="btn btn--secondary btn--sm" onClick={register}><ClipboardPlus size={15} /> Registrar</button>
         <button className="btn btn--secondary btn--sm" onClick={whatsapp} disabled={!patient.phone}><MessageCircle size={15} /> WhatsApp</button>
         <button className="btn btn--secondary btn--sm" onClick={() => setTab('notes')}><StickyNote size={15} /> Nova nota</button>
