@@ -70,7 +70,7 @@ export function AppointmentDetailDrawer({
           {active && <div style={{ marginTop: 16 }}><label className="field-label">Motivo do cancelamento (opcional)</label><input className="field-input" value={cancelReason} onChange={event => setCancelReason(event.target.value)} placeholder="Paciente cancelou, clínica cancelou, outro..." /></div>}
         </div>
         <div className="drawer-footer" style={{ flexWrap: 'wrap' }}>
-          <button className="btn-secondary" onClick={() => navigate(`/pacientes?patient_id=${appointment.patient_id}`)}><User size={15} /> Paciente</button>
+          <button className="btn-secondary" onClick={() => navigate(`/pacientes?patient_id=${appointment.patient_id}`, { state: { from: '/agenda' } })}><User size={15} /> Paciente</button>
           {active && <button className="btn-secondary" onClick={onEdit} disabled={busy}><Edit3 size={15} /> Reagendar</button>}
           {appointment.status === 'pendente' && <button className="btn-secondary" onClick={() => void run(onConfirm, 'Consulta confirmada.')} disabled={busy}><Check size={15} /> Confirmar</button>}
           {active && <button className="btn-secondary" onClick={() => navigate(registrarUrl)} disabled={busy}><ExternalLink size={15} /> Registrar atendimento</button>}
