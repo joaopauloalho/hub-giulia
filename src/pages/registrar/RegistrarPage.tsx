@@ -1,14 +1,16 @@
 import { useEffect, useMemo, useState, lazy, Suspense } from 'react';
 import { useLocation, useSearchParams } from 'react-router-dom';
-import { Search, Check, ChevronRight, ChevronLeft, Loader2, X, Plus, Trash2 } from 'lucide-react';
+import { Search, Check, ChevronRight, ChevronLeft, Loader2, X, Plus, Trash2, WalletCards } from 'lucide-react';
 import { usePacientes } from '../../hooks/usePacientes';
 import { useServicos } from '../../hooks/useServicos';
 import { useProcedures } from '../../hooks/useProcedures';
 import { useInjetaveis } from '../../hooks/useInjetaveis';
 import { useMaquininhaConfig, getFeePct } from '../../hooks/useMaquininhaConfig';
+import { usePatientEntitlements } from '../../hooks/usePackages';
 import { useToast } from '../../hooks/useToast';
 import { clearAttendanceInjectableDraft, clearAttendanceInjectablePoints } from '../../lib/attendanceRuntime';
 import type { Patient, Service, PaymentMethod, MaquininhaRates, PaymentEntryUI, CardBrand, SimplePaymentMethod, InjectablePoint } from '../../types';
+import type { PatientEntitlement } from '../../types/packages';
 const InjetaveisScreen = lazy(() => import('./InjetaveisScreen').then(m => ({ default: m.InjetaveisScreen })));
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -45,13 +47,15 @@ function computeEntry(entry: PaymentEntryUI, rates: MaquininhaRates) {
     const clientPays = entry.baseValue;
     const feeValue = clientPays * feePct / 100;
     return { feePct, clientPays, feeValue, netAmount: clientPays - feeValue };
-  } else {
-    // repassar: baseValue = what I want to receive net
-    const netAmount = entry.baseValue;
-    const clientPays = netAmount / (1 - feePct / 100);
-    const feeValue = clientPays * feePct / 100;
-    return { feePct, clientPays, feeValue, netAmount };
   }
+  const netAmount = entry.baseValue;
+  const clientPays = netAmount / (1 - feePct / 100);
+  const feeValue = clientPays * feePct / 100;
+  return { feePct, clientPays, feeValue, netAmount };
+}
+
+function selectedCoverageValue(services: Service[], coverageByService: Record<string, string | undefined>) {
+  return services.reduce((total, service) => total + (coverageByService[service.id] ? service.price : 0), 0);
 }
 
 // ─── Step indicator ───────────────────────────────────────────────────────────
@@ -60,7 +64,6 @@ function StepBar({ step, hasInjectables, injetaveisDone }: { step: number; hasIn
     ? ['Paciente', 'Serviços', 'Injetáveis', 'Pagamento', 'Confirmar']
     : ['Paciente', 'Serviços', 'Pagamento', 'Confirmar'];
 
-  // Map logical step (0-3) to visual step index accounting for injectable step
   const visualStep = hasInjectables
     ? (step === 1 && !injetaveisDone ? 1 : step >= 2 ? step + 1 : step)
     : step;
@@ -254,10 +257,7 @@ function EntryCard({
           Pagamento {index + 1}{isScheduled ? ' 📅' : ''}
         </span>
         {canRemove && (
-          <button
-            onClick={onRemove}
-            style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 4, color: 'var(--text-3)' }}
-          >
+          <button onClick={onRemove} style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 4, color: 'var(--text-3)' }}>
             <Trash2 size={16} />
           </button>
         )}
@@ -391,44 +391,123 @@ function EntryCard({
   );
 }
 
+function CoverageOptions({
+  services,
+  entitlements,
+  coverageByService,
+  onSelectCoverage,
+  loading,
+}: {
+  services: Service[];
+  entitlements: PatientEntitlement[];
+  coverageByService: Record<string, string | undefined>;
+  onSelectCoverage: (serviceId: string, packageItemId: string | null) => void;
+  loading: boolean;
+}) {
+  const compatible = entitlements.filter(item => item.service_id && item.available_balance >= 1 && item.effective_status === 'active');
+  if (!loading && compatible.length === 0) return null;
+
+  return (
+    <div style={{ marginBottom: 20, padding: 16, background: 'var(--bg-2)', border: '1px solid var(--border)', borderRadius: 12 }}>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 4 }}>
+        <WalletCards size={18} style={{ color: 'var(--primary)' }} />
+        <strong style={{ fontSize: '0.92rem' }}>Cobertura por pacote/crédito</strong>
+      </div>
+      <p style={{ margin: '0 0 14px', fontSize: '0.76rem', color: 'var(--text-3)' }}>
+        O crédito só será consumido ao confirmar este atendimento.
+      </p>
+      {loading ? (
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', color: 'var(--text-3)', fontSize: '0.8rem' }}><Loader2 size={14} className="spin" /> Verificando créditos…</div>
+      ) : services.map(service => {
+        const options = compatible.filter(item => item.service_id === service.id);
+        if (options.length === 0) return null;
+        const selectedId = coverageByService[service.id];
+        return (
+          <div key={service.id} style={{ paddingTop: 12, marginTop: 12, borderTop: '1px solid var(--border)' }}>
+            <div style={{ fontWeight: 600, fontSize: '0.84rem', marginBottom: 8 }}>{service.name}</div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+              <button
+                type="button"
+                onClick={() => onSelectCoverage(service.id, null)}
+                style={{ padding: '9px 11px', borderRadius: 8, cursor: 'pointer', fontSize: '0.76rem', fontWeight: 600, background: !selectedId ? '#fdf2f8' : 'var(--bg)', border: `1.5px solid ${!selectedId ? 'var(--primary)' : 'var(--border)'}`, color: !selectedId ? 'var(--primary)' : 'var(--text)' }}
+              >
+                Cobrar normalmente
+              </button>
+              {options.map(item => {
+                const selected = selectedId === item.package_item_id;
+                return (
+                  <button
+                    key={item.package_item_id}
+                    type="button"
+                    onClick={() => onSelectCoverage(service.id, item.package_item_id)}
+                    style={{ padding: '9px 11px', borderRadius: 8, cursor: 'pointer', fontSize: '0.76rem', textAlign: 'left', background: selected ? '#f0fdf4' : 'var(--bg)', border: `1.5px solid ${selected ? '#22c55e' : 'var(--border)'}`, color: selected ? '#166534' : 'var(--text)' }}
+                  >
+                    <strong>Usar crédito — {item.package_title}</strong><br />
+                    <span style={{ opacity: 0.78 }}>{item.available_balance:g} disponível{item.available_balance === 1 ? '' : 'is'}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 // ─── Step 3: Pagamento ────────────────────────────────────────────────────────
 function StepPagamento({
   services,
   entries,
   setEntries,
   rates,
+  entitlements,
+  coverageByService,
+  onSelectCoverage,
+  loadingEntitlements,
 }: {
   services: Service[];
   entries: PaymentEntryUI[];
   setEntries: (e: PaymentEntryUI[]) => void;
   rates: MaquininhaRates;
+  entitlements: PatientEntitlement[];
+  coverageByService: Record<string, string | undefined>;
+  onSelectCoverage: (serviceId: string, packageItemId: string | null) => void;
+  loadingEntitlements: boolean;
 }) {
   const total = services.reduce((s, x) => s + x.price, 0);
+  const covered = selectedCoverageValue(services, coverageByService);
+  const amountDue = Math.max(0, +(total - covered).toFixed(2));
   const totalCusto = services.reduce((s, x) => s + x.cost_per_unit, 0);
 
   const computed = entries.map(e => computeEntry(e, rates));
   const sumBase = entries.reduce((s, e) => s + e.baseValue, 0);
   const sumNet = computed.reduce((s, c) => s + c.netAmount, 0);
-  const remaining = +(total - sumBase).toFixed(2);
+  const remaining = +(amountDue - sumBase).toFixed(2);
   const balanced = Math.abs(remaining) < 0.01;
-  const lucro = sumNet - totalCusto;
+  const resultadoCaixa = sumNet - totalCusto;
 
-  const update = (idx: number, e: PaymentEntryUI) =>
-    setEntries(entries.map((x, i) => i === idx ? e : x));
-  const remove = (idx: number) =>
-    setEntries(entries.filter((_, i) => i !== idx));
-  const addEntry = () =>
-    setEntries([...entries, mkEntry(remaining > 0 ? remaining : 0)]);
+  const update = (idx: number, e: PaymentEntryUI) => setEntries(entries.map((x, i) => i === idx ? e : x));
+  const remove = (idx: number) => setEntries(entries.filter((_, i) => i !== idx));
+  const addEntry = () => setEntries([...entries, mkEntry(remaining > 0 ? remaining : 0)]);
 
   return (
     <div>
-      <h2 style={{ fontSize: '1.1rem', fontWeight: 600, marginBottom: 16 }}>Forma de pagamento</h2>
+      <h2 style={{ fontSize: '1.1rem', fontWeight: 600, marginBottom: 16 }}>Cobertura e pagamento</h2>
+
+      <CoverageOptions
+        services={services}
+        entitlements={entitlements}
+        coverageByService={coverageByService}
+        onSelectCoverage={onSelectCoverage}
+        loading={loadingEntitlements}
+      />
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginBottom: 20 }}>
         {[
-          { label: 'Total', value: total, color: 'var(--text)' },
-          { label: 'Você recebe', value: sumNet, color: 'var(--primary)' },
-          { label: 'Lucro est.', value: lucro, color: lucro >= 0 ? 'var(--green)' : 'var(--red)' },
+          { label: 'Valor serviços', value: total, color: 'var(--text)' },
+          { label: 'Coberto', value: covered, color: covered > 0 ? 'var(--green)' : 'var(--text-3)' },
+          { label: 'A cobrar agora', value: amountDue, color: 'var(--primary)' },
         ].map(({ label, value, color }) => (
           <div key={label} style={{ padding: '10px 8px', background: 'var(--bg-2)', borderRadius: 10, border: '1px solid var(--border)', textAlign: 'center' }}>
             <div style={{ fontSize: '0.68rem', color: 'var(--text-3)', marginBottom: 3 }}>{label}</div>
@@ -437,42 +516,44 @@ function StepPagamento({
         ))}
       </div>
 
-      {entries.map((e, i) => (
-        <EntryCard
-          key={e.tempId}
-          entry={e}
-          index={i}
-          rates={rates}
-          canRemove={entries.length > 1}
-          onChange={updated => update(i, updated)}
-          onRemove={() => remove(i)}
-        />
-      ))}
-
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 4 }}>
-        <button
-          onClick={addEntry}
-          style={{
-            display: 'flex', alignItems: 'center', gap: 6,
-            padding: '10px 16px', background: 'var(--bg-2)',
-            border: '1.5px dashed var(--border)', borderRadius: 10,
-            cursor: 'pointer', fontSize: '0.85rem', color: 'var(--primary)', fontWeight: 600,
-          }}
-        >
-          <Plus size={16} /> Adicionar pagamento
-        </button>
-
-        <div style={{
-          flex: 1, padding: '10px 12px', borderRadius: 10, textAlign: 'center',
-          background: balanced ? '#f0fdf4' : '#fffbf0',
-          border: `1px solid ${balanced ? '#bbf7d0' : '#fde68a'}`,
-          fontSize: '0.78rem',
-          color: balanced ? 'var(--green)' : '#b45309',
-          fontWeight: 600,
-        }}>
-          {balanced ? '✓ Alocado' : `Falta R$ ${remaining.toFixed(2)}`}
+      {amountDue <= 0.01 ? (
+        <div style={{ padding: '14px 16px', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 10, color: '#166534', fontSize: '0.84rem', fontWeight: 600 }}>
+          ✓ Coberto por pacote. Nenhum pagamento é devido agora.
         </div>
-      </div>
+      ) : (
+        <>
+          <h3 style={{ fontSize: '0.88rem', margin: '0 0 10px' }}>Pagamento do valor restante</h3>
+          {entries.map((e, i) => (
+            <EntryCard
+              key={e.tempId}
+              entry={e}
+              index={i}
+              rates={rates}
+              canRemove={entries.length > 1}
+              onChange={updated => update(i, updated)}
+              onRemove={() => remove(i)}
+            />
+          ))}
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 4 }}>
+            <button
+              onClick={addEntry}
+              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '10px 16px', background: 'var(--bg-2)', border: '1.5px dashed var(--border)', borderRadius: 10, cursor: 'pointer', fontSize: '0.85rem', color: 'var(--primary)', fontWeight: 600 }}
+            >
+              <Plus size={16} /> Adicionar pagamento
+            </button>
+            <div style={{ flex: 1, padding: '10px 12px', borderRadius: 10, textAlign: 'center', background: balanced ? '#f0fdf4' : '#fffbf0', border: `1px solid ${balanced ? '#bbf7d0' : '#fde68a'}`, fontSize: '0.78rem', color: balanced ? 'var(--green)' : '#b45309', fontWeight: 600 }}>
+              {balanced ? '✓ Alocado' : `Falta R$ ${remaining.toFixed(2)}`}
+            </div>
+          </div>
+        </>
+      )}
+
+      {covered > 0 && (
+        <div style={{ marginTop: 12, fontSize: '0.73rem', color: 'var(--text-3)' }}>
+          Custo clínico estimado: R$ {totalCusto.toFixed(2)} · Líquido recebido agora: R$ {sumNet.toFixed(2)} · Resultado de caixa deste atendimento: R$ {resultadoCaixa.toFixed(2)}. O consumo do crédito não gera nova receita.
+        </div>
+      )}
     </div>
   );
 }
@@ -485,6 +566,8 @@ function StepConfirmar({
   rates,
   saving,
   onConfirm,
+  entitlements,
+  coverageByService,
 }: {
   patient: Patient;
   services: Service[];
@@ -492,13 +575,18 @@ function StepConfirmar({
   rates: MaquininhaRates;
   saving: boolean;
   onConfirm: () => void;
+  entitlements: PatientEntitlement[];
+  coverageByService: Record<string, string | undefined>;
 }) {
-  const totalCobrado = services.reduce((s, x) => s + x.price, 0);
+  const valorServicos = services.reduce((s, x) => s + x.price, 0);
+  const covered = selectedCoverageValue(services, coverageByService);
+  const amountDue = Math.max(0, +(valorServicos - covered).toFixed(2));
   const totalCusto = services.reduce((s, x) => s + x.cost_per_unit, 0);
   const computed = entries.map(e => ({ entry: e, ...computeEntry(e, rates) }));
   const totalNet = computed.reduce((s, c) => s + c.netAmount, 0);
   const totalFee = computed.reduce((s, c) => s + c.feeValue, 0);
   const lucro = totalNet - totalCusto;
+  const entitlementById = new Map(entitlements.map(item => [item.package_item_id, item]));
 
   return (
     <div>
@@ -511,18 +599,27 @@ function StepConfirmar({
         </div>
 
         <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)' }}>
-          <div style={{ fontSize: '0.72rem', color: 'var(--text-3)', marginBottom: 6 }}>Serviços</div>
-          {services.map(s => (
-            <div key={s.id} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-              <span style={{ fontSize: '0.9rem' }}>{s.name}</span>
-              <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>R$ {s.price.toFixed(2)}</span>
-            </div>
-          ))}
+          <div style={{ fontSize: '0.72rem', color: 'var(--text-3)', marginBottom: 6 }}>Serviços e cobertura</div>
+          {services.map(s => {
+            const coverageId = coverageByService[s.id];
+            const entitlement = coverageId ? entitlementById.get(coverageId) : undefined;
+            return (
+              <div key={s.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginBottom: 8 }}>
+                <div>
+                  <span style={{ fontSize: '0.9rem' }}>{s.name}</span>
+                  {entitlement && <div style={{ fontSize: '0.72rem', color: '#166534', fontWeight: 600 }}>Coberto por {entitlement.package_title} · 1 crédito</div>}
+                </div>
+                <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>R$ {s.price.toFixed(2)}</span>
+              </div>
+            );
+          })}
         </div>
 
         <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)' }}>
-          <div style={{ fontSize: '0.72rem', color: 'var(--text-3)', marginBottom: 8 }}>Pagamentos</div>
-          {computed.map(({ entry, clientPays, feePct, feeValue, netAmount }, i) => {
+          <div style={{ fontSize: '0.72rem', color: 'var(--text-3)', marginBottom: 8 }}>Pagamentos agora</div>
+          {computed.length === 0 ? (
+            <div style={{ fontSize: '0.84rem', color: '#166534', fontWeight: 600 }}>Nenhum — atendimento totalmente coberto por pacote.</div>
+          ) : computed.map(({ entry, clientPays, feePct, feeValue, netAmount }, i) => {
             const isScheduled = entry.scheduledDate > TODAY;
             return (
               <div key={entry.tempId} style={{ marginBottom: i < computed.length - 1 ? 10 : 0 }}>
@@ -533,22 +630,12 @@ function StepConfirmar({
                       {entry.method === 'cartao_credito' && ` ${entry.installments}x`}
                       {(entry.method === 'cartao_credito' || entry.method === 'cartao_debito') && ` · ${entry.cardBrand === 'elo' ? 'Elo' : 'Master/Visa'}`}
                     </span>
-                    {feePct > 0 && (
-                      <div style={{ fontSize: '0.72rem', color: 'var(--text-3)' }}>
-                        Taxa {feePct}% = R$ {feeValue.toFixed(2)} {entry.absorveTaxa ? '(absorvo)' : '(repassado)'}
-                      </div>
-                    )}
-                    {isScheduled && (
-                      <div style={{ fontSize: '0.72rem', color: '#b45309', fontWeight: 600 }}>
-                        📅 Agendado para {entry.scheduledDate.split('-').reverse().join('/')}
-                      </div>
-                    )}
+                    {feePct > 0 && <div style={{ fontSize: '0.72rem', color: 'var(--text-3)' }}>Taxa {feePct}% = R$ {feeValue.toFixed(2)} {entry.absorveTaxa ? '(absorvo)' : '(repassado)'}</div>}
+                    {isScheduled && <div style={{ fontSize: '0.72rem', color: '#b45309', fontWeight: 600 }}>📅 Agendado para {entry.scheduledDate.split('-').reverse().join('/')}</div>}
                   </div>
                   <div style={{ textAlign: 'right' }}>
                     <div style={{ fontSize: '0.88rem', fontWeight: 600 }}>R$ {clientPays.toFixed(2)}</div>
-                    {feePct > 0 && (
-                      <div style={{ fontSize: '0.72rem', color: 'var(--text-3)' }}>→ R$ {netAmount.toFixed(2)}</div>
-                    )}
+                    {feePct > 0 && <div style={{ fontSize: '0.72rem', color: 'var(--text-3)' }}>→ R$ {netAmount.toFixed(2)}</div>}
                   </div>
                 </div>
               </div>
@@ -558,16 +645,16 @@ function StepConfirmar({
 
         <div style={{ padding: '12px 16px' }}>
           {[
-            { label: 'Total cobrado', value: `R$ ${totalCobrado.toFixed(2)}`, bold: false },
-            ...(totalFee > 0 ? [{ label: 'Total taxas', value: `−R$ ${totalFee.toFixed(2)}`, bold: false }] : []),
-            { label: 'Custo', value: `−R$ ${totalCusto.toFixed(2)}`, bold: false },
-            { label: 'Lucro estimado', value: `R$ ${lucro.toFixed(2)}`, bold: true, color: lucro >= 0 ? 'var(--green)' : 'var(--red)' },
+            { label: 'Valor dos serviços', value: `R$ ${valorServicos.toFixed(2)}`, bold: false },
+            ...(covered > 0 ? [{ label: 'Coberto por pacotes', value: `−R$ ${covered.toFixed(2)}`, bold: false, color: '#166534' }] : []),
+            { label: 'A cobrar agora', value: `R$ ${amountDue.toFixed(2)}`, bold: true, color: 'var(--primary)' },
+            ...(totalFee > 0 ? [{ label: 'Taxas', value: `−R$ ${totalFee.toFixed(2)}`, bold: false }] : []),
+            { label: 'Custo clínico', value: `−R$ ${totalCusto.toFixed(2)}`, bold: false },
+            ...(covered === 0 ? [{ label: 'Lucro estimado', value: `R$ ${lucro.toFixed(2)}`, bold: true, color: lucro >= 0 ? 'var(--green)' : 'var(--red)' }] : [{ label: 'Líquido recebido agora', value: `R$ ${totalNet.toFixed(2)}`, bold: false }]),
           ].map((row, i) => (
             <div key={i} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
               <span style={{ fontSize: '0.85rem', color: 'var(--text-2)' }}>{row.label}</span>
-              <span style={{ fontWeight: row.bold ? 700 : 500, color: (row as { color?: string }).color ?? 'var(--text)', fontSize: '0.85rem' }}>
-                {row.value}
-              </span>
+              <span style={{ fontWeight: row.bold ? 700 : 500, color: (row as { color?: string }).color ?? 'var(--text)', fontSize: '0.85rem' }}>{row.value}</span>
             </div>
           ))}
         </div>
@@ -577,12 +664,7 @@ function StepConfirmar({
         {format(new Date(), "dd 'de' MMMM 'de' yyyy", { locale: ptBR })}
       </div>
 
-      <button
-        className="btn-primary"
-        style={{ width: '100%', padding: '16px', fontSize: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
-        onClick={onConfirm}
-        disabled={saving}
-      >
+      <button className="btn-primary" style={{ width: '100%', padding: '16px', fontSize: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }} onClick={onConfirm} disabled={saving}>
         {saving ? <Loader2 size={20} className="spin" /> : <Check size={20} />}
         {saving ? 'Salvando…' : 'Confirmar Atendimento'}
       </button>
@@ -604,6 +686,7 @@ export function RegistrarPage() {
   const [services, setServices] = useState<Service[]>([]);
   const [appointmentId, setAppointmentId] = useState<string | null>(null);
   const [paymentEntries, setPaymentEntries] = useState<PaymentEntryUI[]>([]);
+  const [coverageByService, setCoverageByService] = useState<Record<string, string | undefined>>({});
   const [saving, setSaving] = useState(false);
   const [done, setDone] = useState(false);
   const [injectablePoints, setInjectablePoints] = useState<InjectablePoint[]>([]);
@@ -612,6 +695,8 @@ export function RegistrarPage() {
 
   const { save: saveInjetaveis } = useInjetaveis();
   const hasInjectables = services.some(s => s.is_injectable);
+  const serviceIds = services.map(service => service.id);
+  const { data: entitlements, loading: loadingEntitlements } = usePatientEntitlements(patient?.id, serviceIds);
 
   const routeState = (location.state ?? {}) as {
     patient?: Patient;
@@ -654,12 +739,20 @@ export function RegistrarPage() {
     }
   }, [getById, loadingPacientes, loadingServicos, pacientes, patient, routeState.appointmentId, routeState.patient, routeState.patientId, routeState.serviceId, searchParams, services.length, servicos]);
 
+  const totalServices = services.reduce((s, x) => s + x.price, 0);
+  const coveredValue = selectedCoverageValue(services, coverageByService);
+  const amountDue = Math.max(0, +(totalServices - coveredValue).toFixed(2));
+
   useEffect(() => {
-    if (step === 2 && paymentEntries.length === 0 && services.length > 0) {
-      const total = services.reduce((s, x) => s + x.price, 0);
-      setPaymentEntries([mkEntry(total)]);
+    if (step === 2 && paymentEntries.length === 0 && services.length > 0 && amountDue > 0.01) {
+      setPaymentEntries([mkEntry(amountDue)]);
     }
-  }, [step, paymentEntries.length, services]);
+  }, [step, paymentEntries.length, services, amountDue]);
+
+  useEffect(() => {
+    const selected = new Set(services.map(service => service.id));
+    setCoverageByService(current => Object.fromEntries(Object.entries(current).filter(([serviceId]) => selected.has(serviceId))));
+  }, [services]);
 
   useEffect(() => {
     if (hasInjectables) return;
@@ -669,8 +762,17 @@ export function RegistrarPage() {
     setInjetaveisDone(false);
   }, [hasInjectables]);
 
-  const toggleService = (s: Service) =>
-    setServices(prev => prev.some(x => x.id === s.id) ? prev.filter(x => x.id !== s.id) : [...prev, s]);
+  const toggleService = (s: Service) => setServices(prev => prev.some(x => x.id === s.id) ? prev.filter(x => x.id !== s.id) : [...prev, s]);
+
+  const selectCoverage = (serviceId: string, packageItemId: string | null) => {
+    const next = { ...coverageByService };
+    if (packageItemId) next[serviceId] = packageItemId;
+    else delete next[serviceId];
+    setCoverageByService(next);
+    const nextCovered = selectedCoverageValue(services, next);
+    const nextDue = Math.max(0, +(totalServices - nextCovered).toFixed(2));
+    setPaymentEntries(nextDue > 0.01 ? [mkEntry(nextDue)] : []);
+  };
 
   const reset = () => {
     clearAttendanceInjectableDraft();
@@ -680,6 +782,7 @@ export function RegistrarPage() {
     setServices([]);
     setAppointmentId(null);
     setPaymentEntries([]);
+    setCoverageByService({});
     setDone(false);
     setInjectablePoints([]);
     setShowInjetaveisScreen(false);
@@ -687,22 +790,17 @@ export function RegistrarPage() {
   };
 
   const confirm = async () => {
-    if (!patient || services.length === 0 || paymentEntries.length === 0) return;
+    if (!patient || services.length === 0 || (amountDue > 0.01 && paymentEntries.length === 0)) return;
     setSaving(true);
     try {
-      const totalCobrado = services.reduce((s, x) => s + x.price, 0);
       const totalCusto = services.reduce((s, x) => s + x.cost_per_unit, 0);
       const rates = maqConfig.rates;
       const todayStr = format(new Date(), 'yyyy-MM-dd');
 
       const computed = paymentEntries.map(e => ({ e, ...computeEntry(e, rates) }));
-      const immediateNetValue = computed
-        .filter(c => c.e.scheduledDate <= todayStr)
-        .reduce((s, c) => s + c.netAmount, 0);
+      const immediateNetValue = computed.filter(c => c.e.scheduledDate <= todayStr).reduce((s, c) => s + c.netAmount, 0);
       const totalFeeValue = computed.reduce((s, c) => s + c.feeValue, 0);
-      const paymentMethod: PaymentMethod = paymentEntries.length === 1
-        ? paymentEntries[0].method
-        : 'split';
+      const paymentMethod: PaymentMethod = paymentEntries.length === 1 ? paymentEntries[0].method : 'split';
 
       const payment_entries = computed.map(({ e, clientPays, feePct, feeValue, netAmount }) => ({
         method: e.method,
@@ -717,17 +815,24 @@ export function RegistrarPage() {
         is_immediate: e.scheduledDate <= todayStr,
       }));
 
+      const coverage_entries = services.flatMap(service => {
+        const packageItemId = coverageByService[service.id];
+        return packageItemId ? [{ service_id: service.id, package_item_id: packageItemId, quantity: 1 }] : [];
+      });
+
       const procedure = await create({
         patient_id: patient.id,
         appointment_id: appointmentId,
         services_ids: services.map(s => s.id),
-        total_value: totalCobrado,
+        total_value: amountDue,
         total_cost: totalCusto,
         payment_method: paymentMethod,
         card_fee_pct: null,
         card_fee_value: totalFeeValue > 0 ? totalFeeValue : null,
         net_value: immediateNetValue,
         payment_entries,
+        coverage_entries,
+        item_values: services.map(service => ({ service_id: service.id, qty: 1, final_price: service.price })),
       });
 
       if (injectablePoints.length > 0 && patient) {
@@ -745,6 +850,7 @@ export function RegistrarPage() {
 
   if (done) {
     const hasScheduled = paymentEntries.some(e => e.scheduledDate > format(new Date(), 'yyyy-MM-dd'));
+    const usedCredits = Object.keys(coverageByService).length;
     return (
       <div className="page">
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '60vh', gap: 20, padding: 32 }}>
@@ -752,63 +858,41 @@ export function RegistrarPage() {
             <Check size={36} color="var(--green)" strokeWidth={2.5} />
           </div>
           <h2 style={{ fontWeight: 700, fontSize: '1.3rem', color: 'var(--text)' }}>Atendimento registrado!</h2>
-          <p style={{ color: 'var(--text-3)', textAlign: 'center' }}>
-            {patient?.name} · {services.map(s => s.name).join(', ')}
-          </p>
-          {hasScheduled && (
-            <p style={{ fontSize: '0.85rem', color: '#b45309', background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: 8, padding: '10px 16px', textAlign: 'center' }}>
-              Pagamento(s) agendado(s) adicionados à aba Financeiro.
-            </p>
-          )}
-          <button className="btn-primary" style={{ padding: '12px 32px', marginTop: 8 }} onClick={reset}>
-            Novo Registro
-          </button>
+          <p style={{ color: 'var(--text-3)', textAlign: 'center' }}>{patient?.name} · {services.map(s => s.name).join(', ')}</p>
+          {usedCredits > 0 && <p style={{ fontSize: '0.85rem', color: '#166534', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 8, padding: '10px 16px', textAlign: 'center' }}>{usedCredits} crédito{usedCredits > 1 ? 's' : ''} consumido{usedCredits > 1 ? 's' : ''} no atendimento.</p>}
+          {hasScheduled && <p style={{ fontSize: '0.85rem', color: '#b45309', background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: 8, padding: '10px 16px', textAlign: 'center' }}>Pagamento(s) agendado(s) adicionados à aba Financeiro.</p>}
+          <button className="btn-primary" style={{ padding: '12px 32px', marginTop: 8 }} onClick={reset}>Novo Registro</button>
         </div>
       </div>
     );
   }
 
-  const total = services.reduce((s, x) => s + x.price, 0);
   const sumBase = paymentEntries.reduce((s, e) => s + e.baseValue, 0);
-  const balanced = Math.abs(total - sumBase) < 0.01;
+  const balanced = Math.abs(amountDue - sumBase) < 0.01;
 
   const canAdvance = () => {
     if (step === 0) return !!patient;
     if (step === 1) return services.length > 0;
-    if (step === 2) return !loadingMaq && !maqError && paymentEntries.length > 0 && balanced;
+    if (step === 2) return !loadingMaq && !maqError && ((amountDue <= 0.01 && paymentEntries.length === 0) || (paymentEntries.length > 0 && balanced));
     return true;
   };
 
   const handleContinue = () => {
-    if (step === 1 && hasInjectables && !injetaveisDone) {
-      setShowInjetaveisScreen(true);
-    } else {
-      setStep(s => s + 1);
-    }
+    if (step === 1 && hasInjectables && !injetaveisDone) setShowInjetaveisScreen(true);
+    else setStep(s => s + 1);
   };
 
   return (
     <div className="page">
       <div className="page-header">
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          {step > 0 && (
-            <button
-              onClick={() => setStep(s => s - 1)}
-              style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 4, color: 'var(--primary)' }}
-            >
-              <ChevronLeft size={24} />
-            </button>
-          )}
+          {step > 0 && <button onClick={() => setStep(s => s - 1)} style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 4, color: 'var(--primary)' }}><ChevronLeft size={24} /></button>}
           <div>
             <h1 className="page-title">Registrar</h1>
             {patient && step > 0 && <p className="page-sub">{patient.name}</p>}
           </div>
         </div>
-        {patient && step > 0 && (
-          <button onClick={reset} style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 4, color: 'var(--text-3)' }} title="Cancelar">
-            <X size={20} />
-          </button>
-        )}
+        {patient && step > 0 && <button onClick={reset} style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 4, color: 'var(--text-3)' }} title="Cancelar"><X size={20} /></button>}
       </div>
 
       {showInjetaveisScreen && patient && (
@@ -816,23 +900,9 @@ export function RegistrarPage() {
           <InjetaveisScreen
             patientId={patient.id}
             injectableServices={services.filter(s => s.is_injectable)}
-            onDone={pts => {
-              setInjectablePoints(pts);
-              setInjetaveisDone(true);
-              setShowInjetaveisScreen(false);
-              setStep(2);
-            }}
-            onCancel={() => {
-              setInjetaveisDone(false);
-              setShowInjetaveisScreen(false);
-              setStep(1);
-            }}
-            onSkip={() => {
-              setInjectablePoints([]);
-              setInjetaveisDone(true);
-              setShowInjetaveisScreen(false);
-              setStep(2);
-            }}
+            onDone={pts => { setInjectablePoints(pts); setInjetaveisDone(true); setShowInjetaveisScreen(false); setStep(2); }}
+            onCancel={() => { setInjetaveisDone(false); setShowInjetaveisScreen(false); setStep(1); }}
+            onSkip={() => { setInjectablePoints([]); setInjetaveisDone(true); setShowInjetaveisScreen(false); setStep(2); }}
           />
         </Suspense>
       )}
@@ -844,12 +914,16 @@ export function RegistrarPage() {
         {step === 1 && <StepServicos selected={services} onToggle={toggleService} />}
         {step === 2 && (
           <>
-            {maqError && <div className="empty-state" style={{ padding: '16px 0' }}><p>{maqError}</p></div>}
+            {maqError && amountDue > 0.01 && <div className="empty-state" style={{ padding: '16px 0' }}><p>{maqError}</p></div>}
             <StepPagamento
               services={services}
               entries={paymentEntries}
               setEntries={setPaymentEntries}
               rates={maqConfig.rates}
+              entitlements={entitlements}
+              coverageByService={coverageByService}
+              onSelectCoverage={selectCoverage}
+              loadingEntitlements={loadingEntitlements}
             />
           </>
         )}
@@ -861,23 +935,15 @@ export function RegistrarPage() {
             rates={maqConfig.rates}
             saving={saving}
             onConfirm={confirm}
+            entitlements={entitlements}
+            coverageByService={coverageByService}
           />
         )}
 
         {step < 3 && (
           <button
             className="btn-primary"
-            style={{
-              position: 'fixed',
-              bottom: 'calc(var(--tab-h) + 16px)',
-              left: '50%',
-              transform: 'translateX(-50%)',
-              width: 'calc(100% - 32px)',
-              maxWidth: 640,
-              padding: '16px', fontSize: '1rem',
-              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-              opacity: canAdvance() ? 1 : 0.45, pointerEvents: canAdvance() ? 'auto' : 'none',
-            }}
+            style={{ position: 'fixed', bottom: 'calc(var(--tab-h) + 16px)', left: '50%', transform: 'translateX(-50%)', width: 'calc(100% - 32px)', maxWidth: 640, padding: '16px', fontSize: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, opacity: canAdvance() ? 1 : 0.45, pointerEvents: canAdvance() ? 'auto' : 'none' }}
             onClick={handleContinue}
             disabled={!canAdvance()}
           >
