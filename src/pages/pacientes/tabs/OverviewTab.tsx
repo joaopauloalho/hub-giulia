@@ -51,6 +51,7 @@ export function OverviewTab(props: Props) {
   if (error || !overview) return <div className="empty-state"><p>{error ?? 'Não foi possível carregar a paciente.'}</p></div>;
 
   const alerts = [
+    overview.anamnesis.draftInProgress ? { key: 'anamnesis-draft', label: 'Anamnese em atualização — rascunho não concluído', action: props.onAnamnesis } : null,
     overview.priorityReturn?.status === 'overdue' ? { key: 'return', label: 'Retorno atrasado', action: props.onReturns } : null,
     overview.financialSummary.pending > 0 ? { key: 'finance', label: `${formatPatientMoney(overview.financialSummary.pending)} pendente`, action: props.onFinance } : null,
     overview.overdueNotesCount > 0 ? { key: 'note', label: `${overview.overdueNotesCount} lembrete${overview.overdueNotesCount === 1 ? '' : 's'} vencido${overview.overdueNotesCount === 1 ? '' : 's'}`, action: props.onNotes } : null,
