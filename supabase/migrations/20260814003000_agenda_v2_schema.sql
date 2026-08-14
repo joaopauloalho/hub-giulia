@@ -12,7 +12,10 @@ alter table public.appointments
   add column if not exists google_sync_status text not null default 'pending',
   add column if not exists google_last_synced_at timestamptz,
   add column if not exists google_sync_error_code text,
-  add column if not exists idempotency_key uuid;
+  add column if not exists idempotency_key uuid,
+  add column if not exists previous_scheduled_at timestamptz,
+  add column if not exists previous_duration_minutes integer,
+  add column if not exists last_rescheduled_at timestamptz;
 
 update public.appointments a
 set duration_minutes = coalesce(nullif(s.duration_minutes, 0), 60)
@@ -65,3 +68,5 @@ comment on column public.appointments.end_at
   is 'Database-maintained end instant derived from scheduled_at and duration_minutes.';
 comment on column public.appointments.source
   is 'Agenda 2.0 origin: manual or return.';
+comment on column public.appointments.previous_scheduled_at
+  is 'Previous start instant from the most recent reschedule; null for appointments never rescheduled.';
