@@ -1,0 +1,2 @@
+-- Production migration version 20260813235016 is applied in Supabase.
+-- Restricts the procedure-removal RPC to authenticated callers; public/anonymous execution was revoked.
