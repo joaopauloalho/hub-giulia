@@ -16,19 +16,16 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: '24'
           cache: npm
 
       - name: Install dependencies
         run: npm ci
-
-      - name: Dependency audit
-        run: npm audit --audit-level=high
 
       - name: Test
         run: npm test
@@ -42,26 +39,101 @@ jobs:
       - name: Build
         run: npx vite build
 
+  dependency-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Audit high/critical vulnerabilities
+        shell: bash
+        run: |
+          set +e
+          npm audit --audit-level=high --json > audit.json
+          audit_status=$?
+          set -e
+          node <<'NODE'
+          const fs = require('node:fs');
+          const report = JSON.parse(fs.readFileSync('audit.json', 'utf8'));
+          const vulnerable = Object.entries(report.vulnerabilities || {})
+            .filter(([, value]) => value && (value.severity === 'high' || value.severity === 'critical'));
+          const escape = value => String(value ?? '').replace(/%/g, '%25').replace(/\r/g, '%0D').replace(/\n/g, '%0A');
+          for (const [name, value] of vulnerable) {
+            const via = Array.isArray(value.via)
+              ? value.via.map(item => typeof item === 'string' ? item : item?.title).filter(Boolean).slice(0, 3).join('; ')
+              : '';
+            const fix = value.fixAvailable === true ? 'fix available' : value.fixAvailable ? `fix ${JSON.stringify(value.fixAvailable)}` : 'no automatic fix';
+            console.log(`::error title=${escape(`npm audit ${value.severity}: ${name}`)}::${escape(`${via || 'high/critical dependency vulnerability'}; ${fix}`)}`);
+          }
+          const meta = report.metadata?.vulnerabilities || {};
+          console.log(`npm audit summary: critical=${meta.critical || 0} high=${meta.high || 0} moderate=${meta.moderate || 0} low=${meta.low || 0}`);
+          if (vulnerable.length) process.exit(1);
+          NODE
+          if [ "$audit_status" -ne 0 ]; then
+            echo "npm audit exited with $audit_status but no high/critical entry was parsed."
+            exit "$audit_status"
+          fi
+
   database-rebuild:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
-      - name: Setup Supabase CLI
-        uses: supabase/setup-cli@v1
+      - name: Setup Node
+        uses: actions/setup-node@v7
         with:
-          version: 2.114.0
+          node-version: '24'
 
       - name: Initialize local Supabase config
-        run: supabase init --force
+        run: npx -y supabase@2.114.0 init --force
 
       - name: Rebuild schema from migrations
+        shell: bash
         run: |
-          supabase start -x studio,imgproxy,realtime,mailpit,logflare,vector,supavisor,edge-runtime
-          supabase db reset --local --no-seed
+          set +e
+          npx -y supabase@2.114.0 start -x studio,imgproxy,realtime,mailpit,logflare,vector,supavisor,edge-runtime > rebuild.log 2>&1
+          start_status=$?
+          set -e
+          if [ "$start_status" -ne 0 ]; then
+            echo "Supabase local start/migration apply failed. Diagnostic tail follows."
+            tail -n 80 rebuild.log
+            grep -Ei 'ERROR|failed|does not exist|already exists|duplicate|syntax error|relation|function' rebuild.log | tail -n 12 | while IFS= read -r line; do
+              safe="${line//'%'/'%25'}"
+              safe="${safe//$'\r'/'%0D'}"
+              safe="${safe//$'\n'/'%0A'}"
+              echo "::error title=Supabase migration rebuild::$safe"
+            done
+            exit "$start_status"
+          fi
+
+          set +e
+          npx -y supabase@2.114.0 db reset --local --no-seed > reset.log 2>&1
+          reset_status=$?
+          set -e
+          if [ "$reset_status" -ne 0 ]; then
+            echo "Supabase db reset failed. Diagnostic tail follows."
+            tail -n 80 reset.log
+            grep -Ei 'ERROR|failed|does not exist|already exists|duplicate|syntax error|relation|function' reset.log | tail -n 12 | while IFS= read -r line; do
+              safe="${line//'%'/'%25'}"
+              safe="${safe//$'\r'/'%0D'}"
+              safe="${safe//$'\n'/'%0A'}"
+              echo "::error title=Supabase migration rebuild::$safe"
+            done
+            exit "$reset_status"
+          fi
 
       - name: Stop local stack
         if: always()
-        run: supabase stop --no-backup || true
+        run: npx -y supabase@2.114.0 stop --no-backup || true
