@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
-import { BookOpen, CalendarDays, CircleEllipsis, LayoutDashboard, MessageCircle, Package, PlusCircle, RotateCcw, TrendingUp, Users, Wallet, X } from 'lucide-react';
+import { BookOpen, CalendarDays, CircleEllipsis, HeartHandshake, LayoutDashboard, MessageCircle, Package, PlusCircle, RotateCcw, TrendingUp, Users, Wallet, X } from 'lucide-react';
 
 const PRIMARY = [
   { to: '/dashboard', icon: LayoutDashboard, label: 'Hoje' },
@@ -10,6 +10,7 @@ const PRIMARY = [
 ] as const;
 
 const MORE = [
+  { to: '/relacionamento', icon: HeartHandshake, label: 'Relacionamento', note: 'Pessoas que merecem atenção' },
   { to: '/crm', icon: TrendingUp, label: 'CRM', note: 'Leads e oportunidades' },
   { to: '/retornos', icon: RotateCcw, label: 'Retornos', note: 'Acompanhamentos clínicos' },
   { to: '/registrar', icon: PlusCircle, label: 'Registrar', note: 'Novo procedimento' },

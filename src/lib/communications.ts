@@ -6,12 +6,13 @@ export const COMMUNICATION_TEMPLATE_KEYS = [
   'package_expiry',
   'aftercare_instructions',
   'post_procedure_checkin',
+  'relationship_reactivation',
 ] as const;
 
 export type CommunicationTemplateKey = typeof COMMUNICATION_TEMPLATE_KEYS[number];
 export type CommunicationCategory = 'confirmation' | 'crm' | 'return' | 'proposal' | 'package' | 'aftercare';
 export type CommunicationPriority = 'overdue' | 'today' | 'tomorrow' | 'upcoming';
-export type CommunicationSourceType = 'appointment' | 'crm_followup' | 'procedure_return' | 'proposal_version' | 'package' | 'procedure_followup_plan' | 'procedure_followup_task';
+export type CommunicationSourceType = 'appointment' | 'crm_followup' | 'procedure_return' | 'proposal_version' | 'package' | 'procedure_followup_plan' | 'procedure_followup_task' | 'relationship_patient';
 
 export type CommunicationContext = {
   scheduled_at?: string;
@@ -89,6 +90,7 @@ export const DEFAULT_COMMUNICATION_TEMPLATES: Record<CommunicationTemplateKey, s
   package_expiry: 'Oi, {first_name}! Tudo bem? Você ainda tem {remaining_credits} crédito(s) disponível(is) no seu plano, com validade até {valid_until}. Se quiser, podemos organizar seu próximo horário.',
   aftercare_instructions: 'Oi, {first_name}! Tudo bem? Seguem as orientações combinadas no seu atendimento:\n\n{aftercare_instructions}\n\nQualquer dúvida, estou à disposição.',
   post_procedure_checkin: 'Oi, {first_name}! Tudo bem? Passando para saber como você está após o seu atendimento. Está tudo correndo bem?',
+  relationship_reactivation: 'Oi, {first_name}! Tudo bem? Faz um tempinho que não nos vemos e passei para saber como você está. Se precisar de alguma coisa, estou por aqui.',
 };
 
 export const COMMUNICATION_PLACEHOLDERS = [
@@ -126,6 +128,7 @@ export const TEMPLATE_LABEL: Record<CommunicationTemplateKey, string> = {
   package_expiry: 'Pacote próximo da validade',
   aftercare_instructions: 'Orientações pós-atendimento',
   post_procedure_checkin: 'Check-in pós-atendimento',
+  relationship_reactivation: 'Relacionamento / reativação',
 };
 
 export const PRIORITY_LABEL: Record<CommunicationPriority, string> = {
@@ -178,7 +181,7 @@ export function templateVariables(item: CommunicationAttentionItem, clinicName =
 
 function formatCredits(value: unknown): string {
   const number = Number(value);
-  if (!Number.isFinite(number)) return '';
+  if (!Number.isFinite(number)) return value == null ? '' : String(value);
   return number.toLocaleString('pt-BR', { maximumFractionDigits: 3 });
 }
 
@@ -249,5 +252,6 @@ export function communicationStatusLabel(context: string): string {
     package_expiry: 'Pacote / crédito',
     aftercare_instructions: 'Orientações pós-atendimento',
     post_procedure_checkin: 'Check-in pós-atendimento',
+    relationship_reactivation: 'Relacionamento / reativação',
   } as Record<string, string>)[context] ?? 'Comunicação';
 }

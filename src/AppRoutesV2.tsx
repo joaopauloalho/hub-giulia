@@ -8,6 +8,7 @@ const LoginPage = lazy(() => import('./pages/auth/LoginPage').then(module => ({ 
 const AgendaPage = lazy(() => import('./pages/agenda/AgendaPage').then(module => ({ default: module.AgendaV2Page })));
 const DashboardPage = lazy(() => import('./pages/dashboard/DashboardPage').then(module => ({ default: module.DashboardPage })));
 const CommunicationPage = lazy(() => import('./pages/comunicacao/CommunicationPage').then(module => ({ default: module.CommunicationPage })));
+const RelationshipPage = lazy(() => import('./pages/relacionamento/RelationshipPage').then(module => ({ default: module.RelationshipPage })));
 const CrmPage = lazy(() => import('./pages/crm/CrmPage').then(module => ({ default: module.CrmPage })));
 const ProposalEditorPage = lazy(() => import('./pages/crm/ProposalEditorPage').then(module => ({ default: module.ProposalEditorPage })));
 const PacientesPage = lazy(() => import('./pages/pacientes/PacientesPage').then(module => ({ default: module.PacientesPage })));
@@ -38,6 +39,7 @@ const router = createBrowserRouter(createRoutesFromElements(
       <Route index element={<Navigate to="/dashboard" replace />} />
       <Route path="dashboard" element={<DashboardPage />} />
       <Route path="comunicacao" element={<CommunicationPage />} />
+      <Route path="relacionamento" element={<RelationshipPage />} />
       <Route path="agenda" element={<AgendaPage />} />
       <Route path="retornos" element={<RetornosHubPage />} />
       <Route path="crm" element={<CrmPage />} />
