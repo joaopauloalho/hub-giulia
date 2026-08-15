@@ -4,12 +4,14 @@ export const COMMUNICATION_TEMPLATE_KEYS = [
   'proposal_followup',
   'procedure_return',
   'package_expiry',
+  'aftercare_instructions',
+  'post_procedure_checkin',
 ] as const;
 
 export type CommunicationTemplateKey = typeof COMMUNICATION_TEMPLATE_KEYS[number];
-export type CommunicationCategory = 'confirmation' | 'crm' | 'return' | 'proposal' | 'package';
+export type CommunicationCategory = 'confirmation' | 'crm' | 'return' | 'proposal' | 'package' | 'aftercare';
 export type CommunicationPriority = 'overdue' | 'today' | 'tomorrow' | 'upcoming';
-export type CommunicationSourceType = 'appointment' | 'crm_followup' | 'procedure_return' | 'proposal_version' | 'package';
+export type CommunicationSourceType = 'appointment' | 'crm_followup' | 'procedure_return' | 'proposal_version' | 'package' | 'procedure_followup_plan' | 'procedure_followup_task';
 
 export type CommunicationContext = {
   scheduled_at?: string;
@@ -26,6 +28,13 @@ export type CommunicationContext = {
   valid_until?: string;
   package_title?: string;
   remaining_credits?: number | string;
+  procedure_id?: string;
+  performed_on?: string;
+  aftercare_instructions?: string;
+  task_type?: string;
+  task_label?: string;
+  requires_professional_review?: boolean;
+  photo_followup?: boolean;
 };
 
 export type CommunicationAttentionItem = {
@@ -55,6 +64,7 @@ export type CommunicationCounts = {
   return: number;
   proposal: number;
   package: number;
+  aftercare: number;
   overdue: number;
   today: number;
 };
@@ -77,6 +87,8 @@ export const DEFAULT_COMMUNICATION_TEMPLATES: Record<CommunicationTemplateKey, s
   proposal_followup: 'Oi, {first_name}! Tudo bem? Conseguiu dar uma olhadinha no plano que te enviei? Se ficou alguma dúvida, estou por aqui.',
   procedure_return: 'Oi, {first_name}! Tudo bem? Já estamos no período do seu retorno e queria combinar um horário com você.',
   package_expiry: 'Oi, {first_name}! Tudo bem? Você ainda tem {remaining_credits} crédito(s) disponível(is) no seu plano, com validade até {valid_until}. Se quiser, podemos organizar seu próximo horário.',
+  aftercare_instructions: 'Oi, {first_name}! Tudo bem? Seguem as orientações combinadas no seu atendimento:\n\n{aftercare_instructions}\n\nQualquer dúvida, estou à disposição.',
+  post_procedure_checkin: 'Oi, {first_name}! Tudo bem? Passando para saber como você está após o seu atendimento. Está tudo correndo bem?',
 };
 
 export const COMMUNICATION_PLACEHOLDERS = [
@@ -89,6 +101,7 @@ export const COMMUNICATION_PLACEHOLDERS = [
   'valid_until',
   'package_title',
   'remaining_credits',
+  'aftercare_instructions',
 ] as const;
 
 export type CommunicationPlaceholder = typeof COMMUNICATION_PLACEHOLDERS[number];
@@ -102,6 +115,7 @@ export const CATEGORY_LABEL: Record<CommunicationCategory, string> = {
   return: 'Retornos',
   proposal: 'Propostas',
   package: 'Pacotes',
+  aftercare: 'Pós-atendimento',
 };
 
 export const TEMPLATE_LABEL: Record<CommunicationTemplateKey, string> = {
@@ -110,6 +124,8 @@ export const TEMPLATE_LABEL: Record<CommunicationTemplateKey, string> = {
   proposal_followup: 'Follow-up de proposta',
   procedure_return: 'Retorno',
   package_expiry: 'Pacote próximo da validade',
+  aftercare_instructions: 'Orientações pós-atendimento',
+  post_procedure_checkin: 'Check-in pós-atendimento',
 };
 
 export const PRIORITY_LABEL: Record<CommunicationPriority, string> = {
@@ -156,6 +172,7 @@ export function templateVariables(item: CommunicationAttentionItem, clinicName =
     valid_until: formatCommunicationDate(item.context?.valid_until ?? null),
     package_title: String(item.context?.package_title ?? ''),
     remaining_credits: formatCredits(item.context?.remaining_credits),
+    aftercare_instructions: String(item.context?.aftercare_instructions ?? ''),
   };
 }
 
@@ -185,41 +202,33 @@ export function communicationRelativeLabel(item: CommunicationAttentionItem, now
     const time = formatCommunicationTime(item.event_at);
     return `${item.priority === 'today' ? 'Hoje' : item.priority === 'tomorrow' ? 'Amanhã' : date} · ${time}`;
   }
-  if (item.category === 'crm' && item.context?.due_on) {
+  if ((item.category === 'crm' || item.category === 'aftercare') && item.context?.due_on) {
     const due = new Date(`${item.context.due_on}T12:00:00-03:00`);
     const today = new Date(new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(now) + 'T12:00:00-03:00');
     const days = Math.round((today.getTime() - due.getTime()) / 86_400_000);
     if (days > 0) return `Atrasado há ${days} dia${days === 1 ? '' : 's'}`;
-    return 'Para hoje';
+    return item.context.requires_professional_review ? 'Requer atenção da profissional' : 'Para hoje';
   }
+  if (item.category === 'aftercare') return item.reason;
   if (item.category === 'proposal' && item.context?.sent_at) {
     const sent = new Date(item.context.sent_at);
     const days = Math.max(0, Math.floor((now.getTime() - sent.getTime()) / 86_400_000));
     return `Proposta enviada há ${days} dia${days === 1 ? '' : 's'}`;
   }
-  if (item.category === 'package' && item.context?.valid_until) {
-    return `Válido até ${formatCommunicationDate(item.context.valid_until)}`;
-  }
-  if (item.category === 'return' && item.context?.window_end) {
-    return `${item.reason} · até ${formatCommunicationDate(item.context.window_end)}`;
-  }
+  if (item.category === 'package' && item.context?.valid_until) return `Válido até ${formatCommunicationDate(item.context.valid_until)}`;
+  if (item.category === 'return' && item.context?.window_end) return `${item.reason} · até ${formatCommunicationDate(item.context.window_end)}`;
   return item.reason;
 }
 
 export function snoozeUntil(kind: 'later_today' | 'tomorrow' | '3d' | '7d', now = new Date()): Date {
   const local = new Date(now);
-  if (kind === 'later_today') {
-    return new Date(now.getTime() + 4 * 60 * 60 * 1000);
-  }
+  if (kind === 'later_today') return new Date(now.getTime() + 4 * 60 * 60 * 1000);
   const days = kind === 'tomorrow' ? 1 : kind === '3d' ? 3 : 7;
   return new Date(local.getTime() + days * 86_400_000);
 }
 
 export async function copyCommunicationText(text: string): Promise<void> {
-  if (navigator.clipboard?.writeText) {
-    await navigator.clipboard.writeText(text);
-    return;
-  }
+  if (navigator.clipboard?.writeText) { await navigator.clipboard.writeText(text); return; }
   const textarea = document.createElement('textarea');
   textarea.value = text;
   textarea.style.position = 'fixed';
@@ -238,5 +247,7 @@ export function communicationStatusLabel(context: string): string {
     procedure_return: 'Retorno',
     proposal_followup: 'Follow-up de proposta',
     package_expiry: 'Pacote / crédito',
+    aftercare_instructions: 'Orientações pós-atendimento',
+    post_procedure_checkin: 'Check-in pós-atendimento',
   } as Record<string, string>)[context] ?? 'Comunicação';
 }

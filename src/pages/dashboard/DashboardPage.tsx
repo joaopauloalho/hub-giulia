@@ -1,511 +1,81 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import {
-  Activity,
-  AlertTriangle,
-  CalendarDays,
-  CheckCircle,
-  ChevronRight,
-  Clock,
-  FileText,
-  Package,
-  RefreshCw,
-  RotateCcw,
-  TrendingUp,
-  Users,
-  Wallet,
-} from 'lucide-react';
+import { Activity, AlertTriangle, CalendarDays, CheckCircle, ChevronRight, Clock, FileText, MessageCircle, Package, RefreshCw, RotateCcw, TrendingUp, Users, Wallet } from 'lucide-react';
 import { Skeleton } from '../../components/ui/Skeleton';
 import { useDashboard } from '../../hooks/useDashboard';
-import {
-  clinicTodayIso,
-  compareMetric,
-  decimal,
-  getDashboardPeriod,
-  money,
-  percent,
-  periodEndInclusive,
-  type DashboardPeriodPreset,
-} from '../../lib/dashboardMetrics';
+import { clinicTodayIso, compareMetric, decimal, getDashboardPeriod, money, percent, periodEndInclusive, type DashboardPeriodPreset } from '../../lib/dashboardMetrics';
 import './dashboard.css';
 
 const PERIOD_PRESETS: Array<{ key: Exclude<DashboardPeriodPreset, 'custom'>; label: string }> = [
-  { key: 'today', label: 'Hoje' },
-  { key: '7d', label: '7 dias' },
-  { key: '30d', label: '30 dias' },
-  { key: 'month', label: 'Este mês' },
-  { key: 'previous_month', label: 'Mês anterior' },
+  { key: 'today', label: 'Hoje' }, { key: '7d', label: '7 dias' }, { key: '30d', label: '30 dias' }, { key: 'month', label: 'Este mês' }, { key: 'previous_month', label: 'Mês anterior' },
 ];
-
-const FUNNEL_LABELS = {
-  new: 'Novo',
-  contacted: 'Contato',
-  assessment_scheduled: 'Avaliação',
-  proposal_sent: 'Proposta',
-  negotiation: 'Negociação',
-} as const;
+const FUNNEL_LABELS = { new: 'Novo', contacted: 'Contato', assessment_scheduled: 'Avaliação', proposal_sent: 'Proposta', negotiation: 'Negociação' } as const;
 
 function Comparison({ current, previous }: { current: number; previous: number }) {
   const comparison = compareMetric(current, previous);
-  return (
-    <div className="dashboard-comparison" aria-label={`${comparison.label} versus período anterior`}>
-      <span aria-hidden="true">{comparison.direction === 'up' ? '↑' : comparison.direction === 'down' ? '↓' : '→'}</span>
-      <strong>{comparison.label}</strong>
-      <span>vs período anterior</span>
-    </div>
-  );
+  return <div className="dashboard-comparison" aria-label={`${comparison.label} versus período anterior`}><span aria-hidden="true">{comparison.direction === 'up' ? '↑' : comparison.direction === 'down' ? '↓' : '→'}</span><strong>{comparison.label}</strong><span>vs período anterior</span></div>;
 }
 
-function MetricCard({
-  label,
-  value,
-  icon,
-  note,
-  snapshot,
-  comparison,
-  onClick,
-}: {
-  label: string;
-  value: string;
-  icon?: React.ReactNode;
-  note?: string;
-  snapshot?: boolean;
-  comparison?: { current: number; previous: number };
-  onClick?: () => void;
-}) {
-  const content = (
-    <>
-      <div className="dashboard-metric-card__label">
-        {icon}
-        <span>{label}</span>
-        {snapshot && <span className="dashboard-snapshot-tag">Agora</span>}
-      </div>
-      <div className="dashboard-metric-card__value">{value}</div>
-      {note && <div className="dashboard-metric-card__note">{note}</div>}
-      {comparison && <Comparison current={comparison.current} previous={comparison.previous} />}
-    </>
-  );
-
-  if (onClick) {
-    return (
-      <button type="button" className="dashboard-metric-card dashboard-metric-card--clickable" onClick={onClick}>
-        {content}
-      </button>
-    );
-  }
+function MetricCard({ label, value, icon, note, snapshot, comparison, onClick }: { label: string; value: string; icon?: React.ReactNode; note?: string; snapshot?: boolean; comparison?: { current: number; previous: number }; onClick?: () => void; }) {
+  const content = <><div className="dashboard-metric-card__label">{icon}<span>{label}</span>{snapshot && <span className="dashboard-snapshot-tag">Agora</span>}</div><div className="dashboard-metric-card__value">{value}</div>{note && <div className="dashboard-metric-card__note">{note}</div>}{comparison && <Comparison current={comparison.current} previous={comparison.previous} />}</>;
+  if (onClick) return <button type="button" className="dashboard-metric-card dashboard-metric-card--clickable" onClick={onClick}>{content}</button>;
   return <div className="dashboard-metric-card">{content}</div>;
 }
 
-function AttentionCard({
-  title,
-  value,
-  detail,
-  urgent,
-  icon,
-  onClick,
-}: {
-  title: string;
-  value: string;
-  detail: string;
-  urgent?: boolean;
-  icon: React.ReactNode;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      className={`dashboard-action-card${urgent ? ' dashboard-action-card--urgent' : ''}`}
-      onClick={onClick}
-    >
-      <div className="dashboard-action-card__top">
-        <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>{icon}{title}</span>
-        <ChevronRight size={15} />
-      </div>
-      <div className="dashboard-action-card__value">{value}</div>
-      <div className="dashboard-action-card__detail">{detail}</div>
-    </button>
-  );
+function AttentionCard({ title, value, detail, urgent, icon, onClick }: { title: string; value: string; detail: string; urgent?: boolean; icon: React.ReactNode; onClick: () => void; }) {
+  return <button type="button" className={`dashboard-action-card${urgent ? ' dashboard-action-card--urgent' : ''}`} onClick={onClick}><div className="dashboard-action-card__top"><span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>{icon}{title}</span><ChevronRight size={15} /></div><div className="dashboard-action-card__value">{value}</div><div className="dashboard-action-card__detail">{detail}</div></button>;
 }
-
-function formatTime(value: string) {
-  return new Intl.DateTimeFormat('pt-BR', {
-    timeZone: 'America/Sao_Paulo',
-    hour: '2-digit',
-    minute: '2-digit',
-  }).format(new Date(value));
-}
-
-function formatPeriodDate(value: string) {
-  const [year, month, day] = value.split('-').map(Number);
-  return new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: 'short' }).format(new Date(Date.UTC(year, month - 1, day)));
-}
+function formatTime(value: string) { return new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit' }).format(new Date(value)); }
+function formatPeriodDate(value: string) { const [year, month, day] = value.split('-').map(Number); return new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: 'short' }).format(new Date(Date.UTC(year, month - 1, day))); }
 
 export function DashboardPage() {
-  const navigate = useNavigate();
-  const [today] = useState(() => clinicTodayIso());
-  const [preset, setPreset] = useState<DashboardPeriodPreset>('month');
-  const [showCustom, setShowCustom] = useState(false);
-  const [customDraft, setCustomDraft] = useState({ startDate: today, endDateInclusive: today });
-  const [customApplied, setCustomApplied] = useState({ startDate: today, endDateInclusive: today });
-  const [customError, setCustomError] = useState<string | null>(null);
-
-  const period = useMemo(
-    () => getDashboardPeriod(preset, today, preset === 'custom' ? customApplied : undefined),
-    [customApplied, preset, today],
-  );
-  const { attention, overview, series, isLoading, isRefreshing, error, refresh } = useDashboard(period);
-
-  const applyCustom = () => {
-    try {
-      getDashboardPeriod('custom', today, customDraft);
-      setCustomApplied(customDraft);
-      setPreset('custom');
-      setShowCustom(true);
-      setCustomError(null);
-    } catch (customPeriodError) {
-      setCustomError(customPeriodError instanceof Error ? customPeriodError.message : 'Período inválido.');
-    }
-  };
-
+  const navigate = useNavigate(); const [today] = useState(() => clinicTodayIso()); const [preset, setPreset] = useState<DashboardPeriodPreset>('month'); const [showCustom, setShowCustom] = useState(false); const [customDraft, setCustomDraft] = useState({ startDate: today, endDateInclusive: today }); const [customApplied, setCustomApplied] = useState({ startDate: today, endDateInclusive: today }); const [customError, setCustomError] = useState<string | null>(null);
+  const period = useMemo(() => getDashboardPeriod(preset, today, preset === 'custom' ? customApplied : undefined), [customApplied, preset, today]);
+  const { attention, aftercareAttention, overview, series, isLoading, isRefreshing, error, refresh } = useDashboard(period);
+  const applyCustom = () => { try { getDashboardPeriod('custom', today, customDraft); setCustomApplied(customDraft); setPreset('custom'); setShowCustom(true); setCustomError(null); } catch (customPeriodError) { setCustomError(customPeriodError instanceof Error ? customPeriodError.message : 'Período inválido.'); } };
   const periodLabel = `${formatPeriodDate(period.startDate)} – ${formatPeriodDate(periodEndInclusive(period))}`;
   const chartMax = Math.max(0, ...series.map(point => Number(point.gross)));
 
-  return (
-    <div className="page dashboard-page">
-      <header className="dashboard-header">
-        <div>
-          <h1 className="page-title">Dashboard</h1>
-          <p className="page-sub">Central de comando · o que pede atenção e como a clínica está performando</p>
-        </div>
-        <div className="dashboard-header__actions">
-          <button type="button" className="btn btn--secondary btn--sm dashboard-refresh" onClick={() => void refresh()} disabled={isRefreshing}>
-            <RefreshCw size={16} className={isRefreshing ? 'spin' : undefined} />
-            <span>Atualizar</span>
-          </button>
-        </div>
-      </header>
+  return <div className="page dashboard-page">
+    <header className="dashboard-header"><div><h1 className="page-title">Dashboard</h1><p className="page-sub">Central de comando · o que pede atenção e como a clínica está performando</p></div><div className="dashboard-header__actions"><button type="button" className="btn btn--secondary btn--sm dashboard-refresh" onClick={() => void refresh()} disabled={isRefreshing}><RefreshCw size={16} className={isRefreshing ? 'spin' : undefined} /><span>Atualizar</span></button></div></header>
+    {error && <div className="dashboard-error" role="alert"><strong>Não foi possível atualizar o Dashboard.</strong> {error instanceof Error ? error.message : 'Tente novamente.'}</div>}
 
-      {error && (
-        <div className="dashboard-error" role="alert">
-          <strong>Não foi possível atualizar o Dashboard.</strong> {error instanceof Error ? error.message : 'Tente novamente.'}
+    <section className="dashboard-attention" aria-labelledby="dashboard-attention-title">
+      <div className="dashboard-section__heading" style={{ marginBottom: 0 }}><div><h2 id="dashboard-attention-title" className="dashboard-section__title">Hoje / Precisa de atenção</h2><p className="dashboard-section__sub">Snapshot operacional de {formatPeriodDate(today)} · não muda com o filtro de desempenho</p></div><span className="dashboard-snapshot-tag">Agora</span></div>
+      {isLoading || !attention || !aftercareAttention ? <div className="dashboard-skeleton-grid" style={{ marginTop: 14 }}>{[0, 1, 2, 3, 4, 5].map(item => <div key={item} className="dashboard-metric-card"><Skeleton lines={3} /></div>)}</div> : <>
+        <div className="dashboard-attention__grid">
+          <AttentionCard title="Agenda" value={`${attention.agenda.total}`} detail={`${attention.agenda.confirmed} confirmados · ${attention.agenda.pending} pendentes · ${attention.agenda.completed} realizados`} icon={<CalendarDays size={15} />} onClick={() => navigate(`/agenda?date=${attention.today}`)} />
+          <AttentionCard title="Follow-ups" value={`${attention.crm_followups.overdue} atrasados`} detail={`${attention.crm_followups.today} para hoje`} urgent={attention.crm_followups.overdue > 0} icon={<Clock size={15} />} onClick={() => navigate('/crm?followup=overdue')} />
+          <AttentionCard title="Retornos clínicos" value={`${attention.returns.overdue} atrasados`} detail={`${attention.returns.today} na janela hoje · ${attention.returns.upcoming} próximos`} urgent={attention.returns.overdue > 0} icon={<RotateCcw size={15} />} onClick={() => navigate('/retornos?attention=overdue')} />
+          <AttentionCard title="Acompanhamentos" value={`${aftercareAttention.overdue} atrasados`} detail={`${aftercareAttention.today} hoje · ${aftercareAttention.orientation_pending} orientações · ${aftercareAttention.review} revisar`} urgent={aftercareAttention.overdue > 0 || aftercareAttention.review > 0} icon={<MessageCircle size={15} />} onClick={() => navigate('/comunicacao?category=aftercare')} />
+          <AttentionCard title="Recebimentos" value={money(attention.payments.overdue_value)} detail={`${attention.payments.overdue_count} vencidos · ${money(attention.payments.today_value)} para hoje`} urgent={attention.payments.overdue_count > 0} icon={<Wallet size={15} />} onClick={() => navigate('/financeiro?status=pending')} />
+          <AttentionCard title="Expirando em 7 dias" value={`${attention.proposals.expiring_count + attention.packages.expiring_count}`} detail={`${attention.proposals.expiring_count} propostas · ${attention.packages.expiring_count} pacotes com saldo`} icon={<AlertTriangle size={15} />} onClick={() => navigate('/crm?proposal=expiring')} />
         </div>
-      )}
+        {attention.agenda.next_appointment && <button type="button" className="dashboard-next" onClick={() => navigate(`/agenda?date=${attention.today}`)} style={{ width: '100%', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left' }}><span className="dashboard-next__time">{formatTime(attention.agenda.next_appointment.scheduled_at)}</span><span className="dashboard-next__body"><span className="dashboard-next__name">Próximo: {attention.agenda.next_appointment.patient_name}</span><span className="dashboard-next__service" style={{ display: 'block' }}>{attention.agenda.next_appointment.service_name ?? 'Serviço não informado'}</span></span><ChevronRight size={16} /></button>}
+      </>}
+    </section>
 
-      <section className="dashboard-attention" aria-labelledby="dashboard-attention-title">
-        <div className="dashboard-section__heading" style={{ marginBottom: 0 }}>
-          <div>
-            <h2 id="dashboard-attention-title" className="dashboard-section__title">Hoje / Precisa de atenção</h2>
-            <p className="dashboard-section__sub">Snapshot operacional de {formatPeriodDate(today)} · não muda com o filtro de desempenho</p>
-          </div>
-          <span className="dashboard-snapshot-tag">Agora</span>
-        </div>
+    <section className="dashboard-section" aria-labelledby="dashboard-performance-title"><div className="dashboard-section__heading"><div><h2 id="dashboard-performance-title" className="dashboard-section__title">Desempenho</h2><p className="dashboard-section__sub">Fluxos respeitam o período · snapshots continuam marcados como “Agora”</p></div><strong style={{ color: 'var(--text-2)', fontSize: '0.78rem' }}>{periodLabel}</strong></div>
+      <div className="dashboard-period-bar"><div className="dashboard-periods" aria-label="Filtro de período">{PERIOD_PRESETS.map(item => <button key={item.key} type="button" className={`dashboard-period${preset === item.key ? ' dashboard-period--active' : ''}`} onClick={() => { setPreset(item.key); setShowCustom(false); setCustomError(null); }}>{item.label}</button>)}<button type="button" className={`dashboard-period${preset === 'custom' ? ' dashboard-period--active' : ''}`} onClick={() => setShowCustom(value => !value)}>Personalizado</button></div><span className="dashboard-section__sub">Comparação: período anterior equivalente</span>{showCustom && <div className="dashboard-custom-period"><label>De<input type="date" value={customDraft.startDate} onChange={event => setCustomDraft(value => ({ ...value, startDate: event.target.value }))} /></label><label>Até<input type="date" value={customDraft.endDateInclusive} onChange={event => setCustomDraft(value => ({ ...value, endDateInclusive: event.target.value }))} /></label><button type="button" className="btn btn--primary btn--sm" onClick={applyCustom}>Aplicar</button>{customError && <span style={{ color: 'var(--red)', fontSize: '0.75rem', alignSelf: 'center' }}>{customError}</span>}</div>}</div>
+    </section>
 
-        {isLoading || !attention ? (
-          <div className="dashboard-skeleton-grid" style={{ marginTop: 14 }}>
-            {[0, 1, 2, 3].map(item => <div key={item} className="dashboard-metric-card"><Skeleton lines={3} /></div>)}
-          </div>
-        ) : (
-          <>
-            <div className="dashboard-attention__grid">
-              <AttentionCard
-                title="Agenda"
-                value={`${attention.agenda.total}`}
-                detail={`${attention.agenda.confirmed} confirmados · ${attention.agenda.pending} pendentes · ${attention.agenda.completed} realizados`}
-                icon={<CalendarDays size={15} />}
-                onClick={() => navigate(`/agenda?date=${attention.today}`)}
-              />
-              <AttentionCard
-                title="Follow-ups"
-                value={`${attention.crm_followups.overdue} atrasados`}
-                detail={`${attention.crm_followups.today} para hoje`}
-                urgent={attention.crm_followups.overdue > 0}
-                icon={<Clock size={15} />}
-                onClick={() => navigate('/crm?followup=overdue')}
-              />
-              <AttentionCard
-                title="Retornos clínicos"
-                value={`${attention.returns.overdue} atrasados`}
-                detail={`${attention.returns.today} na janela hoje · ${attention.returns.upcoming} próximos`}
-                urgent={attention.returns.overdue > 0}
-                icon={<RotateCcw size={15} />}
-                onClick={() => navigate('/retornos?attention=overdue')}
-              />
-              <AttentionCard
-                title="Recebimentos"
-                value={money(attention.payments.overdue_value)}
-                detail={`${attention.payments.overdue_count} vencidos · ${money(attention.payments.today_value)} para hoje`}
-                urgent={attention.payments.overdue_count > 0}
-                icon={<Wallet size={15} />}
-                onClick={() => navigate('/financeiro?status=pending')}
-              />
-              <AttentionCard
-                title="Expirando em 7 dias"
-                value={`${attention.proposals.expiring_count + attention.packages.expiring_count}`}
-                detail={`${attention.proposals.expiring_count} propostas · ${attention.packages.expiring_count} pacotes com saldo`}
-                icon={<AlertTriangle size={15} />}
-                onClick={() => navigate('/crm?proposal=expiring')}
-              />
-            </div>
-
-            {attention.agenda.next_appointment && (
-              <button type="button" className="dashboard-next" onClick={() => navigate(`/agenda?date=${attention.today}`)} style={{ width: '100%', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left' }}>
-                <span className="dashboard-next__time">{formatTime(attention.agenda.next_appointment.scheduled_at)}</span>
-                <span className="dashboard-next__body">
-                  <span className="dashboard-next__name">Próximo: {attention.agenda.next_appointment.patient_name}</span>
-                  <span className="dashboard-next__service" style={{ display: 'block' }}>{attention.agenda.next_appointment.service_name ?? 'Serviço não informado'}</span>
-                </span>
-                <ChevronRight size={16} />
-              </button>
-            )}
-          </>
-        )}
+    {isLoading || !overview ? <div className="dashboard-section dashboard-skeleton-grid">{[0, 1, 2, 3].map(item => <div key={item} className="dashboard-metric-card"><Skeleton lines={3} /></div>)}</div> : <>
+      <section className="dashboard-section" aria-labelledby="dashboard-finance-title"><div className="dashboard-section__heading"><div><h2 id="dashboard-finance-title" className="dashboard-section__title">Financeiro / Caixa</h2><p className="dashboard-section__sub">Somente pagamentos reais · procedure + package payments · data de caixa = paid_at</p></div></div><div className="dashboard-grid-4"><MetricCard label="Recebido bruto" value={money(overview.finance.received_gross)} icon={<Wallet size={15} />} comparison={{ current: overview.finance.received_gross, previous: overview.finance.previous_received_gross }} onClick={() => navigate(`/financeiro?from=${period.startDate}&to=${periodEndInclusive(period)}`)} /><MetricCard label="Taxas" value={money(overview.finance.fees)} note="Taxa real registrada nos pagamentos pagos" /><MetricCard label="Recebido líquido" value={money(overview.finance.received_net)} comparison={{ current: overview.finance.received_net, previous: overview.finance.previous_received_net }} /><MetricCard label="A receber / pendente" value={money(overview.finance.pending_value)} snapshot note={`${overview.finance.pending_count} obrigações · ${money(overview.finance.overdue_value)} vencido`} onClick={() => navigate('/financeiro?status=pending')} /></div>
+        <div className="dashboard-panel" style={{ marginTop: 12 }}><div className="dashboard-panel__title">Recebido ao longo do tempo</div><div className="dashboard-panel__sub">Bruto recebido · sem package redemptions</div>{series.length === 0 ? <div className="dashboard-empty" style={{ marginTop: 12 }}>Sem recebimentos no período.</div> : <div className="dashboard-chart-scroll"><div className="dashboard-chart" role="img" aria-label="Série de recebido bruto no período">{series.map(point => { const gross = Number(point.gross); const height = chartMax > 0 ? Math.max(4, Math.round((gross / chartMax) * 120)) : 4; return <div key={point.bucket} className="dashboard-chart__item" title={`${formatPeriodDate(point.bucket)} · ${money(gross)}`}><div className="dashboard-chart__bar" style={{ height }} /><span className="dashboard-chart__label">{formatPeriodDate(point.bucket)}</span></div>; })}</div></div>}</div>
       </section>
 
-      <section className="dashboard-section" aria-labelledby="dashboard-performance-title">
-        <div className="dashboard-section__heading">
-          <div>
-            <h2 id="dashboard-performance-title" className="dashboard-section__title">Desempenho</h2>
-            <p className="dashboard-section__sub">Fluxos respeitam o período · snapshots continuam marcados como “Agora”</p>
-          </div>
-          <strong style={{ color: 'var(--text-2)', fontSize: '0.78rem' }}>{periodLabel}</strong>
-        </div>
-
-        <div className="dashboard-period-bar">
-          <div className="dashboard-periods" aria-label="Filtro de período">
-            {PERIOD_PRESETS.map(item => (
-              <button
-                key={item.key}
-                type="button"
-                className={`dashboard-period${preset === item.key ? ' dashboard-period--active' : ''}`}
-                onClick={() => { setPreset(item.key); setShowCustom(false); setCustomError(null); }}
-              >
-                {item.label}
-              </button>
-            ))}
-            <button
-              type="button"
-              className={`dashboard-period${preset === 'custom' ? ' dashboard-period--active' : ''}`}
-              onClick={() => setShowCustom(value => !value)}
-            >
-              Personalizado
-            </button>
-          </div>
-          <span className="dashboard-section__sub">Comparação: período anterior equivalente</span>
-          {showCustom && (
-            <div className="dashboard-custom-period">
-              <label>
-                De
-                <input type="date" value={customDraft.startDate} onChange={event => setCustomDraft(value => ({ ...value, startDate: event.target.value }))} />
-              </label>
-              <label>
-                Até
-                <input type="date" value={customDraft.endDateInclusive} onChange={event => setCustomDraft(value => ({ ...value, endDateInclusive: event.target.value }))} />
-              </label>
-              <button type="button" className="btn btn--primary btn--sm" onClick={applyCustom}>Aplicar</button>
-              {customError && <span style={{ color: 'var(--red)', fontSize: '0.75rem', alignSelf: 'center' }}>{customError}</span>}
-            </div>
-          )}
-        </div>
+      <section className="dashboard-section" aria-labelledby="dashboard-commercial-title"><div className="dashboard-section__heading"><div><h2 id="dashboard-commercial-title" className="dashboard-section__title">Comercial</h2><p className="dashboard-section__sub">CRM e propostas separados do caixa · pipeline é potencial comercial, não receita</p></div></div><div className="dashboard-grid-4"><MetricCard label="Novos leads" value={`${overview.crm.new_leads}`} icon={<Users size={15} />} comparison={{ current: overview.crm.new_leads, previous: overview.crm.previous_new_leads }} onClick={() => navigate(`/crm?from=${period.startDate}&to=${periodEndInclusive(period)}`)} /><MetricCard label="Novas oportunidades" value={`${overview.crm.new_opportunities}`} comparison={{ current: overview.crm.new_opportunities, previous: overview.crm.previous_new_opportunities }} /><MetricCard label="Ganhos" value={`${overview.crm.won}`} icon={<CheckCircle size={15} />} comparison={{ current: overview.crm.won, previous: overview.crm.previous_won }} /><MetricCard label="Conversão de fechados" value={percent(overview.crm.conversion_rate)} note="Ganhos ÷ (ganhos + perdidos) no período" /></div>
+        <div className="dashboard-grid-2" style={{ marginTop: 12 }}><div className="dashboard-panel"><div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}><div><div className="dashboard-panel__title">Pipeline aberto</div><div className="dashboard-panel__sub">Snapshot atual · não muda com o filtro de caixa</div></div><div style={{ textAlign: 'right' }}><strong>{money(overview.crm.pipeline_open_value)}</strong><div className="dashboard-panel__sub">{overview.crm.pipeline_open_count} oportunidades</div></div></div><div className="dashboard-funnel">{Object.entries(FUNNEL_LABELS).map(([key, label]) => { const value = overview.crm.pipeline_funnel[key as keyof typeof FUNNEL_LABELS] ?? 0; const max = Math.max(1, ...Object.values(overview.crm.pipeline_funnel)); return <div key={key} className="dashboard-funnel__row"><span className="dashboard-funnel__name">{label}</span><span className="dashboard-funnel__bar-wrap"><span className="dashboard-funnel__bar" style={{ display: 'block', width: `${Math.max(2, (value / max) * 100)}%` }} /></span><strong>{value}</strong></div>; })}</div></div>
+          <div className="dashboard-panel"><div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}><div><div className="dashboard-panel__title">Propostas</div><div className="dashboard-panel__sub">Valor aceito é comercial · não recebido</div></div><button type="button" className="btn btn--ghost btn--sm" onClick={() => navigate('/crm?proposal=all')}>Abrir CRM <ChevronRight size={14} /></button></div><div className="dashboard-grid-3" style={{ marginTop: 14 }}><MetricCard label="Emitidas" value={`${overview.proposals.issued}`} /><MetricCard label="Enviadas" value={`${overview.proposals.sent}`} /><MetricCard label="Aceitas" value={`${overview.proposals.accepted}`} /><MetricCard label="Recusadas" value={`${overview.proposals.declined}`} /><MetricCard label="Expiradas" value={`${overview.proposals.expired}`} /><MetricCard label="Valor aceito" value={money(overview.proposals.accepted_value)} comparison={{ current: overview.proposals.accepted_value, previous: overview.proposals.previous_accepted_value }} /></div></div></div>
       </section>
 
-      {isLoading || !overview ? (
-        <div className="dashboard-section dashboard-skeleton-grid">
-          {[0, 1, 2, 3].map(item => <div key={item} className="dashboard-metric-card"><Skeleton lines={3} /></div>)}
-        </div>
-      ) : (
-        <>
-          <section className="dashboard-section" aria-labelledby="dashboard-finance-title">
-            <div className="dashboard-section__heading">
-              <div>
-                <h2 id="dashboard-finance-title" className="dashboard-section__title">Financeiro / Caixa</h2>
-                <p className="dashboard-section__sub">Somente pagamentos reais · procedure + package payments · data de caixa = paid_at</p>
-              </div>
-            </div>
-            <div className="dashboard-grid-4">
-              <MetricCard
-                label="Recebido bruto"
-                value={money(overview.finance.received_gross)}
-                icon={<Wallet size={15} />}
-                comparison={{ current: overview.finance.received_gross, previous: overview.finance.previous_received_gross }}
-                onClick={() => navigate(`/financeiro?from=${period.startDate}&to=${periodEndInclusive(period)}`)}
-              />
-              <MetricCard label="Taxas" value={money(overview.finance.fees)} note="Taxa real registrada nos pagamentos pagos" />
-              <MetricCard
-                label="Recebido líquido"
-                value={money(overview.finance.received_net)}
-                comparison={{ current: overview.finance.received_net, previous: overview.finance.previous_received_net }}
-              />
-              <MetricCard
-                label="A receber / pendente"
-                value={money(overview.finance.pending_value)}
-                snapshot
-                note={`${overview.finance.pending_count} obrigações · ${money(overview.finance.overdue_value)} vencido`}
-                onClick={() => navigate('/financeiro?status=pending')}
-              />
-            </div>
+      <section className="dashboard-section" aria-labelledby="dashboard-packages-title"><div className="dashboard-section__heading"><div><h2 id="dashboard-packages-title" className="dashboard-section__title">Pacotes & Créditos</h2><p className="dashboard-section__sub">Créditos disponíveis são obrigação operacional de serviço — não dívida financeira direta</p></div><button type="button" className="btn btn--ghost btn--sm" onClick={() => navigate('/pacotes')}>Ver pacotes <ChevronRight size={14} /></button></div><div className="dashboard-grid-4"><MetricCard label="Pacotes ativados" value={`${overview.packages.activated}`} icon={<Package size={15} />} comparison={{ current: overview.packages.activated, previous: overview.packages.previous_activated }} /><MetricCard label="Créditos concedidos" value={decimal(overview.packages.credits_granted)} comparison={{ current: overview.packages.credits_granted, previous: overview.packages.previous_credits_granted }} /><MetricCard label="Créditos consumidos" value={decimal(overview.packages.credits_redeemed)} comparison={{ current: overview.packages.credits_redeemed, previous: overview.packages.previous_credits_redeemed }} /><MetricCard label="Créditos disponíveis" value={decimal(overview.packages.credits_available)} snapshot note={`${overview.packages.available_packages} pacotes · ${overview.packages.available_items} serviços com saldo`} onClick={() => navigate('/pacotes?status=available')} /></div></section>
 
-            <div className="dashboard-panel" style={{ marginTop: 12 }}>
-              <div className="dashboard-panel__title">Recebido ao longo do tempo</div>
-              <div className="dashboard-panel__sub">Bruto recebido · sem package redemptions</div>
-              {series.length === 0 ? (
-                <div className="dashboard-empty" style={{ marginTop: 12 }}>Sem recebimentos no período.</div>
-              ) : (
-                <div className="dashboard-chart-scroll">
-                  <div className="dashboard-chart" role="img" aria-label="Série de recebido bruto no período">
-                    {series.map(point => {
-                      const gross = Number(point.gross);
-                      const height = chartMax > 0 ? Math.max(4, Math.round((gross / chartMax) * 120)) : 4;
-                      return (
-                        <div key={point.bucket} className="dashboard-chart__item" title={`${formatPeriodDate(point.bucket)} · ${money(gross)}`}>
-                          <div className="dashboard-chart__bar" style={{ height }} />
-                          <span className="dashboard-chart__label">{formatPeriodDate(point.bucket)}</span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-            </div>
-          </section>
-
-          <section className="dashboard-section" aria-labelledby="dashboard-commercial-title">
-            <div className="dashboard-section__heading">
-              <div>
-                <h2 id="dashboard-commercial-title" className="dashboard-section__title">Comercial</h2>
-                <p className="dashboard-section__sub">CRM e propostas separados do caixa · pipeline é potencial comercial, não receita</p>
-              </div>
-            </div>
-
-            <div className="dashboard-grid-4">
-              <MetricCard label="Novos leads" value={`${overview.crm.new_leads}`} icon={<Users size={15} />} comparison={{ current: overview.crm.new_leads, previous: overview.crm.previous_new_leads }} onClick={() => navigate(`/crm?from=${period.startDate}&to=${periodEndInclusive(period)}`)} />
-              <MetricCard label="Novas oportunidades" value={`${overview.crm.new_opportunities}`} comparison={{ current: overview.crm.new_opportunities, previous: overview.crm.previous_new_opportunities }} />
-              <MetricCard label="Ganhos" value={`${overview.crm.won}`} icon={<CheckCircle size={15} />} comparison={{ current: overview.crm.won, previous: overview.crm.previous_won }} />
-              <MetricCard label="Conversão de fechados" value={percent(overview.crm.conversion_rate)} note="Ganhos ÷ (ganhos + perdidos) no período" />
-            </div>
-
-            <div className="dashboard-grid-2" style={{ marginTop: 12 }}>
-              <div className="dashboard-panel">
-                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
-                  <div>
-                    <div className="dashboard-panel__title">Pipeline aberto</div>
-                    <div className="dashboard-panel__sub">Snapshot atual · não muda com o filtro de caixa</div>
-                  </div>
-                  <div style={{ textAlign: 'right' }}>
-                    <strong>{money(overview.crm.pipeline_open_value)}</strong>
-                    <div className="dashboard-panel__sub">{overview.crm.pipeline_open_count} oportunidades</div>
-                  </div>
-                </div>
-                <div className="dashboard-funnel">
-                  {Object.entries(FUNNEL_LABELS).map(([key, label]) => {
-                    const value = overview.crm.pipeline_funnel[key as keyof typeof FUNNEL_LABELS] ?? 0;
-                    const max = Math.max(1, ...Object.values(overview.crm.pipeline_funnel));
-                    return (
-                      <div key={key} className="dashboard-funnel__row">
-                        <span className="dashboard-funnel__name">{label}</span>
-                        <span className="dashboard-funnel__bar-wrap"><span className="dashboard-funnel__bar" style={{ display: 'block', width: `${Math.max(2, (value / max) * 100)}%` }} /></span>
-                        <strong>{value}</strong>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-
-              <div className="dashboard-panel">
-                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
-                  <div>
-                    <div className="dashboard-panel__title">Propostas</div>
-                    <div className="dashboard-panel__sub">Valor aceito é comercial · não recebido</div>
-                  </div>
-                  <button type="button" className="btn btn--ghost btn--sm" onClick={() => navigate('/crm?proposal=all')}>Abrir CRM <ChevronRight size={14} /></button>
-                </div>
-                <div className="dashboard-grid-3" style={{ marginTop: 14 }}>
-                  <MetricCard label="Emitidas" value={`${overview.proposals.issued}`} />
-                  <MetricCard label="Enviadas" value={`${overview.proposals.sent}`} />
-                  <MetricCard label="Aceitas" value={`${overview.proposals.accepted}`} />
-                  <MetricCard label="Recusadas" value={`${overview.proposals.declined}`} />
-                  <MetricCard label="Expiradas" value={`${overview.proposals.expired}`} />
-                  <MetricCard label="Valor aceito" value={money(overview.proposals.accepted_value)} comparison={{ current: overview.proposals.accepted_value, previous: overview.proposals.previous_accepted_value }} />
-                </div>
-              </div>
-            </div>
-          </section>
-
-          <section className="dashboard-section" aria-labelledby="dashboard-packages-title">
-            <div className="dashboard-section__heading">
-              <div>
-                <h2 id="dashboard-packages-title" className="dashboard-section__title">Pacotes & Créditos</h2>
-                <p className="dashboard-section__sub">Créditos disponíveis são obrigação operacional de serviço — não dívida financeira direta</p>
-              </div>
-              <button type="button" className="btn btn--ghost btn--sm" onClick={() => navigate('/pacotes')}>Ver pacotes <ChevronRight size={14} /></button>
-            </div>
-            <div className="dashboard-grid-4">
-              <MetricCard label="Pacotes ativados" value={`${overview.packages.activated}`} icon={<Package size={15} />} comparison={{ current: overview.packages.activated, previous: overview.packages.previous_activated }} />
-              <MetricCard label="Créditos concedidos" value={decimal(overview.packages.credits_granted)} comparison={{ current: overview.packages.credits_granted, previous: overview.packages.previous_credits_granted }} />
-              <MetricCard label="Créditos consumidos" value={decimal(overview.packages.credits_redeemed)} comparison={{ current: overview.packages.credits_redeemed, previous: overview.packages.previous_credits_redeemed }} />
-              <MetricCard label="Créditos disponíveis" value={decimal(overview.packages.credits_available)} snapshot note={`${overview.packages.available_packages} pacotes · ${overview.packages.available_items} serviços com saldo`} onClick={() => navigate('/pacotes?status=available')} />
-            </div>
-          </section>
-
-          <section className="dashboard-section" aria-labelledby="dashboard-operation-title">
-            <div className="dashboard-section__heading">
-              <div>
-                <h2 id="dashboard-operation-title" className="dashboard-section__title">Operacional / Clínico</h2>
-                <p className="dashboard-section__sub">Produção clínica mede serviços realizados; não é faturamento nem novo recebimento</p>
-              </div>
-            </div>
-
-            <div className="dashboard-grid-4">
-              <MetricCard label="Agendamentos" value={`${overview.agenda.appointments}`} icon={<CalendarDays size={15} />} onClick={() => navigate(`/agenda?from=${period.startDate}&to=${periodEndInclusive(period)}`)} />
-              <MetricCard label="Concluídos" value={`${overview.agenda.completed}`} />
-              <MetricCard label="Cancelados / no-show" value={`${overview.agenda.cancelled} / ${overview.agenda.no_show}`} />
-              <MetricCard label="Taxa de comparecimento" value={percent(overview.agenda.attendance_rate)} note="Realizados ÷ (realizados + no-show)" />
-            </div>
-
-            <div className="dashboard-grid-2" style={{ marginTop: 12 }}>
-              <div className="dashboard-panel">
-                <div className="dashboard-panel__title">Produção clínica</div>
-                <div className="dashboard-panel__sub">Snapshots históricos de procedure_items · inclui sessões cobertas por pacote</div>
-                <div className="dashboard-grid-3" style={{ marginTop: 14 }}>
-                  <MetricCard label="Valor produzido" value={money(overview.clinical.production_value)} icon={<Activity size={15} />} comparison={{ current: overview.clinical.production_value, previous: overview.clinical.previous_production_value }} />
-                  <MetricCard label="Atendimentos" value={`${overview.clinical.attendances}`} comparison={{ current: overview.clinical.attendances, previous: overview.clinical.previous_attendances }} />
-                  <MetricCard label="Serviços / unidades" value={decimal(overview.clinical.service_units)} />
-                </div>
-              </div>
-
-              <div className="dashboard-panel">
-                <div className="dashboard-panel__title">Top procedimentos / serviços</div>
-                <div className="dashboard-panel__sub">Nome e valor históricos preservados no atendimento</div>
-                {overview.clinical.top_services.length === 0 ? (
-                  <div className="dashboard-empty" style={{ marginTop: 12 }}>Nenhum procedimento realizado no período.</div>
-                ) : (
-                  <div className="dashboard-ranking">
-                    {overview.clinical.top_services.map(item => {
-                      const max = Math.max(1, ...overview.clinical.top_services.map(service => Number(service.quantity)));
-                      return (
-                        <div key={item.name} className="dashboard-ranking__row">
-                          <span className="dashboard-ranking__name">{item.name}</span>
-                          <span className="dashboard-ranking__bar-wrap"><span className="dashboard-ranking__bar" style={{ display: 'block', width: `${Math.max(2, (Number(item.quantity) / max) * 100)}%` }} /></span>
-                          <strong>{decimal(item.quantity)}</strong>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <div className="dashboard-grid-3" style={{ marginTop: 12 }}>
-              <MetricCard label="Retornos concluídos" value={`${overview.returns.completed}`} icon={<RotateCcw size={15} />} comparison={{ current: overview.returns.completed, previous: overview.returns.previous_completed }} onClick={() => navigate('/retornos')} />
-              <MetricCard label="Perdidos no CRM" value={`${overview.crm.lost}`} note="Deals fechados como perdidos no período" />
-              <MetricCard label="Conversão de propostas" value={percent(overview.proposals.conversion_rate)} icon={<FileText size={15} />} note="Aceitas ÷ (aceitas + recusadas)" />
-            </div>
-          </section>
-        </>
-      )}
-
-      <footer style={{ marginTop: 28, color: 'var(--text-3)', fontSize: '0.7rem', display: 'flex', gap: 6, alignItems: 'center' }}>
-        <TrendingUp size={13} /> Fluxos seguem {periodLabel}. Pipeline, pendências e créditos disponíveis são snapshots atuais.
-      </footer>
-    </div>
-  );
+      <section className="dashboard-section" aria-labelledby="dashboard-operation-title"><div className="dashboard-section__heading"><div><h2 id="dashboard-operation-title" className="dashboard-section__title">Operacional / Clínico</h2><p className="dashboard-section__sub">Produção clínica mede serviços realizados; não é faturamento nem novo recebimento</p></div></div><div className="dashboard-grid-4"><MetricCard label="Agendamentos" value={`${overview.agenda.appointments}`} icon={<CalendarDays size={15} />} onClick={() => navigate(`/agenda?from=${period.startDate}&to=${periodEndInclusive(period)}`)} /><MetricCard label="Concluídos" value={`${overview.agenda.completed}`} /><MetricCard label="Cancelados / no-show" value={`${overview.agenda.cancelled} / ${overview.agenda.no_show}`} /><MetricCard label="Taxa de comparecimento" value={percent(overview.agenda.attendance_rate)} note="Realizados ÷ (realizados + no-show)" /></div>
+        <div className="dashboard-grid-2" style={{ marginTop: 12 }}><div className="dashboard-panel"><div className="dashboard-panel__title">Produção clínica</div><div className="dashboard-panel__sub">Snapshots históricos de procedure_items · inclui sessões cobertas por pacote</div><div className="dashboard-grid-3" style={{ marginTop: 14 }}><MetricCard label="Valor produzido" value={money(overview.clinical.production_value)} icon={<Activity size={15} />} comparison={{ current: overview.clinical.production_value, previous: overview.clinical.previous_production_value }} /><MetricCard label="Atendimentos" value={`${overview.clinical.attendances}`} comparison={{ current: overview.clinical.attendances, previous: overview.clinical.previous_attendances }} /><MetricCard label="Serviços / unidades" value={decimal(overview.clinical.service_units)} /></div></div><div className="dashboard-panel"><div className="dashboard-panel__title">Top procedimentos / serviços</div><div className="dashboard-panel__sub">Nome e valor históricos preservados no atendimento</div>{overview.clinical.top_services.length === 0 ? <div className="dashboard-empty" style={{ marginTop: 12 }}>Nenhum procedimento realizado no período.</div> : <div className="dashboard-ranking">{overview.clinical.top_services.map(item => { const max = Math.max(1, ...overview.clinical.top_services.map(service => Number(service.quantity))); return <div key={item.name} className="dashboard-ranking__row"><span className="dashboard-ranking__name">{item.name}</span><span className="dashboard-ranking__bar-wrap"><span className="dashboard-ranking__bar" style={{ display: 'block', width: `${Math.max(2, (Number(item.quantity) / max) * 100)}%` }} /></span><strong>{decimal(item.quantity)}</strong></div>; })}</div>}</div></div>
+        <div className="dashboard-grid-3" style={{ marginTop: 12 }}><MetricCard label="Retornos concluídos" value={`${overview.returns.completed}`} icon={<RotateCcw size={15} />} comparison={{ current: overview.returns.completed, previous: overview.returns.previous_completed }} onClick={() => navigate('/retornos')} /><MetricCard label="Perdidos no CRM" value={`${overview.crm.lost}`} note="Deals fechados como perdidos no período" /><MetricCard label="Conversão de propostas" value={percent(overview.proposals.conversion_rate)} icon={<FileText size={15} />} note="Aceitas ÷ (aceitas + recusadas)" /></div>
+      </section>
+    </>}
+    <footer style={{ marginTop: 28, color: 'var(--text-3)', fontSize: '0.7rem', display: 'flex', gap: 6, alignItems: 'center' }}><TrendingUp size={13} /> Fluxos seguem {periodLabel}. Pipeline, pendências e créditos disponíveis são snapshots atuais.</footer>
+  </div>;
 }
