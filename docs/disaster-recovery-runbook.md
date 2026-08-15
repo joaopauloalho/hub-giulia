@@ -1,151 +1,76 @@
 # Hub Giulia 4.0 — Disaster Recovery Runbook
 
-Never reset or restore over production. Preserve evidence before destructive action. For database incidents, prefer backward-compatible forward-fix migrations; do not edit already-applied migration files.
+Never reset or restore over production during diagnosis. Preserve evidence before destructive action. Do not edit already-applied migrations; use reviewed forward fixes.
 
-## A. Bad frontend deployment
+## A. Catastrophic database / Storage loss
 
-**Symptom:** new UI errors, blank/incorrect route, regression immediately after deploy.
+**Recovery source:** dedicated project `coimstexbntzxzrwlrws`, private bucket `recovery-backups`, daily verified snapshots at 03:00 America/Sao_Paulo with latest 14 retained.
 
-**First diagnosis:** verify Vercel deployment state, production SHA, runtime errors and browser console category without copying PHI.
+1. Stop non-idempotent mutation retries and identify incident start.
+2. Inspect the latest successful `hub-giulia-daily-recovery-backup` run and archive timestamp.
+3. Keep production untouched while validating the recovery copy.
+4. If the existing recovery project is healthy, validate its restored state; if a cold target is required, rebuild schema from the green Git migration chain first.
+5. Restore the selected verified `.hub-giulia.json.gz` package only into the isolated target.
+6. Require zero table fingerprint and Storage SHA-256 mismatches.
+7. Validate 50/50 public RLS, 12/12 `security_invoker` views, private buckets and cross-tenant denial.
+8. Confirm users/identities exist. Prior login sessions are intentionally not recovered; users must sign in again.
+9. Deploy/reconfigure versioned Edge Functions and provider-side secret/config values without exposing them.
+10. Point application traffic only after authenticated smoke checks pass.
+11. Record actual incident RPO/RTO, recovered archive timestamp and validation result without PHI/secrets.
 
-**Safe actions:** identify last known-good Production deployment/SHA; compare deployment/build logs; revert code or promote/redeploy the known-good SHA using normal Vercel controls.
+**Current drill evidence:** hosted restore on 2026-08-15 restored 50 public tables, 2 Auth tables and 5 private objects with 0 mismatches. Warm snapshot+restore+verification measured 6.564 seconds for the current dataset. Scheduled RPO target is <=24h; this is logical snapshot recovery, not PITR.
 
-**Do not:** force redeploy repeatedly; change database to compensate for a frontend regression; expose secrets in logs.
+## B. Bad frontend deployment
 
-**Validate:** login, Today, Agenda, Patient360, key read routes, PWA reload and runtime errors.
+Verify Vercel deployment state, Git SHA and runtime errors. Identify the last known-good Production deployment and promote/redeploy it through normal Vercel controls. Do not change database state to compensate for a frontend regression. Validate login, Today, Agenda, Patient360, key read routes and PWA reload.
 
-## B. Bad migration
+## C. Bad migration
 
-**Symptom:** PostgREST errors, constraint/RPC failure, unavailable column/function after a migration.
+Identify the exact migration and affected objects. Stop further rollout and create a new backward-compatible forward-fix migration. Never delete migration-history rows, reset production, disable RLS or rewrite clinical/financial history merely to satisfy current UI. Validate catalog assertions, RLS, RPC contracts, advisors and affected flows.
 
-**First diagnosis:** identify exact migration version and affected objects; inspect DB logs and migration history.
+## D. White screen / application crash
 
-**Safe actions:** stop further schema rollout; create a new backward-compatible forward-fix migration; preserve historical migration files unchanged.
+Check Vercel build/runtime logs and redacted ErrorBoundary events. Confirm backend health before blaming service worker state. Use the documented PWA update/purge path or rollback a proven code regression. Do not force a reload with unsaved clinical forms.
 
-**Do not:** reset production, manually delete migration-history rows, drop clinical/financial history, disable RLS to make the UI work.
+## E. Database unavailable but data not lost
 
-**Validate:** schema/catalog assertions, RLS, RPC contract tests, affected UI flow, advisors and invariant queries.
+Check Supabase health/Postgres logs and whether the outage is platform-wide or query-specific. Avoid blind mutation retries. After service returns, run auth/read smoke, Data Quality and financial/clinical invariant checks. Do not invoke disaster restore merely for a transient outage.
 
-## C. White screen / application crash
+## F. Storage unavailable but objects not lost
 
-**Symptom:** UI cannot render.
+Check Storage health, bucket privacy/policies, object-path existence and signed-URL failures. Preserve DB metadata and stop destructive cleanup. Never make buckets public. If loss is proven, use the verified recovery snapshot rather than rewriting paths.
 
-**First diagnosis:** check Vercel deployment/build/runtime logs and redacted ErrorBoundary events; inspect service-worker version only after checking deployment health.
+## G. Google Calendar / OAuth failure
 
-**Safe actions:** reload without deleting user data; if isolated to the service worker, unregister/purge through the documented PWA recovery path; if code regression, rollback frontend.
+Inspect Edge Function logs, connection state, provider health and redirect configuration. Reconnect through the normal OAuth flow. Never log provider credentials/tokens, weaken state validation or patch clinical records to mirror Google.
 
-**Do not:** tell users to clear unrelated browser data before preserving diagnostic information; leave a broken deployment live when a known-good candidate exists.
+## H. Service worker stuck
 
-**Validate:** cold load, authenticated deep link, standalone PWA and next normal navigation.
-
-## D. Database unavailable
-
-**Symptom:** broad Supabase requests time out/fail.
-
-**First diagnosis:** Supabase project health, Postgres logs, connection/load indicators, whether outage is platform-wide or query-specific.
-
-**Safe actions:** avoid mutation retries that are not idempotent; communicate read/write impact; recover service or escalate to Supabase; after service returns, run integrity/read-only checks.
-
-**Do not:** reset, restore over production or replay writes blindly.
-
-**Validate:** auth/session, representative reads, one safe controlled mutation only when appropriate, Data Quality and financial/clinical invariants.
-
-## E. Storage unavailable
-
-**Symptom:** photo/PDF access or upload fails while DB is healthy.
-
-**First diagnosis:** Storage service health, bucket privacy/policies, object-path existence and signed-URL failures.
-
-**Safe actions:** preserve DB metadata; stop destructive cleanup; retry only idempotent upload workflows; distinguish object missing from authorization failure.
-
-**Do not:** make bucket public, delete orphan candidates automatically or rewrite DB paths to temporary signed URLs.
-
-**Validate:** private list policy, sampled signed URL, upload/cleanup in test data/environment and object-to-row consistency.
-
-## F. Google Calendar stopped
-
-**Symptom:** status disconnected/errors or appointment sync unavailable.
-
-**First diagnosis:** Edge Function logs, connection status metadata, OAuth provider status, token refresh outcome, redirect configuration.
-
-**Safe actions:** reconnect through the normal OAuth flow; keep Hub appointment data canonical; validate token storage remains server-side.
-
-**Do not:** print refresh/access tokens, copy client secret to browser or manually patch clinical records to mirror Google.
-
-**Validate:** connection status + a safe test synchronization when test data is available.
-
-## G. OAuth invalidated
-
-**Symptom:** callback fails, invalid_grant/state error, repeated reconnect.
-
-**First diagnosis:** OAuth state lifecycle, redirect URI, Google credentials/config, callback logs with redaction.
-
-**Safe actions:** start a new OAuth flow; rotate a credential only if compromise/invalidity is proven and coordinate external console update.
-
-**Do not:** reuse consumed state, log authorization code/tokens, weaken state validation or accept arbitrary redirects.
-
-**Validate:** start → callback → status → reconnect/disconnect behavior.
-
-## H. Bad service worker stuck on clients
-
-**Symptom:** old assets persist after a healthy deploy, reload loop or offline shell inconsistent.
-
-**First diagnosis:** current `sw.js`, browser service-worker state and cache names; confirm backend is not the root cause.
-
-**Safe actions:** use the app's update/purge path; avoid applying a waiting worker while forms are dirty; if needed ship a minimal SW recovery release.
-
-**Do not:** cache Supabase authenticated responses or force reload with unsaved clinical forms.
-
-**Validate:** install, standalone launch, deep route, controlled update, offline shell, login/logout cache purge.
+Confirm current deployment and `sw.js`, then use the app update/purge path. Avoid applying a waiting worker while forms are dirty and never cache authenticated Supabase responses.
 
 ## I. Suspicious financial data
 
-**Symptom:** unexpected balance/payment/ledger mismatch.
-
-**First diagnosis:** freeze automatic correction; run versioned read-only invariant queries; identify source operation/idempotency key and affected tenant/record IDs without exporting patient details.
-
-**Safe actions:** preserve audit trail; establish cause and intended value; prepare a reviewed, versioned corrective script/migration only after human approval when ambiguity exists.
-
-**Do not:** delete/overwrite ledger history, fabricate a payment, recalculate history just to satisfy current UI.
-
-**Validate:** before/after invariant counts, source records, rollups, idempotency and UI totals.
+Freeze automatic correction. Run versioned read-only invariants, preserve ledger history and identify source operation/idempotency key. Any ambiguous historical correction requires human review and a versioned corrective script. Never fabricate a payment or rewrite history to make totals match.
 
 ## J. Photos/contracts appear missing
 
-**Symptom:** DB timeline exists but media/PDF unavailable, or Storage object exists without expected row.
-
-**First diagnosis:** distinguish authorization, signed URL expiry, DB-row missing and object missing; run orphan report only.
-
-**Safe actions:** preserve both sides; use checksums/object paths; recover from object backup when available.
-
-**Do not:** delete orphan candidate automatically, make bucket public or replace an original with a thumbnail/preview.
-
-**Validate:** private access, checksum/path metadata and sampled artifact open through signed URL.
+Distinguish authorization, signed-URL expiry, missing DB row and missing object. Preserve both sides. Use checksums/object paths and recover missing bytes from the verified snapshot when actual loss is proven. Never replace an original with a thumbnail.
 
 ## K. Suspected credential leak
 
-**Symptom:** secret appears in repository/log, unexpected API usage or provider alert.
-
-**First diagnosis:** identify category/location/scope without reproducing the value; determine whether public/publishable key or true secret; preserve incident evidence.
-
-**Safe actions:** revoke/rotate only affected real secret promptly; update dependent server-side control planes; invalidate sessions/tokens when relevant; review logs for misuse.
-
-**Do not:** paste the secret into issues/chat/logs, rotate unrelated credentials merely for testing or move service_role to browser code.
-
-**Validate:** old credential rejected, new credential only server-side, application flows healthy, source/log scan clean.
+Identify scope without reproducing the value. Rotate only the affected secret through the control plane, update dependent server-side services and review logs. Never paste real secret values into issues/chat/source.
 
 ## L. Production slow
 
-**Symptom:** routes materially slower or timeouts.
+Use Vercel runtime evidence, Supabase advisors/logs and measured SQL plans. Fix only measured bottlenecks. Do not drop ownership/FK indexes merely because a small database reports them unused.
 
-**First diagnosis:** Vercel runtime, network request count, Supabase advisors/logs, measured SQL `EXPLAIN (ANALYZE, BUFFERS)` on safe representative queries.
+## Recovery operating evidence
 
-**Safe actions:** fix only measured bottlenecks; add compatible indexes/bounds; rollback a proven regression.
+- production cron must remain active: `hub-giulia-daily-recovery-backup`;
+- production function: `recovery-backup-v4`;
+- recovery-only function: `recovery-backup-ingest`;
+- recovery archive bucket must remain private;
+- monitor `cron.job_run_details` and both projects' Edge logs;
+- after material schema/Auth/Storage changes, rerun an isolated restore drill and remeasure RPO/RTO.
 
-**Do not:** drop indexes because the Advisor labels them unused on a small/new database; run invasive load tests on production.
-
-**Validate:** same baseline query/routes before and after, errors, advisors and user-visible flow.
-
-## Escalation and evidence
-
-Escalate to the relevant provider when platform health or restore capability is the blocker. Record: incident start, affected surface, deployment/migration SHA/version, safe actions taken, recovery validation, actual data-loss window and elapsed recovery time. Never include PHI, authorization headers, signed photo URLs, OAuth tokens or secret values in the incident record.
+The recovery project is a security/recovery surface, not a development sandbox. Do not use restored clinical data for ordinary development or testing.
