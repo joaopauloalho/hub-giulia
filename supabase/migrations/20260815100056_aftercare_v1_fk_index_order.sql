@@ -1,0 +1,5 @@
+drop index if exists public.service_aftercare_protocols_user_service_idx;
+create index service_aftercare_protocols_service_owner_idx on public.service_aftercare_protocols(service_id,user_id);
+
+drop index if exists public.service_aftercare_protocol_steps_user_protocol_idx;
+create index service_aftercare_protocol_steps_protocol_owner_idx on public.service_aftercare_protocol_steps(protocol_id,user_id,sort_order,offset_days);
