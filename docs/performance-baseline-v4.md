@@ -4,11 +4,18 @@ Audit date: 2026-08-15. Baselines are intentionally small-sample measurements on
 
 ## Frontend build baseline
 
-From the 3.9 Production build:
+### 3.9 Production
 
 - Main application JS: ~409.5 kB, ~125.9 kB gzip.
 - `react-pdf` chunk: ~1.46 MB, ~489.7 kB gzip.
-- PDF code is already split out of the initial shell; v4 does not inline it or perform a major dependency rewrite merely to remove a size warning.
+
+### v4 branch validation build
+
+- Main application JS: ~411.65 kB, ~126.72 kB gzip.
+- `react-pdf` chunk: ~1,457.90 kB, ~489.57 kB gzip.
+- Vite build completed successfully after 2,744 modules in ~7.63 s in CI.
+
+The small shell increase includes hardening/observability code and is not evidence of a material bundle regression. PDF code remains split out of the initial shell; v4 does not inline it or perform a major dependency rewrite merely to remove a size warning.
 
 Clinical Photos already use thumbnails in grids, preview/original on demand and short-lived signed URLs. Original uploads are normalized once; thumbnails/previews are generated client-side before upload.
 
@@ -30,7 +37,19 @@ The production Performance Advisor identified missing supporting indexes for pac
 
 Migration `20260815143819_production_hardening_v4_acl_indexes` added those supporting indexes. Post-check: **0 public foreign keys without a supporting left-prefix index**.
 
-After the migration the Advisor no longer reports missing-FK indexes. It does report many `unused_index` INFO entries, including newly created indexes. On the current very small/young dataset this is expected and is not justification to drop ownership or FK support indexes.
+After the migration the Advisor no longer reports missing-FK indexes. It reports `unused_index` INFO entries, including newly created indexes. On the current very small/young dataset this is expected and is not justification to drop ownership or FK support indexes.
+
+## Post-hardening sample
+
+A second authenticated production sample returned approximately:
+
+| Surface | Post sample |
+|---|---:|
+| Today / Dashboard | ~185 ms |
+| Patient360 | ~32 ms |
+| Relationship | ~38 ms |
+
+These values show significant cache/execution/sample variance and do **not** establish a regression caused by the v4 indexes, which are on package/credit/voucher relationships rather than these three read models. No micro-optimization was performed from this single sample.
 
 ## Query-shape controls already present
 

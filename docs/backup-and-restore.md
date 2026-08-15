@@ -19,9 +19,9 @@ These are release blockers for a claim of fully recoverable Stable production. T
 | Asset | Current durable source | Recovery confidence | Notes |
 |---|---|---|---|
 | Frontend source | GitHub | High | Build is versioned; Vercel can redeploy a known SHA |
-| Database schema | GitHub migrations + live Supabase history | Medium | Local rebuild gate added in v4; historical remote/repo migration-version drift still requires reconciliation |
+| Database schema | GitHub migrations + live Supabase history | Low/Medium | Fresh local rebuild was executed and failed at a historical owner-key dependency; migration chain is not yet self-reconstructing |
 | Database data | Supabase production only under current verified setup | Low | No managed backup/PITR verified on current Free plan |
-| Storage metadata | Postgres + migrations | Medium | DB rows/policies versioned or recoverable with DB, but object bytes are separate |
+| Storage metadata | Postgres + migrations | Medium | DB rows/policies are represented, but object bytes are separate |
 | Clinical photo bytes | Supabase Storage | Low | Private and integrity-tracked, but no independent object backup verified |
 | Contract/proposal PDFs | Supabase Storage | Low | Private; no independent object backup verified |
 | Edge Function source | GitHub | High | `supabase/functions/` is versioned |
@@ -58,14 +58,30 @@ Real restore: **NO**.
 
 Reason: current production is on Supabase Free and no safe isolated recovery environment was already available. The release explicitly forbids restoring over production. Creating a Supabase branch/project may have cost and requires explicit cost confirmation before creation.
 
-Alternative validation performed/planned in v4:
+### Alternative schema reconstruction test — EXECUTED, FAILED
 
-1. Fresh local Supabase stack in CI.
-2. Apply repository migrations from zero using `supabase db reset --local --no-seed`.
-3. Fail the release gate if the migration chain cannot recreate the schema.
-4. Run read-only security/invariant contract checks against the resulting schema where applicable.
+A fresh local Supabase stack was created in GitHub Actions with CLI 2.114.0. Repository migrations were applied from zero. The run failed at:
 
-This validates **schema reproducibility**, not production data or Storage recovery.
+`20260813234006_security_cross_tenant_appointment_procedure_fks.sql`
+
+Postgres error:
+
+`there is no unique constraint matching given keys for referenced table "services"`
+
+The dependent FK is `(service_id, user_id) -> services(id, user_id)`. The preceding repository migration `20260813233949_security_owner_keys_defaults.sql` is a production-history marker and leaves the owner-key DDL commented, including creation of the unique `services(id, user_id)` index that exists in live production. Therefore the clean migration chain is objectively not self-reconstructing today.
+
+This result validates the **rebuild blocker**, not recoverability. It must not be reported as a restore pass.
+
+## Required migration recovery work
+
+Before migrations can be treated as the sole schema source of truth:
+
+1. map live production migration history to repository history;
+2. define a supported canonical baseline/re-baseline strategy;
+3. do not rewrite already-applied historical migrations;
+4. prove the reconciled chain in an isolated clean database;
+5. require the CI rebuild gate to become green;
+6. only then use the migration chain as a disaster-reconstruction dependency.
 
 ## Required real recovery drill
 
