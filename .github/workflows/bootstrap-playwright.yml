@@ -1,0 +1,41 @@
+name: Bootstrap Playwright dependency
+
+on:
+  push:
+    branches:
+      - agent/production-hardening-v4
+    paths:
+      - .github/workflows/bootstrap-playwright.yml
+
+permissions:
+  contents: write
+
+jobs:
+  bootstrap:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: agent/production-hardening-v4
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: npm
+      - name: Install Playwright test runner without force upgrades
+        run: npm install --save-dev @playwright/test
+      - name: Verify package manifest is the only manifest change
+        run: |
+          git diff -- package.json package-lock.json
+          test -z "$(git diff --name-only | grep -Ev '^(package.json|package-lock.json)$' || true)"
+      - name: Commit synchronized manifest and lockfile
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package.json package-lock.json
+          if git diff --cached --quiet; then
+            echo "Playwright already synchronized."
+            exit 0
+          fi
+          git commit -m "Test — add Playwright E2E runner"
+          git push origin HEAD:agent/production-hardening-v4
