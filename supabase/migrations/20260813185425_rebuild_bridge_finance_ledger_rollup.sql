@@ -1,10 +1,13 @@
--- Rebuild bridge for the exact production DDL recorded under
+-- Rebuild bridge for the production schema/trigger semantics recorded under
 -- 20260813185424_finance_integrity_ledger_rollup.
 --
 -- The repository's applied migration is intentionally preserved as a history
 -- marker. Production already has this schema/function/trigger. This bridge
--- restores those semantics for clean reconstruction from Git and is not a data
--- repair for production.
+-- restores those semantics for clean reconstruction from Git.
+--
+-- Deliberately NO historical data backfill is repeated here. A clean rebuild
+-- has no production rows to backfill, and if this bridge is ever encountered by
+-- a linked production migration workflow it must not rewrite financial history.
 
 alter table public.procedures
   add column if not exists paid_amount numeric not null default 0,
@@ -60,10 +63,3 @@ drop trigger if exists trg_sync_procedure_ledger_rollup on public.procedure_paym
 create trigger trg_sync_procedure_ledger_rollup
 after insert or update or delete on public.procedure_payments
 for each row execute function public.sync_procedure_ledger_rollup();
-
-update public.procedures p
-set
-  paid_amount = coalesce((select sum(pp.amount) from public.procedure_payments pp where pp.procedure_id = p.id and pp.paid_at is not null), 0),
-  paid_fee_value = coalesce((select sum(coalesce(pp.fee_value, 0)) from public.procedure_payments pp where pp.procedure_id = p.id and pp.paid_at is not null), 0),
-  paid_net_value = coalesce((select sum(pp.net_amount) from public.procedure_payments pp where pp.procedure_id = p.id and pp.paid_at is not null), 0),
-  pending_amount = coalesce((select sum(pp.amount) from public.procedure_payments pp where pp.procedure_id = p.id and pp.paid_at is null), 0);
