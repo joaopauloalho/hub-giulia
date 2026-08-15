@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { aftercareDate, emptyServiceAftercareProtocol, normalizeServiceAftercareProtocol, orientationStatusLabel, validateAftercareSteps } from './useAftercare';
+import { aftercareDate, emptyServiceAftercareProtocol, normalizeServiceAftercareProtocol, orientationStatusLabel, validateAftercareSteps } from '../lib/aftercare';
 
 describe('aftercare helpers', () => {
   it('starts with no clinical timing defaults', () => {
