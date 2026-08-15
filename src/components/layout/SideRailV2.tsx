@@ -1,10 +1,11 @@
 import { NavLink } from 'react-router-dom';
-import { BookOpen, CalendarDays, LayoutDashboard, LogOut, MessageCircle, PlusCircle, RotateCcw, TrendingUp, Users, Wallet } from 'lucide-react';
+import { BookOpen, CalendarDays, HeartHandshake, LayoutDashboard, LogOut, MessageCircle, PlusCircle, RotateCcw, TrendingUp, Users, Wallet } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 
 const tabs = [
   { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
   { to: '/comunicacao', icon: MessageCircle, label: 'Comunicação' },
+  { to: '/relacionamento', icon: HeartHandshake, label: 'Relacionamento' },
   { to: '/agenda', icon: CalendarDays, label: 'Agenda' },
   { to: '/retornos', icon: RotateCcw, label: 'Retornos' },
   { to: '/crm', icon: TrendingUp, label: 'CRM' },
