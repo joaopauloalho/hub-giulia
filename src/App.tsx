@@ -1,4 +1,4 @@
-import { Component, type ErrorInfo, type ReactNode } from 'react';
+import { Component, type ReactNode } from 'react';
 import AppRoutesV2 from './AppRoutesV2';
 import { safeLogError } from './lib/safeLogger';
 
@@ -9,7 +9,7 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | 
     return { error };
   }
 
-  componentDidCatch(error: Error, _info: ErrorInfo) {
+  componentDidCatch(error: Error) {
     safeLogError('ui.error_boundary', error);
   }
 
