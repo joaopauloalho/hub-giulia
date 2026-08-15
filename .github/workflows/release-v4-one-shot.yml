@@ -1,0 +1,87 @@
+name: Release Hub Giulia v4.0.0
+
+on:
+  push:
+    branches:
+      - agent/production-hardening-v4
+    paths:
+      - .github/workflows/release-v4-one-shot.yml
+
+permissions:
+  contents: write
+
+jobs:
+  stable-release:
+    runs-on: ubuntu-24.04
+    env:
+      EXPECTED_SHA: a9bc0ba2e96d098d67b835bd8b15cd02e77de64d
+      TAG: v4.0.0
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout production main
+        uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Verify exact production commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          actual="$(git rev-parse HEAD)"
+          test "$actual" = "$EXPECTED_SHA"
+
+      - name: Create Stable tag if absent
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
+            git fetch --force origin "refs/tags/$TAG:refs/tags/$TAG"
+            test "$(git rev-list -n 1 "$TAG")" = "$EXPECTED_SHA"
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git tag -a "$TAG" "$EXPECTED_SHA" -m "Hub Giulia 4.0 — Stable"
+            git push origin "refs/tags/$TAG"
+          fi
+
+      - name: Create Stable GitHub Release if absent
+        shell: bash
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            exit 0
+          fi
+          cat > release-notes.md <<'EOF'
+          # Hub Giulia 4.0 — Stable
+
+          Production-hardening release validated against the real Hub Giulia production environment.
+
+          ## Release evidence
+          - CI: 127 Vitest tests, typecheck, lint and Vite build green.
+          - Clean Supabase reconstruction from zero: green.
+          - Isolated Playwright critical E2E: 12/12 green.
+          - 50/50 public tables with RLS; 12/12 public views security-invoker.
+          - Cross-tenant database and private Storage negative tests green.
+          - Production dependency graph: 0 HIGH / 0 CRITICAL.
+          - Data Quality and clinical/financial integrity checks: 0 findings/violations at release.
+          - Vercel Production deployment for this SHA: READY; public/PWA smoke passed; no post-deploy error/fatal logs observed.
+
+          ## Recovery
+          - Dedicated recovery Supabase project and private backup bucket.
+          - Daily verified snapshot at 03:00 America/Sao_Paulo; latest 14 snapshots retained.
+          - Snapshot includes all 50 public tables, required Auth identity records and actual private clinical/commercial Storage bytes.
+          - Hosted restore drill from the stored archive: 0 table/object mismatches.
+          - Latest warm snapshot + restore + verification measured 6.069 seconds on the current dataset.
+          - Recovery target RPO: <=24h while the daily job remains healthy. PITR is not claimed.
+
+          ## Accepted / documented non-blocking risks
+          - Supabase leaked-password protection remains disabled.
+          - Intentional authenticated SECURITY DEFINER RPCs remain Advisor warnings by architecture.
+          - Some unused-index INFO findings remain on the small dataset.
+          - Two HIGH advisories remain in development tooling only; production runtime graph is clean.
+          - Recovery is a separate project but remains on the same cloud provider; cross-provider encrypted copy is future defense in depth.
+
+          Release commit: `a9bc0ba2e96d098d67b835bd8b15cd02e77de64d`.
+          EOF
+          gh release create "$TAG" --verify-tag --title "Hub Giulia 4.0 — Stable" --notes-file release-notes.md
