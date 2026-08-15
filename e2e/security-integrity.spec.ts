@@ -87,7 +87,7 @@ test('Storage blocks tenant B list/download/signed-url/upload/delete attempts ag
   expect(cleanup.error).toBeNull();
 });
 
-test('canonical attendance RPC is idempotent under parallel retry and finance remains tenant-isolated', async () => {
+test('canonical attendance RPC is idempotent and generates isolated finance, return and aftercare records', async () => {
   const seeded = await state();
   const a = await signedInClient('a');
   const b = await signedInClient('b');
@@ -139,6 +139,25 @@ test('canonical attendance RPC is idempotent under parallel retry and finance re
   expect(payments.error).toBeNull();
   expect(payments.data).toHaveLength(1);
 
+  const returnsA = await a.rpc('list_procedure_returns_v2');
+  expect(returnsA.error).toBeNull();
+  const generatedReturns = (returnsA.data ?? []).filter((row: { procedure_id?: string }) => row.procedure_id === procedureId);
+  expect(generatedReturns).toHaveLength(1);
+  expect(generatedReturns[0]?.return_type).toBe('clinical_return');
+
+  const returnsB = await b.rpc('list_procedure_returns_v2');
+  expect(returnsB.error).toBeNull();
+  expect((returnsB.data ?? []).filter((row: { procedure_id?: string }) => row.procedure_id === procedureId)).toEqual([]);
+
+  const plans = await a.from('procedure_followup_plans').select('id,status,photo_followup_snapshot').eq('procedure_id', procedureId);
+  expect(plans.error).toBeNull();
+  expect(plans.data).toHaveLength(1);
+  expect(plans.data?.[0]?.photo_followup_snapshot).toBe(true);
+
+  const tasks = await a.from('procedure_followup_tasks').select('id,task_type,status').eq('procedure_id', procedureId);
+  expect(tasks.error).toBeNull();
+  expect(tasks.data).toHaveLength(1);
+
   const procedureAsB = await b.from('procedures').select('id').eq('id', procedureId);
   expect(procedureAsB.error).toBeNull();
   expect(procedureAsB.data).toEqual([]);
@@ -150,4 +169,12 @@ test('canonical attendance RPC is idempotent under parallel retry and finance re
   const paymentAsB = await b.from('procedure_payments').select('id').eq('procedure_id', procedureId);
   expect(paymentAsB.error).toBeNull();
   expect(paymentAsB.data).toEqual([]);
+
+  const plansAsB = await b.from('procedure_followup_plans').select('id').eq('procedure_id', procedureId);
+  expect(plansAsB.error).toBeNull();
+  expect(plansAsB.data).toEqual([]);
+
+  const tasksAsB = await b.from('procedure_followup_tasks').select('id').eq('procedure_id', procedureId);
+  expect(tasksAsB.error).toBeNull();
+  expect(tasksAsB.data).toEqual([]);
 });
