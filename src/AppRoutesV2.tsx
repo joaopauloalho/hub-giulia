@@ -44,7 +44,7 @@ const router = createBrowserRouter(createRoutesFromElements(
       <Route path="crm/deals/:dealId/proposals/:proposalId" element={<ProposalEditorPage />} />
       <Route path="pacientes" element={<PacientesPage />} />
       <Route path="pacientes/:patientId" element={<PacientesPage />} />
-      <Route path="pacientes/:patientId/anamnese" element={<AnamneseEditorPage />} />
+      <Route path="pacientes/:patientId/anamnese" element={<DirtySurface id="anamnesis" cleanWhenText="Salvo às"><AnamneseEditorPage /></DirtySurface>} />
       <Route path="atendimento/:appointmentId" element={<AttendanceModePage />} />
       <Route path="registrar" element={<DirtySurface id="registrar" cleanWhenText="Atendimento registrado!"><RegistrarPage /></DirtySurface>} />
       <Route path="financeiro" element={<FinanceiroPage />} />
