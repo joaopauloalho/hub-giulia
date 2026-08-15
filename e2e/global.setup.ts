@@ -1,0 +1,91 @@
+import fs from 'node:fs/promises';
+import { adminClient, E2E_USERS } from './helpers';
+
+async function assertNoError(error: { message?: string } | null, context: string) {
+  if (error) throw new Error(`${context}: ${error.message ?? 'unknown isolated E2E setup error'}`);
+}
+
+export default async function globalSetup() {
+  const admin = adminClient();
+
+  const { data: existing, error: listError } = await admin.auth.admin.listUsers({ page: 1, perPage: 100 });
+  await assertNoError(listError, 'list local E2E users');
+  for (const user of existing?.users ?? []) {
+    if (Object.values(E2E_USERS).some(item => item.email === user.email)) {
+      const { error } = await admin.auth.admin.deleteUser(user.id);
+      await assertNoError(error, 'reset local E2E user');
+    }
+  }
+
+  const created: Record<'a' | 'b', string> = { a: '', b: '' };
+  for (const key of ['a', 'b'] as const) {
+    const credentials = E2E_USERS[key];
+    const { data, error } = await admin.auth.admin.createUser({
+      email: credentials.email,
+      password: credentials.password,
+      email_confirm: true,
+    });
+    await assertNoError(error, `create local E2E user ${key}`);
+    if (!data.user) throw new Error(`create local E2E user ${key}: no user returned`);
+    created[key] = data.user.id;
+  }
+
+  const { data: service, error: serviceError } = await admin.from('services').insert({
+    user_id: created.a,
+    name: 'E2E TEST Service',
+    type: 'servico',
+    price: 100,
+    cost_per_unit: 20,
+    duration_minutes: 60,
+    active: true,
+  }).select('id').single();
+  await assertNoError(serviceError, 'seed E2E service');
+
+  const { data: patient, error: patientError } = await admin.from('patients').insert({
+    user_id: created.a,
+    name: 'E2E TEST Seed Patient',
+    phone: '43999990000',
+    email: 'seed-patient@hub-giulia.local',
+  }).select('id').single();
+  await assertNoError(patientError, 'seed E2E patient');
+
+  const scheduledAt = '2030-01-15T13:00:00.000Z';
+  const endAt = '2030-01-15T14:00:00.000Z';
+  const { data: appointment, error: appointmentError } = await admin.from('appointments').insert({
+    user_id: created.a,
+    patient_id: patient!.id,
+    service_id: service!.id,
+    scheduled_at: scheduledAt,
+    duration_minutes: 60,
+    end_at: endAt,
+    notes: 'E2E TEST isolated appointment',
+  }).select('id').single();
+  await assertNoError(appointmentError, 'seed E2E appointment');
+
+  const { data: contact, error: contactError } = await admin.from('contacts').insert({
+    user_id: created.a,
+    name: 'E2E TEST Contact',
+    phone: '43999990001',
+    source: 'other',
+    patient_id: patient!.id,
+  }).select('id').single();
+  await assertNoError(contactError, 'seed E2E CRM contact');
+
+  const { data: deal, error: dealError } = await admin.from('deals').insert({
+    user_id: created.a,
+    contact_id: contact!.id,
+    title: 'E2E TEST Deal',
+    value: 100,
+    stage: 'new',
+  }).select('id').single();
+  await assertNoError(dealError, 'seed E2E CRM deal');
+
+  await fs.writeFile('.e2e-state.json', JSON.stringify({
+    users: created,
+    serviceId: service!.id,
+    patientId: patient!.id,
+    appointmentId: appointment!.id,
+    contactId: contact!.id,
+    dealId: deal!.id,
+  }), 'utf8');
+}
