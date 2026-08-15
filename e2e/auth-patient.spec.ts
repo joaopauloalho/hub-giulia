@@ -37,7 +37,7 @@ test('protected route redirects, login works, patient double-submit is guarded a
   // route transition before touching the navigation rail to avoid a reopen race.
   const drawerOverlay = page.locator('.drawer-overlay');
   await expect(drawerOverlay).toBeVisible();
-  await page.getByRole('button', { name: 'Fechar' }).click();
+  await page.getByRole('button', { name: 'Fechar', exact: true }).click();
   await page.waitForURL('**/pacientes');
   await expect(drawerOverlay).toHaveCount(0);
 
