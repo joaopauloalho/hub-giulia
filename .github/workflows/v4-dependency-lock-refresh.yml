@@ -30,7 +30,13 @@ jobs:
         run: npm ci
 
       - name: Apply non-forced audit fixes to lockfile only
-        run: npm audit fix --package-lock-only
+        shell: bash
+        run: |
+          set +e
+          npm audit fix --package-lock-only
+          audit_fix_status=$?
+          set -e
+          echo "npm audit fix exit status: $audit_fix_status (non-zero is expected while residual advisories remain)."
 
       - name: Guard package ranges
         run: |
