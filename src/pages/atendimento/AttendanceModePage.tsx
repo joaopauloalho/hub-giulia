@@ -3,6 +3,7 @@ import { ArrowLeft, CalendarDays, Camera, CheckCircle2, ClipboardList, FileSigna
 import { useNavigate, useParams } from 'react-router-dom';
 import { useProcedureFollowupSummary, aftercareDate, orientationStatusLabel } from '../../hooks/useAftercare';
 import { supabase } from '../../lib/supabase';
+import { PatientNextActionCard } from '../../components/operational/PatientNextActionCard';
 
 interface AttendanceContext {
   appointment_id: string;
@@ -30,10 +31,7 @@ interface AttendanceContext {
 }
 
 const APPOINTMENT_LABEL: Record<string, string> = { pendente: 'Pendente', confirmado: 'Confirmado', realizado: 'Realizado', cancelado: 'Cancelado', nao_compareceu: 'Não compareceu' };
-
-function dateTime(value: string) {
-  return new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Sao_Paulo', weekday: 'short', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }).format(new Date(value));
-}
+function dateTime(value: string) { return new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Sao_Paulo', weekday: 'short', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }).format(new Date(value)); }
 function money(value: number | null) { if (value === null || value === undefined) return '—'; return value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }); }
 
 export function AttendanceModePage() {
@@ -52,7 +50,6 @@ export function AttendanceModePage() {
     else { const row = ((data ?? []) as AttendanceContext[])[0] ?? null; setContext(row); if (!row) setError('Atendimento não encontrado ou sem acesso.'); }
     setLoading(false);
   }, [appointmentId]);
-
   useEffect(() => { void load(); }, [load]);
 
   const returnTo = `/atendimento/${appointmentId}`;
@@ -61,7 +58,6 @@ export function AttendanceModePage() {
     const params = new URLSearchParams({ tab, appointment_id: appointmentId, return_to: returnTo });
     return `/pacientes/${context.patient_id}?${params.toString()}`;
   }, [appointmentId, context, returnTo]);
-
   const registrarUrl = useMemo(() => {
     if (!context) return '/registrar';
     const params = new URLSearchParams({ patient_id: context.patient_id, appointment_id: appointmentId, return_to: returnTo });
@@ -78,6 +74,7 @@ export function AttendanceModePage() {
   const pending = Number(context.procedure_pending_amount ?? 0);
   const agendaDate = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(context.scheduled_at));
   const nextReturn = followup.summary?.returns.find(item => !item.completed_at && !item.dismissed_at) ?? null;
+  const pendingTasks = followup.summary?.tasks.filter(task => task.status === 'pending').length ?? 0;
 
   return <div className="page attendance-page">
     <header className="attendance-header">
@@ -87,7 +84,7 @@ export function AttendanceModePage() {
     </header>
 
     <section className="attendance-status-card card" aria-labelledby="attendance-status-title">
-      <div className="attendance-section-heading"><div><h2 id="attendance-status-title">Status do atendimento</h2><p className="page-sub">Leitura factual dos módulos atuais. Nenhuma etapa é marcada como obrigatória por esta tela.</p></div><button className="btn btn--ghost btn--sm" onClick={() => void Promise.all([load(), followup.refresh()])}><RefreshCw size={14} /> Atualizar</button></div>
+      <div className="attendance-section-heading"><div><h2 id="attendance-status-title">Contexto do atendimento</h2><p className="page-sub">Leitura factual dos módulos atuais. Nenhuma etapa é marcada como obrigatória por esta tela.</p></div><button className="btn btn--ghost btn--sm" onClick={() => void Promise.all([load(), followup.refresh()])}><RefreshCw size={14} /> Atualizar</button></div>
       <div className="attendance-readiness-grid">
         <div className="attendance-readiness is-ready"><UserRound size={17} /><span><strong>Paciente</strong><small>Cadastro localizado</small></span><CheckCircle2 size={16} /></div>
         <div className={`attendance-readiness${anamnesisReady ? ' is-ready' : ''}`}><ClipboardList size={17} /><span><strong>Anamnese</strong><small>{anamnesisReady ? 'Versão concluída' : context.anamnesis_status === 'draft' ? 'Rascunho salvo no servidor' : 'Sem versão atual'}</small></span>{anamnesisReady && <CheckCircle2 size={16} />}</div>
@@ -108,22 +105,11 @@ export function AttendanceModePage() {
       <button className="attendance-action card" onClick={() => navigate(`/retornos?patient_id=${context.patient_id}`)}><RotateCcw size={21} /><span><strong>Retorno</strong><small>Ver necessidade real e agendar quando aplicável</small></span></button>
     </section>
 
-    {hasProcedure && <section className="card" style={{ padding: 16, display: 'grid', gap: 12 }} aria-labelledby="attendance-aftercare-title">
-      <div><div className="attendance-eyebrow">Atendimento concluído</div><h2 id="attendance-aftercare-title" style={{ margin: '4px 0 2px', fontSize: 17 }}>Pós-atendimento</h2><p className="page-sub">O plano é preparado automaticamente quando existe protocolo configurado. Nenhuma pendência bloqueia a conclusão do atendimento.</p></div>
-      {followup.loading ? <div className="page-sub">Carregando acompanhamento…</div> : followup.error ? <div className="communication-error">Não foi possível carregar o pós-atendimento. Atualize antes de registrar qualquer ação.</div> : !followup.summary ? <div className="page-sub">Este procedimento não possui protocolo pós-atendimento configurado.</div> : <>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(170px,1fr))', gap: 9 }}>
-          <div className="attendance-readiness"><span><strong>Orientações</strong><small>{orientationStatusLabel(followup.summary.orientation_status)}</small></span></div>
-          <div className="attendance-readiness"><span><strong>Próximo check-in</strong><small>{followup.summary.next_task ? aftercareDate(followup.summary.next_task.due_on) : 'Nenhum pendente'}</small></span></div>
-          <div className="attendance-readiness"><span><strong>Retorno</strong><small>{nextReturn ? `${aftercareDate(nextReturn.window_start)}–${aftercareDate(nextReturn.window_end)}` : 'Sem retorno ativo'}</small></span></div>
-          <div className="attendance-readiness"><span><strong>Fotos no acompanhamento</strong><small>{followup.summary.photo_followup ? 'Sim · usar Photos 2.0 na clínica' : 'Não configurado'}</small></span></div>
-        </div>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          {followup.summary.instructions_snapshot && followup.summary.orientation_status === 'pending' && <button className="btn btn--primary btn--md" onClick={() => navigate('/comunicacao?category=aftercare')}><MessageCircle size={16} /> Enviar orientações</button>}
-          <button className="btn btn--secondary btn--md" onClick={() => navigate(`/pacientes/${context.patient_id}`)}>Ver acompanhamento</button>
-          <button className="btn btn--ghost btn--md" onClick={() => navigate(`/agenda?date=${agendaDate}`)}>Concluir atendimento</button>
-        </div>
-      </>}
-    </section>}
+    {hasProcedure && <section className="card" style={{ padding: 16, display: 'grid', gap: 10 }} aria-labelledby="attendance-completion-title"><div><div className="attendance-eyebrow">Resumo factual</div><h2 id="attendance-completion-title" style={{ margin: '4px 0 2px', fontSize: 17 }}>Conclusão do atendimento</h2><p className="page-sub">Mostra somente fatos canônicos; foto, contrato ou pagamento pendente não viram “erro” por si só.</p></div><div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(170px,1fr))', gap: 9 }}><div className="attendance-readiness is-ready"><HeartPulse size={17} /><span><strong>Procedimento</strong><small>Registrado</small></span><CheckCircle2 size={16} /></div><div className="attendance-readiness"><WalletCards size={17} /><span><strong>Pagamento</strong><small>{covered && pending <= 0 ? 'Coberto por pacote' : pending > 0 ? `Pendente ${money(pending)}` : context.payment_count > 0 ? 'Registrado' : 'Sem pagamento registrado'}</small></span></div><div className="attendance-readiness"><RotateCcw size={17} /><span><strong>Retorno</strong><small>{nextReturn ? `${aftercareDate(nextReturn.window_start)}–${aftercareDate(nextReturn.window_end)}` : 'Sem retorno ativo'}</small></span></div><div className="attendance-readiness"><MessageCircle size={17} /><span><strong>Pós-atendimento</strong><small>{followup.summary ? `${pendingTasks} tarefa${pendingTasks === 1 ? '' : 's'} pendente${pendingTasks === 1 ? '' : 's'}` : 'Sem plano ativo'}</small></span></div></div></section>}
+
+    {hasProcedure && <PatientNextActionCard patientId={context.patient_id} appointmentId={appointmentId} />}
+
+    {hasProcedure && <section className="card" style={{ padding: 16, display: 'grid', gap: 12 }} aria-labelledby="attendance-aftercare-title"><div><div className="attendance-eyebrow">Acompanhamento</div><h2 id="attendance-aftercare-title" style={{ margin: '4px 0 2px', fontSize: 17 }}>Pós-atendimento</h2><p className="page-sub">O plano é preparado automaticamente quando existe protocolo configurado. Nenhuma pendência bloqueia a conclusão do atendimento.</p></div>{followup.loading ? <div className="page-sub">Carregando acompanhamento…</div> : followup.error ? <div className="communication-error">Não foi possível carregar o pós-atendimento. Atualize antes de registrar qualquer ação.</div> : !followup.summary ? <div className="page-sub">Este procedimento não possui protocolo pós-atendimento configurado.</div> : <><div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(170px,1fr))', gap: 9 }}><div className="attendance-readiness"><span><strong>Orientações</strong><small>{orientationStatusLabel(followup.summary.orientation_status)}</small></span></div><div className="attendance-readiness"><span><strong>Próximo check-in</strong><small>{followup.summary.next_task ? aftercareDate(followup.summary.next_task.due_on) : 'Nenhum pendente'}</small></span></div><div className="attendance-readiness"><span><strong>Retorno</strong><small>{nextReturn ? `${aftercareDate(nextReturn.window_start)}–${aftercareDate(nextReturn.window_end)}` : 'Sem retorno ativo'}</small></span></div><div className="attendance-readiness"><span><strong>Fotos no acompanhamento</strong><small>{followup.summary.photo_followup ? 'Sim · usar Photos 2.0 na clínica' : 'Não configurado'}</small></span></div></div><div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>{followup.summary.instructions_snapshot && followup.summary.orientation_status === 'pending' && <button className="btn btn--secondary btn--md" onClick={() => navigate('/comunicacao?category=aftercare')}><MessageCircle size={16} /> Ver orientações na Comunicação</button>}<button className="btn btn--secondary btn--md" onClick={() => navigate(`/pacientes/${context.patient_id}`)}>Ver paciente</button><button className="btn btn--ghost btn--md" onClick={() => navigate(`/agenda?date=${agendaDate}`)}>Voltar à Agenda</button></div></>}</section>}
 
     <footer className="attendance-footer card"><CalendarDays size={18} /><div><strong>Conclusão sem estado paralelo</strong><p className="page-sub">O status continua vindo da Agenda, o procedimento continua vindo do Registrar e o retorno continua no Returns 2.0.</p></div></footer>
   </div>;
