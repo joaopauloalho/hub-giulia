@@ -14,6 +14,20 @@ begin
     raise exception 'safe orphan cleanup policy missing';
   end if;
   if exists(
+    select 1 from pg_policies
+    where schemaname='storage' and tablename='objects'
+      and policyname in ('patient_photos_read_owned_v2','patient_photos_write_owned_v2')
+      and coalesce(qual,with_check,'') like '%storage.foldername(p.name)%'
+  ) then
+    raise exception 'storage path ownership must not resolve patients.name';
+  end if;
+  if (select count(*) from pg_policies
+      where schemaname='storage' and tablename='objects'
+        and policyname in ('patient_photos_read_owned_v2','patient_photos_write_owned_v2')
+        and coalesce(qual,with_check,'') like '%storage.foldername(objects.name)%') <> 2 then
+    raise exception 'storage path ownership must explicitly qualify storage.objects.name';
+  end if;
+  if exists(
     select 1 from pg_proc p join pg_namespace n on n.oid=p.pronamespace
     where n.nspname='public' and p.proname in ('list_patient_photo_sessions_v1','list_photo_session_counts_by_procedure_v1') and p.prosecdef
   ) then
