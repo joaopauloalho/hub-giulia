@@ -1,0 +1,52 @@
+name: V4 Dependency Lock Refresh
+
+on:
+  push:
+    branches:
+      - agent/production-hardening-v4
+    paths:
+      - .github/workflows/v4-dependency-lock-refresh.yml
+
+permissions:
+  contents: write
+
+jobs:
+  refresh-lock:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          ref: agent/production-hardening-v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: npm
+
+      - name: Install exact baseline
+        run: npm ci
+
+      - name: Apply non-forced audit fixes to lockfile only
+        run: npm audit fix --package-lock-only
+
+      - name: Guard package ranges
+        run: |
+          if ! git diff --exit-code -- package.json; then
+            echo "::error title=Dependency guard::npm audit fix attempted to change package.json; refusing automatic major/range change."
+            exit 1
+          fi
+
+      - name: Commit lockfile if changed
+        run: |
+          if git diff --quiet -- package-lock.json; then
+            echo "No package-lock change required."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package-lock.json
+          git commit -m "Deps — apply non-forced audit lockfile fixes"
+          git push origin HEAD:agent/production-hardening-v4
