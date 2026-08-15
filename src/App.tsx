@@ -1,11 +1,16 @@
-import { Component, type ReactNode } from 'react';
+import { Component, type ErrorInfo, type ReactNode } from 'react';
 import AppRoutesV2 from './AppRoutesV2';
+import { safeLogError } from './lib/safeLogger';
 
 class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
   state: { error: Error | null } = { error: null };
 
   static getDerivedStateFromError(error: Error) {
     return { error };
+  }
+
+  componentDidCatch(error: Error, _info: ErrorInfo) {
+    safeLogError('ui.error_boundary', error);
   }
 
   render() {

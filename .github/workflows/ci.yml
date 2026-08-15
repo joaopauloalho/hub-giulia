@@ -21,11 +21,14 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '24'
           cache: npm
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Dependency audit
+        run: npm audit --audit-level=high
 
       - name: Test
         run: npm test
@@ -38,3 +41,27 @@ jobs:
 
       - name: Build
         run: npx vite build
+
+  database-rebuild:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: 2.114.0
+
+      - name: Initialize local Supabase config
+        run: supabase init --force
+
+      - name: Rebuild schema from migrations
+        run: |
+          supabase start -x studio,imgproxy,realtime,mailpit,logflare,vector,supavisor,edge-runtime
+          supabase db reset --local --no-seed
+
+      - name: Stop local stack
+        if: always()
+        run: supabase stop --no-backup || true
