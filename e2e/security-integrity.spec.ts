@@ -87,67 +87,67 @@ test('Storage blocks tenant B list/download/signed-url/upload/delete attempts ag
   expect(cleanup.error).toBeNull();
 });
 
-test('procedure idempotency rejects a parallel duplicate and finance remains tenant-isolated', async () => {
+test('canonical attendance RPC is idempotent under parallel retry and finance remains tenant-isolated', async () => {
   const seeded = await state();
   const a = await signedInClient('a');
   const b = await signedInClient('b');
   const idempotencyKey = randomUUID();
-  const procedurePayload = {
-    patient_id: seeded.patientId,
-    appointment_id: seeded.appointmentId,
-    services_ids: [seeded.serviceId],
-    total_value: 100,
-    total_cost: 20,
-    payment_method: 'pix',
-    net_value: 100,
-    gross_value: 100,
-    covered_value: 0,
-    idempotency_key: idempotencyKey,
-    idempotency_payload_hash: 'e2e-same-procedure-payload-v1',
+  const args = {
+    p_idempotency_key: idempotencyKey,
+    p_patient_id: seeded.patientId,
+    p_appointment_id: seeded.appointmentId,
+    p_performed_at: '2030-01-15T13:05:00.000Z',
+    p_items: [{ service_id: seeded.serviceId, qty: 1, final_price: 100 }],
+    p_payment_entries: [{
+      method: 'pix',
+      base_amount: 100,
+      amount: 100,
+      card_brand: null,
+      installments: 1,
+      fee_pct: 0,
+      fee_value: 0,
+      net_amount: 100,
+      absorve_taxa: false,
+      scheduled_date: null,
+    }],
+    p_injectable_maps: [],
+    p_notes: 'E2E TEST isolated attendance',
   };
 
-  const attempts = await Promise.all([
-    a.from('procedures').insert(procedurePayload).select('id').single(),
-    a.from('procedures').insert(procedurePayload).select('id').single(),
+  const [first, second] = await Promise.all([
+    a.rpc('create_procedure_v2', args),
+    a.rpc('create_procedure_v2', args),
   ]);
-  const successes = attempts.filter(result => !result.error && result.data);
-  const failures = attempts.filter(result => result.error);
-  expect(successes).toHaveLength(1);
-  expect(failures).toHaveLength(1);
+  expect(first.error).toBeNull();
+  expect(second.error).toBeNull();
 
-  const procedureId = successes[0].data!.id;
-  const item = await a.from('procedure_items').insert({
-    procedure_id: procedureId,
-    service_id: seeded.serviceId,
-    name: 'E2E TEST Service',
-    qty: 1,
-    list_price: 100,
-    final_price: 100,
-    discount: 0,
-    cost_snapshot: 20,
-    coverage_value_snapshot: 0,
-    amount_due_snapshot: 100,
-  }).select('id').single();
-  expect(item.error).toBeNull();
+  const firstRow = Array.isArray(first.data) ? first.data[0] : first.data;
+  const secondRow = Array.isArray(second.data) ? second.data[0] : second.data;
+  expect(firstRow?.id).toBeTruthy();
+  expect(secondRow?.id).toBe(firstRow?.id);
+  const procedureId = firstRow!.id as string;
 
-  const payment = await a.from('procedure_payments').insert({
-    procedure_id: procedureId,
-    method: 'pix',
-    amount: 100,
-    net_amount: 100,
-    paid_at: new Date().toISOString(),
-  }).select('id').single();
-  expect(payment.error).toBeNull();
+  const procedureCount = await a.from('procedures').select('id').eq('idempotency_key', idempotencyKey);
+  expect(procedureCount.error).toBeNull();
+  expect(procedureCount.data).toHaveLength(1);
+
+  const items = await a.from('procedure_items').select('id').eq('procedure_id', procedureId);
+  expect(items.error).toBeNull();
+  expect(items.data).toHaveLength(1);
+
+  const payments = await a.from('procedure_payments').select('id').eq('procedure_id', procedureId);
+  expect(payments.error).toBeNull();
+  expect(payments.data).toHaveLength(1);
 
   const procedureAsB = await b.from('procedures').select('id').eq('id', procedureId);
   expect(procedureAsB.error).toBeNull();
   expect(procedureAsB.data).toEqual([]);
 
-  const itemAsB = await b.from('procedure_items').select('id').eq('id', item.data!.id);
+  const itemAsB = await b.from('procedure_items').select('id').eq('procedure_id', procedureId);
   expect(itemAsB.error).toBeNull();
   expect(itemAsB.data).toEqual([]);
 
-  const paymentAsB = await b.from('procedure_payments').select('id').eq('id', payment.data!.id);
+  const paymentAsB = await b.from('procedure_payments').select('id').eq('procedure_id', procedureId);
   expect(paymentAsB.error).toBeNull();
   expect(paymentAsB.data).toEqual([]);
 });
