@@ -16,12 +16,12 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
-          node-version: '20'
+          node-version: '24'
           cache: npm
 
       - name: Install dependencies
@@ -38,3 +38,184 @@ jobs:
 
       - name: Build
         run: npx vite build
+
+  dependency-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Production dependency gate — high/critical
+        shell: bash
+        run: |
+          set +e
+          npm audit --omit=dev --audit-level=high --json > audit-production.json
+          audit_status=$?
+          set -e
+          node <<'NODE'
+          const fs = require('node:fs');
+          const report = JSON.parse(fs.readFileSync('audit-production.json', 'utf8'));
+          const vulnerable = Object.entries(report.vulnerabilities || {})
+            .filter(([, value]) => value && (value.severity === 'high' || value.severity === 'critical'));
+          const escape = value => String(value ?? '').replace(/%/g, '%25').replace(/\r/g, '%0D').replace(/\n/g, '%0A');
+          for (const [name, value] of vulnerable) {
+            const via = Array.isArray(value.via)
+              ? value.via.map(item => typeof item === 'string' ? item : item?.title).filter(Boolean).slice(0, 3).join('; ')
+              : '';
+            const fix = value.fixAvailable === true ? 'fix available' : value.fixAvailable ? `fix ${JSON.stringify(value.fixAvailable)}` : 'no automatic fix';
+            console.log(`::error title=${escape(`production npm audit ${value.severity}: ${name}`)}::${escape(`${via || 'high/critical production dependency vulnerability'}; ${fix}`)}`);
+          }
+          const meta = report.metadata?.vulnerabilities || {};
+          console.log(`production npm audit summary: critical=${meta.critical || 0} high=${meta.high || 0} moderate=${meta.moderate || 0} low=${meta.low || 0}`);
+          if (vulnerable.length) process.exit(1);
+          NODE
+          if [ "$audit_status" -ne 0 ]; then
+            echo "Production npm audit exited with $audit_status but no high/critical entry was parsed."
+            exit "$audit_status"
+          fi
+
+      - name: Full dependency visibility — critical gate, high warnings
+        shell: bash
+        run: |
+          set +e
+          npm audit --audit-level=critical --json > audit-all.json
+          audit_status=$?
+          set -e
+          node <<'NODE'
+          const fs = require('node:fs');
+          const report = JSON.parse(fs.readFileSync('audit-all.json', 'utf8'));
+          const entries = Object.entries(report.vulnerabilities || {});
+          const critical = entries.filter(([, value]) => value?.severity === 'critical');
+          const high = entries.filter(([, value]) => value?.severity === 'high');
+          const escape = value => String(value ?? '').replace(/%/g, '%25').replace(/\r/g, '%0D').replace(/\n/g, '%0A');
+          for (const [name] of critical) {
+            console.log(`::error title=${escape(`npm audit critical: ${name}`)}::${escape('Critical dependency vulnerability in the full dependency graph.')}`);
+          }
+          for (const [name, value] of high) {
+            const fix = value.fixAvailable === true ? 'fix available' : value.fixAvailable ? `fix ${JSON.stringify(value.fixAvailable)}` : 'no automatic fix';
+            console.log(`::warning title=${escape(`npm audit high (full graph): ${name}`)}::${escape(`High advisory remains visible in the full graph; ${fix}. Production dependencies are gated separately.`)}`);
+          }
+          const meta = report.metadata?.vulnerabilities || {};
+          console.log(`full npm audit summary: critical=${meta.critical || 0} high=${meta.high || 0} moderate=${meta.moderate || 0} low=${meta.low || 0}`);
+          if (critical.length) process.exit(1);
+          NODE
+          if [ "$audit_status" -ne 0 ]; then
+            echo "Full npm audit exited with $audit_status at critical threshold."
+            exit "$audit_status"
+          fi
+
+  database-rebuild-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Initialize local Supabase config
+        run: npx -y supabase@2.114.0 init --force
+
+      - name: Rebuild schema from migrations
+        shell: bash
+        run: |
+          set +e
+          npx -y supabase@2.114.0 start -x studio,imgproxy,realtime,mailpit,logflare,vector,supavisor,edge-runtime > rebuild.log 2>&1
+          start_status=$?
+          set -e
+          if [ "$start_status" -ne 0 ]; then
+            echo "Supabase local start/migration apply failed. Diagnostic tail follows."
+            tail -n 80 rebuild.log
+            grep -Ei 'ERROR|failed|does not exist|already exists|duplicate|syntax error|relation|function' rebuild.log | tail -n 12 | while IFS= read -r line; do
+              safe="${line//'%'/'%25'}"
+              safe="${safe//$'\r'/'%0D'}"
+              safe="${safe//$'\n'/'%0A'}"
+              echo "::error title=Supabase migration rebuild::$safe"
+            done
+            exit "$start_status"
+          fi
+
+          set +e
+          npx -y supabase@2.114.0 db reset --local --no-seed > reset.log 2>&1
+          reset_status=$?
+          set -e
+          if [ "$reset_status" -ne 0 ]; then
+            echo "Supabase db reset failed. Diagnostic tail follows."
+            tail -n 80 reset.log
+            grep -Ei 'ERROR|failed|does not exist|already exists|duplicate|syntax error|relation|function' reset.log | tail -n 12 | while IFS= read -r line; do
+              safe="${line//'%'/'%25'}"
+              safe="${safe//$'\r'/'%0D'}"
+              safe="${safe//$'\n'/'%0A'}"
+              echo "::error title=Supabase migration rebuild::$safe"
+            done
+            exit "$reset_status"
+          fi
+
+      - name: Export isolated local E2E configuration
+        shell: bash
+        run: |
+          npx -y supabase@2.114.0 status -o env > .supabase-e2e.env
+          set -a
+          source .supabase-e2e.env
+          set +a
+          test -n "$API_URL"
+          test -n "$ANON_KEY"
+          test -n "$SERVICE_ROLE_KEY"
+          echo "::add-mask::$ANON_KEY"
+          echo "::add-mask::$SERVICE_ROLE_KEY"
+          {
+            echo "E2E_SUPABASE_URL=$API_URL"
+            echo "E2E_SUPABASE_ANON_KEY=$ANON_KEY"
+            echo "E2E_SERVICE_ROLE_KEY=$SERVICE_ROLE_KEY"
+            echo "VITE_SUPABASE_URL=$API_URL"
+            echo "VITE_SUPABASE_ANON_KEY=$ANON_KEY"
+            echo "E2E_BASE_URL=http://127.0.0.1:4173"
+          } >> "$GITHUB_ENV"
+          rm -f .supabase-e2e.env
+
+      - name: Install Chromium for Playwright
+        run: npx playwright install --with-deps chromium
+
+      - name: Start isolated Hub web app
+        shell: bash
+        run: |
+          npm run dev -- --host 127.0.0.1 --port 4173 > vite-e2e.log 2>&1 &
+          echo $! > .vite-e2e.pid
+          for attempt in {1..30}; do
+            if curl --fail --silent http://127.0.0.1:4173/login > /dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          tail -n 80 vite-e2e.log
+          exit 1
+
+      - name: Playwright isolated E2E
+        run: npm run test:e2e
+
+      - name: Stop isolated Hub web app
+        if: always()
+        shell: bash
+        run: |
+          if [ -f .vite-e2e.pid ]; then kill "$(cat .vite-e2e.pid)" 2>/dev/null || true; fi
+
+      - name: Stop local Supabase stack
+        if: always()
+        run: npx -y supabase@2.114.0 stop --no-backup || true

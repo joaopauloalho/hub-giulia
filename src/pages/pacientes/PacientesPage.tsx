@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { Archive, Download, Plus, Search, UserRound } from 'lucide-react';
 import { usePacientes, type PatientRecord } from '../../hooks/usePacientes';
@@ -23,10 +23,14 @@ export function PacientesPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [viewing, setViewing] = useState<PatientRecord | null>(null);
   const [sourceAppointmentId, setSourceAppointmentId] = useState<string | null>(null);
+  const closingPatientIdRef = useRef<string | null>(null);
   const requestedPatientId = routePatientId ?? searchParams.get('patient_id');
 
   useEffect(() => {
-    if (loading || !requestedPatientId || viewing?.id === requestedPatientId) return;
+    if (closingPatientIdRef.current && requestedPatientId !== closingPatientIdRef.current) {
+      closingPatientIdRef.current = null;
+    }
+    if (loading || !requestedPatientId || closingPatientIdRef.current === requestedPatientId || viewing?.id === requestedPatientId) return;
     const found = pacientes.find(patient => patient.id === requestedPatientId);
     if (found) {
       setViewing(found);
@@ -35,7 +39,7 @@ export function PacientesPage() {
     }
     let active = true;
     getById(requestedPatientId).then(patient => {
-      if (!active || !patient) return;
+      if (!active || !patient || closingPatientIdRef.current === requestedPatientId) return;
       setViewing(patient);
       setSourceAppointmentId(searchParams.get('appointment_id'));
     }).catch(() => { if (active) setSourceAppointmentId(null); });
@@ -49,6 +53,7 @@ export function PacientesPage() {
   const fmtDate = (iso: string | null) => iso ? new Date(iso).toLocaleDateString('pt-BR') : null;
 
   const closePatient = () => {
+    closingPatientIdRef.current = requestedPatientId ?? viewing?.id ?? null;
     setViewing(null);
     setSourceAppointmentId(null);
     const returnTo = searchParams.get('return_to');
@@ -59,6 +64,7 @@ export function PacientesPage() {
   };
 
   const openPatient = (patient: PatientRecord) => {
+    closingPatientIdRef.current = null;
     setViewing(patient);
     setSourceAppointmentId(null);
     navigate(`/pacientes/${patient.id}`);
