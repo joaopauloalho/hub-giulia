@@ -1,0 +1,31 @@
+{
+  "id": "/dashboard",
+  "name": "Hub Giulia",
+  "short_name": "Hub Giulia",
+  "description": "Ferramenta operacional da Clínica Dra. Giulia Assis",
+  "start_url": "/dashboard",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#fffafb",
+  "theme_color": "#be185d",
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Check, Edit3, ExternalLink, RefreshCw, User, X } from 'lucide-react';
+import { Check, Edit3, HeartPulse, RefreshCw, User, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import type { AgendaAppointment } from '../../hooks/useAgenda';
 import { useToast } from '../../hooks/useToast';
@@ -45,8 +45,6 @@ export function AppointmentDetailDrawer({
       : appointment.google_sync_status === 'disconnected' ? 'Google desconectado'
         : 'Não sincronizado com Google';
 
-  const registrarUrl = `/registrar?patient_id=${appointment.patient_id}&appointment_id=${appointment.id}${appointment.service_id ? `&service_id=${appointment.service_id}` : ''}`;
-
   return (
     <div className="drawer-overlay" onClick={onClose}>
       <div className="drawer" role="dialog" aria-modal="true" aria-labelledby="appointment-detail-title" onClick={event => event.stopPropagation()}>
@@ -70,10 +68,10 @@ export function AppointmentDetailDrawer({
           {active && <div style={{ marginTop: 16 }}><label className="field-label">Motivo do cancelamento (opcional)</label><input className="field-input" value={cancelReason} onChange={event => setCancelReason(event.target.value)} placeholder="Paciente cancelou, clínica cancelou, outro..." /></div>}
         </div>
         <div className="drawer-footer" style={{ flexWrap: 'wrap' }}>
-          <button className="btn-secondary" onClick={() => navigate(`/pacientes?patient_id=${appointment.patient_id}`, { state: { from: '/agenda' } })}><User size={15} /> Paciente</button>
+          <button className="btn-secondary" onClick={() => navigate(`/pacientes/${appointment.patient_id}?appointment_id=${appointment.id}&return_to=${encodeURIComponent(`/agenda`)}`)}><User size={15} /> Paciente</button>
           {active && <button className="btn-secondary" onClick={onEdit} disabled={busy}><Edit3 size={15} /> Reagendar</button>}
           {appointment.status === 'pendente' && <button className="btn-secondary" onClick={() => void run(onConfirm, 'Consulta confirmada.')} disabled={busy}><Check size={15} /> Confirmar</button>}
-          {active && <button className="btn-secondary" onClick={() => navigate(registrarUrl)} disabled={busy}><ExternalLink size={15} /> Registrar atendimento</button>}
+          {active && <button className="btn btn--primary btn--md" onClick={() => navigate(`/atendimento/${appointment.id}`)} disabled={busy}><HeartPulse size={16} /> Abrir atendimento</button>}
           {active && <button className="btn-secondary" onClick={() => void noShow()} disabled={busy}>Não compareceu</button>}
           {active && <button className="btn btn--danger btn--md" onClick={() => void run(() => onCancel(cancelReason.trim() || null), 'Agendamento cancelado.')} disabled={busy}>Cancelar</button>}
         </div>
