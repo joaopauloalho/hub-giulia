@@ -1,177 +1,208 @@
-import { useEffect, useRef, useState } from 'react';
-import { Camera, Trash2, Upload } from 'lucide-react';
-import { format } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
-import { usePatientPhotos } from '../../../hooks/usePatientPhotos';
-import { useProcedures } from '../../../hooks/useProcedures';
-import { useToast } from '../../../hooks/useToast';
-import type { PatientPhoto } from '../../../types';
+import { useEffect, useMemo, useState } from 'react';
+import { Camera, ChevronRight, Clock3, Compare, Filter, Images, RefreshCw } from 'lucide-react';
+import { useSearchParams } from 'react-router-dom';
+import { FACE_STANDARD_ANGLES, PHOTO_ANGLE_LABELS, PHOTO_SESSION_LABELS, type PhotoAngle, type PhotoSessionType } from '../../../lib/clinicalPhotos';
+import { useNetworkStatus } from '../../../hooks/useNetworkStatus';
+import { usePatientPhotos, type PatientPhoto, type PatientPhotoSession, type PhotoSessionFilters } from '../../../hooks/usePatientPhotos';
+import ClinicalPhotoCapture from '../../../components/photos/ClinicalPhotoCapture';
+import PhotoComparison from '../../../components/photos/PhotoComparison';
+import PhotoViewer from '../../../components/photos/PhotoViewer';
+import '../photos.css';
 
-interface Props { patientId: string; }
+interface FotosTabProps { patientId: string }
+interface ComparisonState { before: PatientPhotoSession; after: PatientPhotoSession; urls: Map<string, string | null> }
 
-export function FotosTab({ patientId }: Props) {
-  const { photos, loading, error, load, upload, remove } = usePatientPhotos(patientId);
-  const { procedures } = useProcedures(patientId);
-  const { confirm, toast } = useToast();
-  const [uploading, setUploading] = useState(false);
-  const [label, setLabel] = useState('');
-  const [photoType, setPhotoType] = useState<PatientPhoto['photo_type']>('general');
-  const [procedureId, setProcedureId] = useState('');
-  const [preview, setPreview] = useState<PatientPhoto | null>(null);
-  const fileRef = useRef<HTMLInputElement>(null);
+function formatDate(value: string, withTime = false) {
+  return new Intl.DateTimeFormat('pt-BR', withTime ? { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' } : { day: '2-digit', month: 'short', year: 'numeric' }).format(new Date(value));
+}
 
-  useEffect(() => { load(); }, [load]);
+function commonAngleCount(a: PatientPhotoSession, b: PatientPhotoSession) {
+  const angles = new Set(a.photos.map(photo => photo.angle).filter(Boolean));
+  return b.photos.filter(photo => photo.angle && angles.has(photo.angle)).length;
+}
 
-  const fmtDate = (iso: string) => {
-    try { return format(new Date(iso), "dd/MM/yyyy 'as' HH:mm", { locale: ptBR }); }
-    catch { return iso; }
+export default function FotosTab({ patientId }: FotosTabProps) {
+  const [searchParams] = useSearchParams();
+  const appointmentId = searchParams.get('appointment_id');
+  const { online } = useNetworkStatus();
+  const photos = usePatientPhotos(patientId);
+  const [sessionType, setSessionType] = useState<PhotoSessionType | ''>('');
+  const [serviceId, setServiceId] = useState('');
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState('');
+  const [captureOpen, setCaptureOpen] = useState(false);
+  const [resumeSession, setResumeSession] = useState<PatientPhotoSession | null>(null);
+  const [attendanceContext, setAttendanceContext] = useState<Awaited<ReturnType<typeof photos.getAttendanceContext>>>(null);
+  const [selectedSession, setSelectedSession] = useState<PatientPhotoSession | null>(null);
+  const [viewerPhoto, setViewerPhoto] = useState<PatientPhoto | null>(null);
+  const [comparisonDraft, setComparisonDraft] = useState<{ beforeId: string; afterId: string } | null>(null);
+  const [comparison, setComparison] = useState<ComparisonState | null>(null);
+  const [localError, setLocalError] = useState<string | null>(null);
+  const [preparingComparison, setPreparingComparison] = useState(false);
+
+  const filters = useMemo<PhotoSessionFilters>(() => ({ serviceId: serviceId || null, sessionType, from, to }), [from, serviceId, sessionType, to]);
+
+  useEffect(() => { void photos.load(filters); }, [photos.load, filters]);
+  useEffect(() => {
+    if (!appointmentId) { setAttendanceContext(null); return; }
+    let active = true;
+    void photos.getAttendanceContext(appointmentId).then(value => { if (active) setAttendanceContext(value); }).catch(() => { if (active) setAttendanceContext(null); });
+    return () => { active = false; };
+  }, [appointmentId, photos.getAttendanceContext]);
+
+  const services = useMemo(() => {
+    const map = new Map<string, string>();
+    photos.sessions.forEach(session => { if (session.service_id && session.service_name) map.set(session.service_id, session.service_name); });
+    return [...map.entries()].sort((a, b) => a[1].localeCompare(b[1], 'pt-BR'));
+  }, [photos.sessions]);
+
+  const referenceByAngle = useMemo(() => {
+    const target = resumeSession;
+    const targetDate = target ? new Date(target.captured_at).getTime() : Date.now();
+    const targetService = target?.service_id ?? attendanceContext?.serviceId ?? null;
+    const previous = photos.sessions
+      .filter(session => session.session_id !== target?.session_id && new Date(session.captured_at).getTime() < targetDate)
+      .sort((a, b) => Number(Boolean(targetService && b.service_id === targetService)) - Number(Boolean(targetService && a.service_id === targetService)) || new Date(b.captured_at).getTime() - new Date(a.captured_at).getTime())[0];
+    const map: Partial<Record<PhotoAngle, string>> = {};
+    previous?.photos.forEach(photo => { if (photo.angle && photo.thumbnail_url && !map[photo.angle]) map[photo.angle] = photo.thumbnail_url; });
+    return map;
+  }, [attendanceContext?.serviceId, photos.sessions, resumeSession]);
+
+  const startCapture = (session: PatientPhotoSession | null = null) => {
+    setLocalError(null);
+    if (!online) {
+      setLocalError('Conecte-se à internet para registrar fotos com segurança.');
+      return;
+    }
+    setResumeSession(session);
+    setCaptureOpen(true);
   };
 
-  const fmtProcedure = (iso: string) => {
-    try { return format(new Date(iso), 'dd/MM/yyyy', { locale: ptBR }); }
-    catch { return iso; }
+  const suggestComparison = (clicked: PatientPhotoSession) => {
+    const candidates = photos.sessions
+      .filter(session => session.session_id !== clicked.session_id)
+      .map(session => ({ session, common: commonAngleCount(clicked, session), sameService: Boolean(clicked.service_id && session.service_id === clicked.service_id) }))
+      .sort((a, b) => Number(b.sameService) - Number(a.sameService) || b.common - a.common || Math.abs(new Date(clicked.captured_at).getTime() - new Date(a.session.captured_at).getTime()) - Math.abs(new Date(clicked.captured_at).getTime() - new Date(b.session.captured_at).getTime()));
+    const other = candidates[0]?.session;
+    if (!other) {
+      setLocalError('É necessária outra sessão para comparar.');
+      return;
+    }
+    const clickedLater = new Date(clicked.captured_at).getTime() >= new Date(other.captured_at).getTime();
+    setComparisonDraft({ beforeId: clickedLater ? other.session_id : clicked.session_id, afterId: clickedLater ? clicked.session_id : other.session_id });
   };
 
-  const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setUploading(true);
+  const prepareComparison = async () => {
+    if (!comparisonDraft || comparisonDraft.beforeId === comparisonDraft.afterId) {
+      setLocalError('Escolha duas sessões diferentes.');
+      return;
+    }
+    const before = photos.sessions.find(session => session.session_id === comparisonDraft.beforeId);
+    const after = photos.sessions.find(session => session.session_id === comparisonDraft.afterId);
+    if (!before || !after) return;
+    setPreparingComparison(true);
+    setLocalError(null);
     try {
-      await upload(file, label, { photo_type: photoType, procedure_id: procedureId || null });
-      setLabel('');
-      setPhotoType('general');
-      setProcedureId('');
-      if (fileRef.current) fileRef.current.value = '';
-      toast.success('Foto enviada.');
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Erro ao enviar foto.');
+      const urls = await photos.signPhotoPreviews([...before.photos, ...after.photos]);
+      setComparison({ before, after, urls });
+      setComparisonDraft(null);
+    } catch (cause) {
+      setLocalError(cause instanceof Error ? cause.message : 'Não foi possível abrir a comparação.');
     } finally {
-      setUploading(false);
+      setPreparingComparison(false);
     }
   };
 
-  const handleRemove = async (photo: PatientPhoto) => {
-    const ok = await confirm({
-      title: 'Excluir foto',
-      message: 'Excluir esta foto?',
-      confirmLabel: 'Excluir',
-      tone: 'danger',
-    });
-    if (!ok) return;
-    await remove(photo);
-    if (preview?.id === photo.id) setPreview(null);
-  };
-
-  const generalPhotos = photos.filter(photo => photo.photo_type === 'general');
-  const beforeAfter = photos.filter(photo => photo.photo_type !== 'general');
-  const procedureGroups = beforeAfter.reduce<Record<string, PatientPhoto[]>>((acc, photo) => {
-    const key = photo.procedure_id ?? 'sem-procedimento';
-    acc[key] = [...(acc[key] ?? []), photo];
-    return acc;
-  }, {});
-
-  const renderPhotoCard = (photo: PatientPhoto) => (
-    <div key={photo.id} style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius)', overflow: 'hidden', background: 'var(--bg-2)' }}>
-      <div style={{ position: 'relative', aspectRatio: '1', cursor: 'pointer' }} onClick={() => setPreview(photo)}>
-        <img src={photo.photo_url} alt={photo.label ?? 'Foto'} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-        <span className="badge badge--rose" style={{ position: 'absolute', left: 8, top: 8 }}>
-          {photo.photo_type === 'before' ? 'Antes' : photo.photo_type === 'after' ? 'Depois' : 'Geral'}
-        </span>
-      </div>
-      <div style={{ padding: '8px 10px' }}>
-        {photo.label && <div style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text)', marginBottom: 2 }}>{photo.label}</div>}
-        {photo.procedure?.performed_at && <div style={{ fontSize: '0.74rem', color: 'var(--primary)', marginBottom: 2 }}>Procedimento {fmtProcedure(photo.procedure.performed_at)}</div>}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-          <span style={{ fontSize: '0.75rem', color: 'var(--text-3)' }}>{fmtDate(photo.taken_at)}</span>
-          <button style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--red)', padding: 4 }} onClick={() => handleRemove(photo)} aria-label="Excluir foto">
-            <Trash2 size={14} />
-          </button>
-        </div>
-      </div>
-    </div>
-  );
+  const reload = async () => { await photos.load(filters); };
 
   return (
-    <div style={{ padding: 20 }}>
-      <div style={{ border: '2px dashed var(--border)', borderRadius: 'var(--radius)', padding: 20, marginBottom: 20, background: 'var(--bg-2)' }}>
-        <div style={{ marginBottom: 10 }}>
-          <label className="field-label">Etiqueta (opcional)</label>
-          <input className="field-input" value={label} onChange={e => setLabel(e.target.value)} placeholder="Ex: Antes do tratamento, sessao 1..." />
+    <section className="photos-v2">
+      <div className="photos-v2__hero">
+        <div>
+          <span className="eyebrow"><Images size={15} /> Documentação clínica</span>
+          <h2>Fotos & evolução</h2>
+          <p>Sessões organizadas por contexto, com original clínico imutável e comparação sem retoque.</p>
+          {attendanceContext && <div className="attendance-photo-context"><Clock3 size={16} /><span>Atendimento aberto · <strong>{attendanceContext.serviceName || 'Serviço vinculado'}</strong></span></div>}
         </div>
-
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 10, marginBottom: 10 }}>
-          <div>
-            <label className="field-label">Tipo de foto</label>
-            <select className="field-input" value={photoType} onChange={event => setPhotoType(event.target.value as PatientPhoto['photo_type'])}>
-              <option value="general">Geral</option>
-              <option value="before">Antes</option>
-              <option value="after">Depois</option>
-            </select>
-          </div>
-          <div>
-            <label className="field-label">Vincular a procedimento</label>
-            <select className="field-input" value={procedureId} onChange={event => setProcedureId(event.target.value)}>
-              <option value="">Sem vinculo</option>
-              {procedures.map(procedure => <option key={procedure.id} value={procedure.id}>{fmtProcedure(procedure.performed_at)}</option>)}
-            </select>
-          </div>
-        </div>
-
-        <button className="btn btn--secondary btn--sm" style={{ width: '100%' }} onClick={() => fileRef.current?.click()} disabled={uploading}>
-          {uploading ? <><Upload size={15} /> Enviando...</> : <><Camera size={15} /> Selecionar foto</>}
-        </button>
-        <input ref={fileRef} type="file" accept="image/*" capture="environment" style={{ display: 'none' }} onChange={handleFile} />
+        <button className="primary-action capture-cta" onClick={() => startCapture()}><Camera size={19} /> Capturar fotos de hoje</button>
       </div>
 
-      {error ? (
-        <div className="empty-state" style={{ padding: '32px 0' }}><p>{error}</p></div>
-      ) : loading ? (
-        <div className="loading-state">Carregando fotos...</div>
-      ) : photos.length === 0 ? (
-        <div className="empty-state" style={{ padding: '32px 0' }}>
-          <Camera size={40} strokeWidth={1} style={{ color: 'var(--primary-lt)' }} />
-          <p>Nenhuma foto registrada.</p>
-        </div>
+      {(localError || photos.error) && <div className="photos-error">{localError || photos.error}</div>}
+
+      <div className="photo-filters">
+        <span><Filter size={16} /> Filtros</span>
+        <select aria-label="Filtrar por serviço" value={serviceId} onChange={event => setServiceId(event.target.value)}><option value="">Todos os serviços</option>{services.map(([id, name]) => <option key={id} value={id}>{name}</option>)}</select>
+        <select aria-label="Filtrar por tipo de sessão" value={sessionType} onChange={event => setSessionType(event.target.value as PhotoSessionType | '')}><option value="">Todos os tipos</option>{Object.entries(PHOTO_SESSION_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
+        <label>De <input type="date" value={from} onChange={event => setFrom(event.target.value)} /></label>
+        <label>Até <input type="date" value={to} onChange={event => setTo(event.target.value)} /></label>
+      </div>
+
+      {photos.loading && photos.sessions.length === 0 ? (
+        <div className="session-skeletons"><div /><div /></div>
+      ) : photos.sessions.length === 0 && photos.legacyPhotos.length === 0 ? (
+        <div className="photos-empty"><Camera size={36} /><h3>Nenhuma sessão fotográfica</h3><p>Registre as fotos do atendimento em poucos toques.</p><button className="primary-action" onClick={() => startCapture()}>Capturar fotos</button></div>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-          {beforeAfter.length > 0 && (
-            <section>
-              <h3 className="section-title">Antes / Depois</h3>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                {Object.entries(procedureGroups).map(([groupId, groupPhotos]) => (
-                  <div key={groupId} className="card" style={{ padding: 12 }}>
-                    <div style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-2)', marginBottom: 10 }}>
-                      {groupPhotos[0]?.procedure?.performed_at ? `Procedimento ${fmtProcedure(groupPhotos[0].procedure.performed_at)}` : 'Sem procedimento vinculado'}
-                    </div>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 12 }}>
-                      {[...groupPhotos].sort((a, b) => a.photo_type.localeCompare(b.photo_type)).map(renderPhotoCard)}
-                    </div>
+        <div className="photo-timeline">
+          {photos.sessions.map((session, index) => {
+            const uniqueStandardAngles = new Set(session.photos.map(photo => photo.angle).filter(angle => angle && FACE_STANDARD_ANGLES.includes(angle))).size;
+            return (
+              <article className="photo-session-card" key={session.session_id}>
+                <div className="timeline-marker"><span>{index + 1}</span></div>
+                <div className="photo-session-card__content">
+                  <header>
+                    <div><time>{formatDate(session.captured_at)}</time><h3>{PHOTO_SESSION_LABELS[session.session_type]}</h3><p>{session.service_name || session.title || 'Sessão fotográfica'}</p></div>
+                    <div className="session-count"><strong>{session.photo_count}</strong><span>foto{session.photo_count === 1 ? '' : 's'}</span></div>
+                  </header>
+                  {session.capture_set === 'face_standard' && <div className="session-progress"><span style={{ width: `${Math.min(100, uniqueStandardAngles / 5 * 100)}%` }} /><small>{uniqueStandardAngles} de 5 ângulos organizados</small></div>}
+                  <div className="session-thumbs">
+                    {session.photos.slice(0, 5).map(photo => photo.thumbnail_url ? <button key={photo.id} onClick={() => setViewerPhoto(photo)} aria-label={`Abrir ${photo.angle ? PHOTO_ANGLE_LABELS[photo.angle] : 'foto clínica'}`}><img loading="lazy" src={photo.thumbnail_url} alt={photo.angle ? PHOTO_ANGLE_LABELS[photo.angle] : 'Foto clínica'} /></button> : <div className="photo-skeleton" key={photo.id} />)}
+                    {session.photos.length === 0 && <span className="empty-session-copy">Sessão criada, ainda sem fotos. Pode continuar depois.</span>}
                   </div>
-                ))}
-              </div>
-            </section>
-          )}
-
-          {generalPhotos.length > 0 && (
-            <section>
-              <h3 className="section-title">Geral</h3>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 12 }}>
-                {generalPhotos.map(renderPhotoCard)}
-              </div>
-            </section>
-          )}
+                  <footer>
+                    <button className="secondary-action" onClick={() => setSelectedSession(session)}>Ver sessão <ChevronRight size={16} /></button>
+                    <button className="secondary-action" onClick={() => startCapture(session)}><Camera size={16} /> Continuar</button>
+                    <button className="secondary-action" disabled={photos.sessions.length < 2} onClick={() => suggestComparison(session)}><Compare size={16} /> Comparar</button>
+                  </footer>
+                </div>
+              </article>
+            );
+          })}
         </div>
       )}
 
-      {preview && (
-        <div role="dialog" aria-modal="true" aria-label="Pre-visualizacao da foto" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.9)', zIndex: 1000, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 20 }} onClick={() => setPreview(null)}>
-          <img src={preview.photo_url} alt={preview.label ?? 'Foto'} style={{ maxWidth: '100%', maxHeight: '80vh', borderRadius: 8, objectFit: 'contain' }} onClick={e => e.stopPropagation()} />
-          {preview.label && <div style={{ color: '#fff', marginTop: 12, fontSize: '0.9rem' }}>{preview.label}</div>}
-          <button className="btn btn--ghost btn--sm" aria-label="Fechar pre-visualizacao" style={{ marginTop: 16, color: '#fff', borderColor: 'rgba(255,255,255,0.3)' }} onClick={() => setPreview(null)}>
-            Fechar
-          </button>
+      {photos.hasMore && <button className="secondary-action load-more" disabled={photos.loading} onClick={() => void photos.loadMore(filters)}>{photos.loading ? <RefreshCw className="spin" size={17} /> : null} Carregar sessões anteriores</button>}
+
+      {photos.legacyPhotos.length > 0 && (
+        <section className="legacy-photos"><div><h3>Fotos anteriores</h3><p>Registros históricos sem sessão. O Hub não inventou ângulo, serviço ou contexto.</p></div><div className="legacy-grid">{photos.legacyPhotos.map(photo => <button key={photo.id} onClick={() => setViewerPhoto(photo)}>{photo.thumbnail_url ? <img loading="lazy" src={photo.thumbnail_url} alt="Foto clínica histórica" /> : <div className="photo-skeleton" />}<span>{formatDate(photo.taken_at)}</span></button>)}</div></section>
+      )}
+
+      {selectedSession && (
+        <div className="session-detail" role="dialog" aria-modal="true" aria-label="Sessão fotográfica">
+          <div className="session-detail__panel">
+            <header><div><strong>{PHOTO_SESSION_LABELS[selectedSession.session_type]}</strong><span>{formatDate(selectedSession.captured_at, true)} · {selectedSession.service_name || 'Sem serviço vinculado'}</span></div><button className="icon-button" onClick={() => setSelectedSession(null)} aria-label="Fechar sessão">×</button></header>
+            <div className="session-detail__grid">{selectedSession.photos.map(photo => <button key={photo.id} onClick={() => setViewerPhoto(photo)}>{photo.thumbnail_url ? <img loading="lazy" src={photo.thumbnail_url} alt={photo.angle ? PHOTO_ANGLE_LABELS[photo.angle] : 'Foto clínica'} /> : <div className="photo-skeleton" />}<span>{photo.angle ? PHOTO_ANGLE_LABELS[photo.angle] : 'Livre'}</span></button>)}</div>
+            <footer><button className="secondary-action" onClick={() => { setSelectedSession(null); startCapture(selectedSession); }}><Camera size={17} /> Continuar sessão</button><button className="primary-action" disabled={photos.sessions.length < 2} onClick={() => { setSelectedSession(null); suggestComparison(selectedSession); }}><Compare size={17} /> Comparar</button></footer>
+          </div>
         </div>
       )}
-    </div>
+
+      {comparisonDraft && (
+        <div className="comparison-picker" role="dialog" aria-modal="true" aria-label="Escolher sessões para comparação">
+          <div><h3>Comparar sessões</h3><label>Antes<select value={comparisonDraft.beforeId} onChange={event => setComparisonDraft(current => current ? { ...current, beforeId: event.target.value } : null)}>{photos.sessions.map(session => <option key={session.session_id} value={session.session_id}>{formatDate(session.captured_at)} · {session.service_name || PHOTO_SESSION_LABELS[session.session_type]}</option>)}</select></label><label>Depois<select value={comparisonDraft.afterId} onChange={event => setComparisonDraft(current => current ? { ...current, afterId: event.target.value } : null)}>{photos.sessions.map(session => <option key={session.session_id} value={session.session_id}>{formatDate(session.captured_at)} · {session.service_name || PHOTO_SESSION_LABELS[session.session_type]}</option>)}</select></label><p>O Hub sugere por serviço/contexto e ângulos estruturados; você confirma. Não há matching por IA.</p><footer><button className="secondary-action" onClick={() => setComparisonDraft(null)}>Cancelar</button><button className="primary-action" disabled={preparingComparison || comparisonDraft.beforeId === comparisonDraft.afterId} onClick={() => void prepareComparison()}>{preparingComparison ? 'Preparando…' : 'Comparar'}</button></footer></div>
+        </div>
+      )}
+
+      {captureOpen && <ClinicalPhotoCapture
+        context={{ appointmentId: appointmentId, procedureId: attendanceContext?.procedureId, serviceId: attendanceContext?.serviceId, serviceName: attendanceContext?.serviceName }}
+        existingSession={resumeSession}
+        referenceByAngle={referenceByAngle}
+        onCreateSession={photos.createSession}
+        onUpload={async (session, file, angle, source, uploadId, photoRegion, pose) => { await photos.uploadPhoto({ session, file, angle, sourceType: source, uploadId, region: photoRegion, pose }); }}
+        onClose={() => { setCaptureOpen(false); setResumeSession(null); void reload(); }}
+      />}
+
+      {viewerPhoto && <PhotoViewer photo={viewerPhoto} sessions={photos.sessions} onGetUrl={photos.getPhotoUrl} onUpdate={photos.updatePhotoMetadata} onVoid={photos.voidPhoto} onClose={changed => { setViewerPhoto(null); if (changed) void reload(); }} />}
+      {comparison && <PhotoComparison beforeSession={comparison.before} afterSession={comparison.after} previewUrls={comparison.urls} onClose={() => setComparison(null)} />}
+    </section>
   );
 }
