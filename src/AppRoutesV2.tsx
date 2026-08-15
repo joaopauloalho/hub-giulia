@@ -20,6 +20,7 @@ const CatalogoPage = lazy(() => import('./pages/catalogo/CatalogoPage').then(mod
 const ServiceReturnSettingsPage = lazy(() => import('./pages/catalogo/ServiceReturnSettingsPage').then(module => ({ default: module.ServiceReturnSettingsPage })));
 const RetornosHubPage = lazy(() => import('./pages/retornos/RetornosHubPage').then(module => ({ default: module.RetornosHubPage })));
 const PacotesPage = lazy(() => import('./pages/pacotes/PacotesPage').then(module => ({ default: module.PacotesPage })));
+const HubHealthPage = lazy(() => import('./pages/saude/HubHealthPage').then(module => ({ default: module.HubHealthPage })));
 
 function ProtectedRoute({ children }: { children: ReactNode }) {
   const { user, loading } = useAuth();
@@ -53,6 +54,7 @@ const router = createBrowserRouter(createRoutesFromElements(
       <Route path="pacotes" element={<PacotesPage />} />
       <Route path="catalogo" element={<CatalogoPage />} />
       <Route path="catalogo/acompanhamentos" element={<ServiceReturnSettingsPage />} />
+      <Route path="saude" element={<HubHealthPage />} />
     </Route>
     <Route path="*" element={<Navigate to="/dashboard" replace />} />
   </Route>

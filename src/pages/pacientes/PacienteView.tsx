@@ -9,6 +9,7 @@ import { getCrmPatientSummary, type CrmPipelineCard } from '../../hooks/useCrm';
 import { useToast } from '../../hooks/useToast';
 import { OverviewTab } from './tabs/OverviewTab';
 import { PatientCommunicationCard } from '../../components/communications/PatientCommunicationCard';
+import { PatientNextActionCard } from '../../components/operational/PatientNextActionCard';
 
 const DadosTab = lazy(() => import('./tabs/DadosTab').then(module => ({ default: module.DadosTab })));
 const AnamneseTab = lazy(() => import('./tabs/AnamneseTab').then(module => ({ default: module.AnamneseTab })));
@@ -112,9 +113,11 @@ export function PacienteView({ patient, archived = false, sourceAppointmentId, i
         </div>
       </div>
 
+      {!archived && <div style={{ padding: '10px 14px 0' }}><PatientNextActionCard patientId={patient.id} appointmentId={sourceAppointmentId} /></div>}
+
       <div className="patient-quick-actions">
-        {sourceAppointmentId && <button className="btn btn--primary btn--sm" onClick={attendance}><HeartPulse size={15} /> Atendimento</button>}
-        <button className={`btn ${sourceAppointmentId ? 'btn--secondary' : 'btn--primary'} btn--sm`} onClick={schedule}><CalendarPlus size={15} /> Agendar</button>
+        {sourceAppointmentId && <button className="btn btn--secondary btn--sm" onClick={attendance}><HeartPulse size={15} /> Atendimento</button>}
+        <button className="btn btn--secondary btn--sm" onClick={schedule}><CalendarPlus size={15} /> Agendar</button>
         <button className="btn btn--secondary btn--sm" onClick={register}><ClipboardPlus size={15} /> Registrar</button>
         <button className="btn btn--secondary btn--sm" onClick={whatsapp} disabled={!patient.phone}><MessageCircle size={15} /> WhatsApp</button>
         <button className="btn btn--secondary btn--sm" onClick={crmOpportunity}><TrendingUp size={15} /> Oportunidade</button>
@@ -126,7 +129,7 @@ export function PacienteView({ patient, archived = false, sourceAppointmentId, i
       <div className="sub-tabs patient-360-tabs">{TABS.map(([label, key]) => <button key={key} className={`sub-tab${tab === key ? ' sub-tab--active' : ''}`} onClick={() => setTab(key)}>{label}</button>)}</div>
 
       <div className="drawer-body">
-        {tab === 'overview' ? <div style={{ display: 'grid', gap: 12 }}><PatientCommunicationCard patientId={patient.id} /><OverviewTab patientId={patient.id} onAgenda={schedule} onReturns={() => navigate(`/retornos?patient_id=${patient.id}`)} onHistory={() => setTab('procedures')} onFinance={() => setTab('finance')} onNotes={() => setTab('notes')} onAnamnesis={() => setTab('anamnesis')} onTimeline={() => setTab('timeline')} /></div> : <Suspense fallback={<div className="loading-state">Carregando...</div>}>
+        {tab === 'overview' ? <div style={{ display: 'grid', gap: 12 }}><OverviewTab patientId={patient.id} onAgenda={schedule} onReturns={() => navigate(`/retornos?patient_id=${patient.id}`)} onHistory={() => setTab('procedures')} onFinance={() => setTab('finance')} onNotes={() => setTab('notes')} onAnamnesis={() => setTab('anamnesis')} onTimeline={() => setTab('timeline')} /><PatientCommunicationCard patientId={patient.id} /></div> : <Suspense fallback={<div className="loading-state">Carregando...</div>}>
           {tab === 'timeline' && <TimelineTab patientId={patient.id} onOpen={openTimelineEvent} />}
           {tab === 'procedures' && <HistoricoTab patientId={patient.id} onPhotos={() => setTab('photos')} onInjectables={() => setTab('injectables')} onContract={procedureId => setSignatureRequest({ procedureId })} />}
           {tab === 'anamnesis' && <AnamneseTab patientId={patient.id} />}
