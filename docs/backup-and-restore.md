@@ -4,141 +4,132 @@ Audit date: 2026-08-15.
 
 ## Executive status
 
-**Database managed backup: NOT verified / not available under the current Supabase Free plan.**
+**Database schema reconstruction: PASSED.** A clean local Supabase instance now rebuilds the current Git migration chain, including RLS/functions/triggers/application grants, and then passes the isolated E2E suite.
 
-**PITR: NOT available/verified.**
+**Production database managed recovery: NOT yet verified under the current Free-plan setup.**
 
-**Real isolated restore drill: NOT executed.** The current infrastructure does not provide a safe, already-provisioned recovery target that can be restored without creating/upgrading paid infrastructure. Production was never used as a restore target.
+**PITR: not enabled/verified.**
 
-**Storage object backup: NOT independently verified.** Database backup and Storage object recovery are separate concerns; a database restore alone must not be assumed to recreate clinical photo/PDF bytes.
+**Real isolated production-data restore drill: NOT executed.** Production was never used as a restore target.
 
-These are release blockers for a claim of fully recoverable Stable production. They are not masked by documentation.
+**Storage object backup: NOT independently verified.** Database recovery and Storage object recovery are separate; restoring Postgres metadata does not recreate missing clinical photo/PDF bytes.
+
+Therefore the remaining v4 Stable blocker is **data recoverability**, not code/schema reproducibility.
 
 ## Recovery inventory
 
 | Asset | Current durable source | Recovery confidence | Notes |
 |---|---|---|---|
-| Frontend source | GitHub | High | Build is versioned; Vercel can redeploy a known SHA |
-| Database schema | GitHub migrations + live Supabase history | Low/Medium | Fresh local rebuild was executed and failed at a historical owner-key dependency; migration chain is not yet self-reconstructing |
-| Database data | Supabase production only under current verified setup | Low | No managed backup/PITR verified on current Free plan |
-| Storage metadata | Postgres + migrations | Medium | DB rows/policies are represented, but object bytes are separate |
-| Clinical photo bytes | Supabase Storage | Low | Private and integrity-tracked, but no independent object backup verified |
-| Contract/proposal PDFs | Supabase Storage | Low | Private; no independent object backup verified |
-| Edge Function source | GitHub | High | `supabase/functions/` is versioned |
-| Edge Function secret values | Supabase control plane / external secret custody | Medium | Secret values intentionally not versioned; recovery requires externally retained credentials |
-| Vercel build config | GitHub + Vercel project | High/Medium | `vercel.json` is versioned; environment values are not |
-| Vercel environment values | Vercel control plane / external secret custody | Medium | Never copy values to GitHub; connector audit cannot prove an independent backup |
-| Google OAuth configuration | Google + Supabase control plane + code | Medium | Redirect/origin logic versioned; client secret and external console configuration are not |
+| Frontend source | GitHub | High | Build/versioned source; Vercel can deploy a reviewed SHA |
+| Database schema/RLS/functions/grants | GitHub migrations | High | Clean Supabase rebuild + isolated E2E passed in CI |
+| Database production data | Supabase production | Low pending backup | No auditable accessible recovery point/PITR verified in current Free setup |
+| Storage metadata | Postgres + migrations | High for schema; data follows DB backup | Object bytes remain separate |
+| Clinical photo bytes | Supabase Storage | Low pending independent backup | Private and integrity-tracked; no independent object backup verified |
+| Contract/proposal bytes | Supabase Storage | Low pending independent backup | Private; hashes/snapshots do not recreate missing bytes |
+| Edge Function source | GitHub | High | `supabase/functions/` versioned |
+| Edge Function secret values | Supabase control plane / approved external custody | Medium | Values intentionally not versioned |
+| Vercel build config | GitHub + Vercel project | High/Medium | `vercel.json` versioned; env values remain control-plane secrets |
+| Google OAuth configuration | Google/Supabase control planes + code | Medium | Redirect/state logic versioned; secret values/external console config require custody |
+
+## Schema reconstruction drill — PASSED
+
+CI uses Supabase CLI 2.114.0 to create a disposable local stack and apply repository migrations from zero. Historical gaps were repaired with additive rebuild bridges rather than editing already-applied migrations:
+
+- `20260813233950_rebuild_bridge_owner_keys_defaults.sql` restores owner composite UNIQUE keys and `auth.uid()` defaults that production already had;
+- `20260813185425_rebuild_bridge_finance_ledger_rollup.sql` restores procedure ledger columns/function/trigger with deliberately no historical data rewrite;
+- `20260815163948_production_hardening_v4_grants_rebuild.sql` reproduces the audited hosted application grant matrix.
+
+The resulting clean database successfully seeds synthetic tenants, Auth and Storage and passes the full isolated Playwright suite. This proves **schema/configuration reconstruction represented by migrations**; it does not prove recovery of production clinical/financial rows or object bytes.
+
+## Production data backup facts
+
+The current Hub production project is Free. Under the audited current setup, no accessible managed backup/PITR recovery point has been verified for operational reliance. A logical/off-site database backup or a paid managed recovery mechanism must exist before Stable can claim bounded data loss.
+
+Never treat Git history, migrations or test fixtures as a backup of clinical/financial production data.
 
 ## RPO
 
-**Current verified RPO for database and Storage: unbounded by an audited backup mechanism.**
+**Current verified production-data RPO: unbounded by an audited accessible backup mechanism.**
 
-Do not state “24 hours” or another number until an actual backup mechanism with retained recovery points is enabled and verified. Git history protects code, not production clinical/financial records.
+Do not publish a 24-hour or other RPO until a retained recovery mechanism is enabled and verified. Once enabled, record:
 
-Once a managed/external backup is enabled, record here:
-
-- backup type;
-- schedule;
+- backup/recovery type;
+- schedule/continuous recovery behavior;
 - retention;
 - oldest/newest recoverable point;
-- whether WAL/PITR is enabled;
-- separate Storage object retention/versioning/export strategy;
-- date of last successful restore drill.
+- separate Storage object backup schedule/retention;
+- date/result of last restore drill.
 
 ## RTO
 
-**Current verified RTO for a database-loss disaster: not established.**
+**Current verified RTO for database/Storage loss: not established.**
 
-A frontend-only bad deployment can generally be recovered by promoting/redeploying a known-good Vercel deployment after verification, but database/Storage RTO cannot be promised until a recovery target and restore drill have been exercised.
+Frontend rollback can use a known-good Vercel deployment, but full clinical-data RTO must be measured by a real isolated restore drill rather than guessed.
 
 ## Restore drill result — v4
 
-Real restore: **NO**.
+Real production-data restore: **NO, not yet.**
 
-Reason: current production is on Supabase Free and no safe isolated recovery environment was already available. The release explicitly forbids restoring over production. Creating a Supabase branch/project may have cost and requires explicit cost confirmation before creation.
+Reason: no already-provisioned isolated recovery target with a verified accessible production backup exists under the current setup, and the release explicitly forbids restoring over production or copying PHI into a normal development environment.
 
-### Alternative schema reconstruction test — EXECUTED, FAILED
-
-A fresh local Supabase stack was created in GitHub Actions with CLI 2.114.0. Repository migrations were applied from zero. The run failed at:
-
-`20260813234006_security_cross_tenant_appointment_procedure_fks.sql`
-
-Postgres error:
-
-`there is no unique constraint matching given keys for referenced table "services"`
-
-The dependent FK is `(service_id, user_id) -> services(id, user_id)`. The preceding repository migration `20260813233949_security_owner_keys_defaults.sql` is a production-history marker and leaves the owner-key DDL commented, including creation of the unique `services(id, user_id)` index that exists in live production. Therefore the clean migration chain is objectively not self-reconstructing today.
-
-This result validates the **rebuild blocker**, not recoverability. It must not be reported as a restore pass.
-
-## Required migration recovery work
-
-Before migrations can be treated as the sole schema source of truth:
-
-1. map live production migration history to repository history;
-2. define a supported canonical baseline/re-baseline strategy;
-3. do not rewrite already-applied historical migrations;
-4. prove the reconciled chain in an isolated clean database;
-5. require the CI rebuild gate to become green;
-6. only then use the migration chain as a disaster-reconstruction dependency.
+The next drill must restore into a dedicated, access-restricted recovery target. If provider cost is involved, cost must be explicitly confirmed before provisioning.
 
 ## Required real recovery drill
 
-When recoverable infrastructure is enabled:
-
-1. Create an isolated recovery target. Never overwrite production.
-2. Restrict access to the smallest recovery group; do not use the restored PHI environment as normal development.
-3. Restore the selected database recovery point.
-4. Validate schema version, extensions, constraints, RLS, functions, triggers and critical row-count ranges without exporting PHI.
-5. Validate canonical integrity counts (patients, procedures, payments, photos metadata, contracts, returns, packages, aftercare).
-6. Restore/attach Storage object backup separately and validate sampled object-path existence against DB metadata without exposing objects publicly.
-7. Validate Edge Functions and required secret *names*; inject secret values through the control plane, never Git.
-8. Run authenticated smoke tests with dedicated non-clinical test identities/data.
-9. Record actual elapsed recovery time and data-loss window; use those values for RTO/RPO.
-10. Destroy/expire the temporary recovery environment when retention/legal requirements allow.
+1. Enable/verify the chosen production database backup mechanism.
+2. Establish a separate private backup/copy mechanism for Storage object bytes.
+3. Create an isolated recovery target; never overwrite production.
+4. Restrict access; never use restored PHI as ordinary development data.
+5. Restore a selected database recovery point.
+6. Validate migration/schema version, extensions, constraints, RLS, grants, functions and triggers.
+7. Validate safe aggregate row-count ranges/invariants for patients, procedures, payments, photo metadata, contracts, returns, packages and aftercare without exporting PHI.
+8. Restore/attach Storage object backup separately and validate sampled object-path/checksum existence without public exposure.
+9. Reconfigure/deploy Edge Functions and required secret names using approved secret custody.
+10. Run authenticated read/smoke validation with dedicated test identities; record elapsed recovery time and the actual data-loss window.
+11. Expire/destroy the recovery target when retention/security policy allows.
 
 ## Storage recovery
 
 ### Patient photos
 
-Canonical DB records hold private object paths, checksums and metadata. The original file is the clinical source asset; previews/thumbnails are derived. A future Storage backup should retain original object bytes and preserve owner-prefixed paths. If only derived variants are lost they can, in principle, be regenerated from originals; the original must not be treated as reconstructable from the thumbnail.
+Canonical DB records hold private object paths, checksums and metadata. Original bytes are the clinical source asset; preview/thumbnail variants are derived. A recovery mechanism must preserve original object bytes and owner-prefixed paths. A thumbnail cannot be treated as a substitute for a lost original.
 
 ### Contracts / proposals
 
-PDF/signature artifacts are private Storage objects linked from immutable/snapshot DB records. Hashes help detect mismatch but do not recreate missing bytes. Object-level backup is required for reliable recovery.
+PDF/signature artifacts are private Storage objects linked from immutable/snapshot DB records. Hashes detect mismatch but do not recreate missing bytes. Object-level backup/copy is required.
 
 ### Current limitation
 
-No independent versioned/exported Storage backup was verified in v4. A database-only backup is therefore insufficient for full clinical recovery.
+No independent versioned/exported Storage backup has yet been verified. A database-only backup is insufficient for full Hub recovery.
 
 ## Reconstruction checklist
 
 If Vercel disappears:
 
-- recreate/link the Vercel project;
+- recreate/link the project;
 - use `vercel.json` + GitHub source;
-- restore environment *names/values* from approved secret custody;
+- restore approved environment secret values from external/control-plane custody;
 - deploy a known reviewed SHA;
 - validate aliases/domains/security headers/PWA.
 
 If Supabase configuration disappears:
 
-- recreate Postgres from migrations only after the migration-history blocker is reconciled and the fresh-rebuild gate is green;
-- recreate private buckets/policies from migrations;
+- recreate Postgres from the now-green migration chain;
+- recreate private buckets/policies from migrations/configuration;
 - deploy versioned Edge Functions;
-- restore secret values only from approved external/control-plane custody;
-- restore database data and Storage bytes from verified backup sources;
-- reconfigure OAuth external redirect settings.
+- restore secret values from approved custody, never Git;
+- restore production database data and Storage bytes from verified backup sources;
+- restore external OAuth configuration/redirects;
+- run recovery validation before traffic cutover.
 
 ## Backup operating checklist
 
-Monthly, and after any material infrastructure change:
+Monthly, and after material infrastructure changes:
 
-- verify backup mechanism is enabled;
+- verify the database recovery mechanism is enabled and accessible;
 - inspect latest recovery point and retention;
-- verify Storage is backed up separately;
-- verify GitHub source + migrations + Edge Functions are current;
-- verify external custody of required secrets/configuration without printing values;
-- run or schedule an isolated restore drill according to risk and plan capabilities;
-- record measured RPO/RTO evidence.
+- verify Storage object backup separately;
+- verify GitHub migrations + Edge Functions remain reconstructible;
+- verify approved custody of required secret/configuration values without printing them;
+- perform periodic isolated restore drills;
+- update measured RPO/RTO evidence after each drill.
