@@ -87,7 +87,7 @@ export const DEFAULT_COMMUNICATION_TEMPLATES: Record<CommunicationTemplateKey, s
   crm_followup: 'Oi, {first_name}! Tudo bem? Passando para saber se ficou alguma dúvida e se posso te ajudar em algo.',
   proposal_followup: 'Oi, {first_name}! Tudo bem? Conseguiu dar uma olhadinha no plano que te enviei? Se ficou alguma dúvida, estou por aqui.',
   procedure_return: 'Oi, {first_name}! Tudo bem? Já estamos no período do seu retorno e queria combinar um horário com você.',
-  package_expiry: 'Oi, {first_name}! Tudo bem? Você ainda tem {remaining_credits} disponível(is) no seu plano, com validade até {valid_until}. Se quiser, podemos organizar seu próximo horário.',
+  package_expiry: 'Oi, {first_name}! Tudo bem? Você ainda tem {remaining_credits} crédito(s) disponível(is) no seu plano, com validade até {valid_until}. Se quiser, podemos organizar seu próximo horário.',
   aftercare_instructions: 'Oi, {first_name}! Tudo bem? Seguem as orientações combinadas no seu atendimento:\n\n{aftercare_instructions}\n\nQualquer dúvida, estou à disposição.',
   post_procedure_checkin: 'Oi, {first_name}! Tudo bem? Passando para saber como você está após o seu atendimento. Está tudo correndo bem?',
   relationship_reactivation: 'Oi, {first_name}! Tudo bem? Faz um tempinho que não nos vemos e passei para saber como você está. Se precisar de alguma coisa, estou por aqui.',
