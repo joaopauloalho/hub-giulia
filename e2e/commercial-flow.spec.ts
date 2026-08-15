@@ -10,10 +10,25 @@ type E2EState = {
 };
 const readState = async () => JSON.parse(await fs.readFile('.e2e-state.json', 'utf8')) as E2EState;
 
-test('CRM deal flows through proposal to active package/credit without cross-tenant leakage', async () => {
+function saoPauloDatePlus(days: number) {
+  const date = new Date(Date.now() + days * 86_400_000);
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Sao_Paulo',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(date);
+  const value = Object.fromEntries(parts.map(part => [part.type, part.value]));
+  return `${value.year}-${value.month}-${value.day}`;
+}
+
+test('CRM deal flows through proposal/package/credit into Relationship without cross-tenant leakage', async () => {
   const seeded = await readState();
   const a = await signedInClient('a');
   const b = await signedInClient('b');
+  const today = saoPauloDatePlus(0);
+  const expiresSoon = saoPauloDatePlus(10);
+  const proposalValidity = saoPauloDatePlus(30);
 
   const createKey = randomUUID();
   const [created1, created2] = await Promise.all([
@@ -42,7 +57,7 @@ test('CRM deal flows through proposal to active package/credit without cross-ten
     p_version_id: versionId,
     p_expected_revision: 0,
     p_title: 'E2E TEST Treatment Plan',
-    p_valid_until: '2030-12-31',
+    p_valid_until: proposalValidity,
     p_payment_terms: 'E2E TEST payment terms',
     p_internal_note: 'E2E TEST internal note',
     p_customer_note: 'E2E TEST customer note',
@@ -51,15 +66,12 @@ test('CRM deal flows through proposal to active package/credit without cross-ten
     p_items: [{
       service_id: seeded.serviceId,
       service_name_snapshot: 'E2E TEST Service',
-      description_snapshot: 'E2E TEST plan item',
-      interval_note: null,
       quantity: 2,
       unit_label: 'sessão',
       list_unit_price_snapshot: 100,
       offered_unit_price: 100,
       discount_type: 'none',
       discount_value: 0,
-      sort_order: 0,
     }],
   });
   expect(saved.error).toBeNull();
@@ -111,15 +123,15 @@ test('CRM deal flows through proposal to active package/credit without cross-ten
     a.rpc('create_package_from_proposal_v1', {
       p_proposal_version_id: versionId,
       p_idempotency_key: packageKey,
-      p_valid_from: '2030-01-15',
-      p_valid_until: '2030-12-31',
+      p_valid_from: today,
+      p_valid_until: expiresSoon,
       p_notes: 'E2E TEST package',
     }),
     a.rpc('create_package_from_proposal_v1', {
       p_proposal_version_id: versionId,
       p_idempotency_key: packageKey,
-      p_valid_from: '2030-01-15',
-      p_valid_until: '2030-12-31',
+      p_valid_from: today,
+      p_valid_until: expiresSoon,
       p_notes: 'E2E TEST package',
     }),
   ]);
@@ -160,6 +172,35 @@ test('CRM deal flows through proposal to active package/credit without cross-ten
   expect(ledger.data).toHaveLength(1);
   expect(ledger.data?.[0]?.movement_type).toBe('grant');
   expect(Number(ledger.data?.[0]?.quantity_delta)).toBe(2);
+
+  const relationshipA = await a.rpc('get_relationship_person_v1', {
+    p_person_type: 'patient',
+    p_person_id: seeded.patientId,
+  });
+  expect(relationshipA.error).toBeNull();
+  const relationshipRow = Array.isArray(relationshipA.data) ? relationshipA.data[0] : relationshipA.data;
+  expect(relationshipRow?.person_id).toBe(seeded.patientId);
+  expect(relationshipRow?.target_route).toBe(`/pacientes/${seeded.patientId}`);
+  expect((relationshipRow?.opportunities ?? []).some((opportunity: { type?: string; source_id?: string }) =>
+    opportunity.type === 'credit' && opportunity.source_id === packageId,
+  )).toBe(true);
+
+  const relationshipListA = await a.rpc('list_relationship_opportunities_v1', {
+    p_category: 'credit',
+    p_search: 'E2E TEST Seed Patient',
+    p_include_snoozed: false,
+    p_limit: 10,
+    p_offset: 0,
+  });
+  expect(relationshipListA.error).toBeNull();
+  expect((relationshipListA.data ?? []).some((row: { person_id?: string }) => row.person_id === seeded.patientId)).toBe(true);
+
+  const relationshipB = await b.rpc('get_relationship_person_v1', {
+    p_person_type: 'patient',
+    p_person_id: seeded.patientId,
+  });
+  expect(relationshipB.error).toBeNull();
+  expect(relationshipB.data ?? []).toEqual([]);
 
   for (const query of [
     b.from('treatment_proposals').select('id').eq('id', proposalId),
