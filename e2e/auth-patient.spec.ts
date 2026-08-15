@@ -33,6 +33,13 @@ test('protected route redirects, login works, patient double-submit is guarded a
   await expect(page.getByText(uniqueName, { exact: true }).first()).toBeVisible();
   await expect(page).toHaveURL(/\/pacientes\/[0-9a-f-]+$/);
 
+  // Patient360 is a drawer route. Close it like a user would before interacting
+  // with the navigation rail; the overlay intentionally blocks background clicks.
+  const drawerOverlay = page.locator('.drawer-overlay');
+  await expect(drawerOverlay).toBeVisible();
+  await drawerOverlay.click({ position: { x: 8, y: 8 } });
+  await expect(drawerOverlay).toHaveCount(0);
+
   await page.getByRole('button', { name: 'Sair' }).click();
   await expect(page).toHaveURL(/\/login$/);
 
