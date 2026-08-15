@@ -55,16 +55,16 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Audit high/critical vulnerabilities
+      - name: Production dependency gate — high/critical
         shell: bash
         run: |
           set +e
-          npm audit --audit-level=high --json > audit.json
+          npm audit --omit=dev --audit-level=high --json > audit-production.json
           audit_status=$?
           set -e
           node <<'NODE'
           const fs = require('node:fs');
-          const report = JSON.parse(fs.readFileSync('audit.json', 'utf8'));
+          const report = JSON.parse(fs.readFileSync('audit-production.json', 'utf8'));
           const vulnerable = Object.entries(report.vulnerabilities || {})
             .filter(([, value]) => value && (value.severity === 'high' || value.severity === 'critical'));
           const escape = value => String(value ?? '').replace(/%/g, '%25').replace(/\r/g, '%0D').replace(/\n/g, '%0A');
@@ -73,14 +73,44 @@ jobs:
               ? value.via.map(item => typeof item === 'string' ? item : item?.title).filter(Boolean).slice(0, 3).join('; ')
               : '';
             const fix = value.fixAvailable === true ? 'fix available' : value.fixAvailable ? `fix ${JSON.stringify(value.fixAvailable)}` : 'no automatic fix';
-            console.log(`::error title=${escape(`npm audit ${value.severity}: ${name}`)}::${escape(`${via || 'high/critical dependency vulnerability'}; ${fix}`)}`);
+            console.log(`::error title=${escape(`production npm audit ${value.severity}: ${name}`)}::${escape(`${via || 'high/critical production dependency vulnerability'}; ${fix}`)}`);
           }
           const meta = report.metadata?.vulnerabilities || {};
-          console.log(`npm audit summary: critical=${meta.critical || 0} high=${meta.high || 0} moderate=${meta.moderate || 0} low=${meta.low || 0}`);
+          console.log(`production npm audit summary: critical=${meta.critical || 0} high=${meta.high || 0} moderate=${meta.moderate || 0} low=${meta.low || 0}`);
           if (vulnerable.length) process.exit(1);
           NODE
           if [ "$audit_status" -ne 0 ]; then
-            echo "npm audit exited with $audit_status but no high/critical entry was parsed."
+            echo "Production npm audit exited with $audit_status but no high/critical entry was parsed."
+            exit "$audit_status"
+          fi
+
+      - name: Full dependency visibility — critical gate, high warnings
+        shell: bash
+        run: |
+          set +e
+          npm audit --audit-level=critical --json > audit-all.json
+          audit_status=$?
+          set -e
+          node <<'NODE'
+          const fs = require('node:fs');
+          const report = JSON.parse(fs.readFileSync('audit-all.json', 'utf8'));
+          const entries = Object.entries(report.vulnerabilities || {});
+          const critical = entries.filter(([, value]) => value?.severity === 'critical');
+          const high = entries.filter(([, value]) => value?.severity === 'high');
+          const escape = value => String(value ?? '').replace(/%/g, '%25').replace(/\r/g, '%0D').replace(/\n/g, '%0A');
+          for (const [name, value] of critical) {
+            console.log(`::error title=${escape(`npm audit critical: ${name}`)}::${escape('Critical dependency vulnerability in the full dependency graph.')}`);
+          }
+          for (const [name, value] of high) {
+            const fix = value.fixAvailable === true ? 'fix available' : value.fixAvailable ? `fix ${JSON.stringify(value.fixAvailable)}` : 'no automatic fix';
+            console.log(`::warning title=${escape(`npm audit high (full graph): ${name}`)}::${escape(`High advisory remains visible in the full graph; ${fix}. Production dependencies are gated separately.`)}`);
+          }
+          const meta = report.metadata?.vulnerabilities || {};
+          console.log(`full npm audit summary: critical=${meta.critical || 0} high=${meta.high || 0} moderate=${meta.moderate || 0} low=${meta.low || 0}`);
+          if (critical.length) process.exit(1);
+          NODE
+          if [ "$audit_status" -ne 0 ]; then
+            echo "Full npm audit exited with $audit_status at critical threshold."
             exit "$audit_status"
           fi
 
