@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Bell, CalendarPlus, ChevronLeft, ChevronRight, Clock3, MessageCircle, Search, Settings, UserRound, X } from 'lucide-react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useRelationshipCenter } from '../../hooks/useRelationship';
@@ -120,7 +120,6 @@ function SnoozeDialog({ person, onClose, onSave }: { person: RelationshipPerson;
 }
 
 export function RelationshipPage() {
-  const navigate = useNavigate();
   const { toast } = useToast();
   const [params] = useSearchParams();
   const [category, setCategory] = useState<RelationshipOpportunityType | null>(null);
@@ -156,7 +155,12 @@ export function RelationshipPage() {
     const target = opportunity ?? person.opportunities[0];
     if (!target) return;
     const override = hub.templateMap.get(target.template_key);
-    const template = override?.enabled ? override.body : DEFAULT_COMMUNICATION_TEMPLATES[target.template_key];
+    const hasTypedCreditUnits = target.type === 'credit' && (target.remaining ?? []).some(item => !item.unit_label.toLowerCase().includes('crédito'));
+    const template = override?.enabled
+      ? override.body
+      : hasTypedCreditUnits
+        ? 'Oi, {first_name}! Tudo bem? Você ainda tem disponível no seu plano: {remaining_credits}. A validade é até {valid_until}. Se quiser, podemos organizar seu próximo horário.'
+        : DEFAULT_COMMUNICATION_TEMPLATES[target.template_key];
     const values: Partial<Record<CommunicationPlaceholder, string>> = {
       first_name: firstName(person.display_name),
       name: person.display_name,
