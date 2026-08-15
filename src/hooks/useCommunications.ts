@@ -8,7 +8,7 @@ export type PatientCommunication = { id: string; channel: string; context: strin
 
 function normalizeCounts(value: unknown): CommunicationCounts {
   const data = (value ?? {}) as Partial<Record<keyof CommunicationCounts, unknown>>;
-  return { total: Number(data.total ?? 0), confirmation: Number(data.confirmation ?? 0), crm: Number(data.crm ?? 0), return: Number(data.return ?? 0), proposal: Number(data.proposal ?? 0), package: Number(data.package ?? 0), overdue: Number(data.overdue ?? 0), today: Number(data.today ?? 0) };
+  return { total: Number(data.total ?? 0), confirmation: Number(data.confirmation ?? 0), crm: Number(data.crm ?? 0), return: Number(data.return ?? 0), proposal: Number(data.proposal ?? 0), package: Number(data.package ?? 0), aftercare: Number(data.aftercare ?? 0), overdue: Number(data.overdue ?? 0), today: Number(data.today ?? 0) };
 }
 
 export function useCommunicationCenter(options?: { category?: string | null; search?: string; includeSnoozed?: boolean }) {
@@ -107,7 +107,22 @@ export function useCommunicationCenter(options?: { category?: string | null; sea
     if (actionError) throw actionError; await refresh();
   }, [refresh]);
 
-  return { items, counts, templates, templateMap, preferences, clinicName, loading, error, refresh, saveTemplate, restoreTemplate, savePreferences, snooze, recordManual, confirmAppointment, completeCrmFollowup, createCrmFollowup, markReturnContacted };
+  const completeAftercareTask = useCallback(async (taskId: string, note?: string) => {
+    const { error: actionError } = await supabase.rpc('complete_procedure_followup_task_v1', { p_task_id: taskId, p_note: note?.trim() || null });
+    if (actionError) throw actionError; await refresh();
+  }, [refresh]);
+
+  const setAftercareReview = useCallback(async (taskId: string, requiresReview: boolean, note?: string) => {
+    const { error: actionError } = await supabase.rpc('set_procedure_followup_task_review_v1', { p_task_id: taskId, p_requires_review: requiresReview, p_note: note?.trim() || null });
+    if (actionError) throw actionError; await refresh();
+  }, [refresh]);
+
+  const recordAftercareManualDelivery = useCallback(async (planId: string, method: 'verbal' | 'printed' | 'other', note?: string) => {
+    const { error: actionError } = await supabase.rpc('record_followup_manual_delivery_v1', { p_plan_id: planId, p_method: method, p_note: note?.trim() || null });
+    if (actionError) throw actionError; await refresh();
+  }, [refresh]);
+
+  return { items, counts, templates, templateMap, preferences, clinicName, loading, error, refresh, saveTemplate, restoreTemplate, savePreferences, snooze, recordManual, confirmAppointment, completeCrmFollowup, createCrmFollowup, markReturnContacted, completeAftercareTask, setAftercareReview, recordAftercareManualDelivery };
 }
 
 export function useCommunicationCounts() {

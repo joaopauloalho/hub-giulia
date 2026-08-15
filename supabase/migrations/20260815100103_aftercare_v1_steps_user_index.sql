@@ -1,0 +1,1 @@
+create index service_aftercare_protocol_steps_user_idx on public.service_aftercare_protocol_steps(user_id);
