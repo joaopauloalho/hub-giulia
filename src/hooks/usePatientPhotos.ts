@@ -203,7 +203,7 @@ export function usePatientPhotos(patientId: string) {
         p_to: filters.to || null,
       });
       if (sessionError) throw sessionError;
-      const parsed = (sessionRows ?? []).map(asSession);
+      const parsed: PatientPhotoSession[] = (sessionRows ?? []).map(asSession);
       const allPhotos = parsed.flatMap(session => session.photos);
       const hydrated = await hydrateThumbnails(allPhotos);
       const byId = new Map(hydrated.map(photo => [photo.id, photo]));

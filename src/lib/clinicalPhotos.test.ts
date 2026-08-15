@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { isSamePhotoComparison, pairSessionPhotos, photoStoragePaths, sniffImageKind } from './clinicalPhotos';
+import { isSamePhotoComparison, pairSessionPhotos, photoStoragePaths, sniffImageKind, type PairablePhoto } from './clinicalPhotos';
 
 describe('clinicalPhotos', () => {
   it('pairs only matching structured angles and keeps missing counterparts explicit', () => {
-    const before = [{ id: 'a', angle: 'front' as const }, { id: 'b', angle: 'left_45' as const }];
-    const after = [{ id: 'c', angle: 'front' as const }, { id: 'd', angle: 'right_45' as const }];
+    const before: PairablePhoto[] = [{ id: 'a', angle: 'front' }, { id: 'b', angle: 'left_45' }];
+    const after: PairablePhoto[] = [{ id: 'c', angle: 'front' }, { id: 'd', angle: 'right_45' }];
     expect(pairSessionPhotos(before, after)).toEqual([
       { angle: 'front', before: before[0], after: after[0] },
       { angle: 'right_45', before: null, after: after[1] },
