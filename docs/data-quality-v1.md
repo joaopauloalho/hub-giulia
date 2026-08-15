@@ -70,7 +70,8 @@ Não existe token Vercel no browser e a tela não inventa status global de Supab
 - RLS ligado na única nova tabela persistida;
 - `anon` sem acesso;
 - views públicas 3.9 com `security_invoker=true`;
-- bridge Relationship é o único `SECURITY DEFINER` novo, porque a source view 3.8 permanece propositalmente não exposta; usa `auth.uid()`, owner filter e `search_path=public, pg_temp`;
+- a bridge de Relationship 3.9 também é `SECURITY INVOKER` e reutiliza `list_relationship_opportunities_v1` do Relationship 3.8; a source view interna continua propositalmente não exposta;
+- a 3.9 não adiciona novo `SECURITY DEFINER` exposto;
 - telefone canônico é função pura e recebeu EXECUTE apenas para `authenticated`;
 - Storage orphan possui owner guard explícito.
 
