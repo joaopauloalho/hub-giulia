@@ -1,9 +1,9 @@
 import { createBrowserRouter, createRoutesFromElements, Navigate, Route, RouterProvider } from 'react-router-dom';
 import { lazy, Suspense, type ReactNode } from 'react';
 import { useAuth } from './hooks/useAuth';
-import { Layout } from './components/layout/Layout';
 import { DirtySurface } from './components/layout/DirtySurface';
 
+const Layout = lazy(() => import('./components/layout/Layout').then(module => ({ default: module.Layout })));
 const LoginPage = lazy(() => import('./pages/auth/LoginPage').then(module => ({ default: module.LoginPage })));
 const AgendaPage = lazy(() => import('./pages/agenda/AgendaPage').then(module => ({ default: module.AgendaV2Page })));
 const DashboardPage = lazy(() => import('./pages/dashboard/DashboardPage').then(module => ({ default: module.DashboardPage })));
