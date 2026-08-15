@@ -41,8 +41,22 @@ export default async function globalSetup() {
     cost_per_unit: 20,
     duration_minutes: 60,
     active: true,
+    return_enabled: true,
+    return_type: 'clinical_return',
+    return_min_days: 7,
+    return_max_days: 14,
   }).select('id').single();
   await assertNoError(serviceError, 'seed E2E service');
+
+  const aftercare = await tenantA.rpc('save_service_aftercare_protocol_v1', {
+    p_service_id: service!.id,
+    p_enabled: true,
+    p_instructions: 'E2E TEST isolated aftercare instructions',
+    p_photo_followup: true,
+    p_steps: [{ offset_days: 1, label: 'E2E TEST check-in' }],
+    p_name: 'E2E TEST Aftercare',
+  });
+  await assertNoError(aftercare.error, 'seed E2E aftercare protocol');
 
   const { data: patient, error: patientError } = await tenantA.from('patients').insert({
     name: 'E2E TEST Seed Patient',
