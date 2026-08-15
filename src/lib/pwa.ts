@@ -33,21 +33,36 @@ export function canApplyPwaUpdate() {
   return !hasDirtyForms();
 }
 
-export async function applyWaitingServiceWorker(registration = window.__hubServiceWorkerRegistration) {
-  if (!registration?.waiting) return false;
-  if (!canApplyPwaUpdate()) return false;
+export async function applyWaitingServiceWorker(registration?: ServiceWorkerRegistration | null) {
+  if (typeof window === 'undefined') return false;
+  const activeRegistration = registration ?? window.__hubServiceWorkerRegistration;
+  if (!activeRegistration?.waiting || !canApplyPwaUpdate()) return false;
   reloadForUpdate = true;
-  registration.waiting.postMessage({ type: 'SKIP_WAITING' });
+  activeRegistration.waiting.postMessage({ type: 'SKIP_WAITING' });
   return true;
 }
 
 export async function promptHubInstall() {
+  if (typeof window === 'undefined') return null;
   const event = window.__hubInstallPrompt;
   if (!event) return null;
   await event.prompt();
   const choice = await event.userChoice;
   if (choice.outcome === 'accepted') window.__hubInstallPrompt = null;
   return choice;
+}
+
+export async function purgeHubCaches() {
+  if (typeof window === 'undefined') return;
+  try {
+    window.__hubServiceWorkerRegistration?.active?.postMessage({ type: 'PURGE_HUB_CACHES' });
+    if ('caches' in window) {
+      const keys = await caches.keys();
+      await Promise.all(keys.filter(key => key.startsWith('hub-giulia-')).map(key => caches.delete(key)));
+    }
+  } catch (error) {
+    console.warn('[pwa:purge]', error);
+  }
 }
 
 export function registerHubPwa() {
@@ -66,23 +81,26 @@ export function registerHubPwa() {
 
   if (!('serviceWorker' in navigator)) return;
 
-  window.addEventListener('load', () => {
-    void navigator.serviceWorker.register(HUB_SW_URL, { scope: '/' }).then(registration => {
+  const installRegistration = async () => {
+    try {
+      const registration = await navigator.serviceWorker.register(HUB_SW_URL, { scope: '/' });
       window.__hubServiceWorkerRegistration = registration;
-      if (registration.waiting && navigator.serviceWorker.controller) {
-        window.dispatchEvent(new Event(HUB_PWA_UPDATE_EVENT));
-      }
+      if (registration.waiting && navigator.serviceWorker.controller) window.dispatchEvent(new Event(HUB_PWA_UPDATE_EVENT));
       registration.addEventListener('updatefound', () => {
         const installing = registration.installing;
         if (!installing) return;
         installing.addEventListener('statechange', () => {
-          if (installing.state === 'installed' && navigator.serviceWorker.controller) {
-            window.dispatchEvent(new Event(HUB_PWA_UPDATE_EVENT));
-          }
+          if (installing.state === 'installed' && navigator.serviceWorker.controller) window.dispatchEvent(new Event(HUB_PWA_UPDATE_EVENT));
         });
       });
-    }).catch(error => console.warn('[pwa:register]', error));
-  }, { once: true });
+      void registration.update().catch(() => undefined);
+    } catch (error) {
+      console.warn('[pwa:register]', error);
+    }
+  };
+
+  if (document.readyState === 'complete') void installRegistration();
+  else window.addEventListener('load', () => { void installRegistration(); }, { once: true });
 
   navigator.serviceWorker.addEventListener('controllerchange', () => {
     if (!reloadForUpdate) return;
