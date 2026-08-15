@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Activity, AlertTriangle, CalendarDays, CheckCircle, ChevronRight, Clock, FileText, MessageCircle, Package, RefreshCw, RotateCcw, TrendingUp, Users, Wallet } from 'lucide-react';
+import { Activity, CalendarDays, CheckCircle, ChevronRight, FileText, Package, RefreshCw, RotateCcw, TrendingUp, Users, Wallet } from 'lucide-react';
 import { Skeleton } from '../../components/ui/Skeleton';
+import { OperationalHomeSection } from '../../components/operational/OperationalHomeSection';
 import { useDashboard } from '../../hooks/useDashboard';
 import { clinicTodayIso, compareMetric, decimal, getDashboardPeriod, money, percent, periodEndInclusive, type DashboardPeriodPreset } from '../../lib/dashboardMetrics';
 import './dashboard.css';
@@ -21,39 +22,26 @@ function MetricCard({ label, value, icon, note, snapshot, comparison, onClick }:
   if (onClick) return <button type="button" className="dashboard-metric-card dashboard-metric-card--clickable" onClick={onClick}>{content}</button>;
   return <div className="dashboard-metric-card">{content}</div>;
 }
-
-function AttentionCard({ title, value, detail, urgent, icon, onClick }: { title: string; value: string; detail: string; urgent?: boolean; icon: React.ReactNode; onClick: () => void; }) {
-  return <button type="button" className={`dashboard-action-card${urgent ? ' dashboard-action-card--urgent' : ''}`} onClick={onClick}><div className="dashboard-action-card__top"><span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>{icon}{title}</span><ChevronRight size={15} /></div><div className="dashboard-action-card__value">{value}</div><div className="dashboard-action-card__detail">{detail}</div></button>;
-}
-function formatTime(value: string) { return new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit' }).format(new Date(value)); }
 function formatPeriodDate(value: string) { const [year, month, day] = value.split('-').map(Number); return new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: 'short' }).format(new Date(Date.UTC(year, month - 1, day))); }
 
 export function DashboardPage() {
-  const navigate = useNavigate(); const [today] = useState(() => clinicTodayIso()); const [preset, setPreset] = useState<DashboardPeriodPreset>('month'); const [showCustom, setShowCustom] = useState(false); const [customDraft, setCustomDraft] = useState({ startDate: today, endDateInclusive: today }); const [customApplied, setCustomApplied] = useState({ startDate: today, endDateInclusive: today }); const [customError, setCustomError] = useState<string | null>(null);
+  const navigate = useNavigate();
+  const [today] = useState(() => clinicTodayIso());
+  const [preset, setPreset] = useState<DashboardPeriodPreset>('month');
+  const [showCustom, setShowCustom] = useState(false);
+  const [customDraft, setCustomDraft] = useState({ startDate: today, endDateInclusive: today });
+  const [customApplied, setCustomApplied] = useState({ startDate: today, endDateInclusive: today });
+  const [customError, setCustomError] = useState<string | null>(null);
   const period = useMemo(() => getDashboardPeriod(preset, today, preset === 'custom' ? customApplied : undefined), [customApplied, preset, today]);
-  const { attention, aftercareAttention, overview, series, isLoading, isRefreshing, error, refresh } = useDashboard(period);
+  const { overview, series, isLoading, isRefreshing, error, refresh } = useDashboard(period);
   const applyCustom = () => { try { getDashboardPeriod('custom', today, customDraft); setCustomApplied(customDraft); setPreset('custom'); setShowCustom(true); setCustomError(null); } catch (customPeriodError) { setCustomError(customPeriodError instanceof Error ? customPeriodError.message : 'Período inválido.'); } };
   const periodLabel = `${formatPeriodDate(period.startDate)} – ${formatPeriodDate(periodEndInclusive(period))}`;
   const chartMax = Math.max(0, ...series.map(point => Number(point.gross)));
 
   return <div className="page dashboard-page">
-    <header className="dashboard-header"><div><h1 className="page-title">Dashboard</h1><p className="page-sub">Central de comando · o que pede atenção e como a clínica está performando</p></div><div className="dashboard-header__actions"><button type="button" className="btn btn--secondary btn--sm dashboard-refresh" onClick={() => void refresh()} disabled={isRefreshing}><RefreshCw size={16} className={isRefreshing ? 'spin' : undefined} /><span>Atualizar</span></button></div></header>
-    {error && <div className="dashboard-error" role="alert"><strong>Não foi possível atualizar o Dashboard.</strong> {error instanceof Error ? error.message : 'Tente novamente.'}</div>}
-
-    <section className="dashboard-attention" aria-labelledby="dashboard-attention-title">
-      <div className="dashboard-section__heading" style={{ marginBottom: 0 }}><div><h2 id="dashboard-attention-title" className="dashboard-section__title">Hoje / Precisa de atenção</h2><p className="dashboard-section__sub">Snapshot operacional de {formatPeriodDate(today)} · não muda com o filtro de desempenho</p></div><span className="dashboard-snapshot-tag">Agora</span></div>
-      {isLoading || !attention || !aftercareAttention ? <div className="dashboard-skeleton-grid" style={{ marginTop: 14 }}>{[0, 1, 2, 3, 4, 5].map(item => <div key={item} className="dashboard-metric-card"><Skeleton lines={3} /></div>)}</div> : <>
-        <div className="dashboard-attention__grid">
-          <AttentionCard title="Agenda" value={`${attention.agenda.total}`} detail={`${attention.agenda.confirmed} confirmados · ${attention.agenda.pending} pendentes · ${attention.agenda.completed} realizados`} icon={<CalendarDays size={15} />} onClick={() => navigate(`/agenda?date=${attention.today}`)} />
-          <AttentionCard title="Follow-ups" value={`${attention.crm_followups.overdue} atrasados`} detail={`${attention.crm_followups.today} para hoje`} urgent={attention.crm_followups.overdue > 0} icon={<Clock size={15} />} onClick={() => navigate('/crm?followup=overdue')} />
-          <AttentionCard title="Retornos clínicos" value={`${attention.returns.overdue} atrasados`} detail={`${attention.returns.today} na janela hoje · ${attention.returns.upcoming} próximos`} urgent={attention.returns.overdue > 0} icon={<RotateCcw size={15} />} onClick={() => navigate('/retornos?attention=overdue')} />
-          <AttentionCard title="Acompanhamentos" value={`${aftercareAttention.overdue} atrasados`} detail={`${aftercareAttention.today} hoje · ${aftercareAttention.orientation_pending} orientações · ${aftercareAttention.review} revisar`} urgent={aftercareAttention.overdue > 0 || aftercareAttention.review > 0} icon={<MessageCircle size={15} />} onClick={() => navigate('/comunicacao?category=aftercare')} />
-          <AttentionCard title="Recebimentos" value={money(attention.payments.overdue_value)} detail={`${attention.payments.overdue_count} vencidos · ${money(attention.payments.today_value)} para hoje`} urgent={attention.payments.overdue_count > 0} icon={<Wallet size={15} />} onClick={() => navigate('/financeiro?status=pending')} />
-          <AttentionCard title="Expirando em 7 dias" value={`${attention.proposals.expiring_count + attention.packages.expiring_count}`} detail={`${attention.proposals.expiring_count} propostas · ${attention.packages.expiring_count} pacotes com saldo`} icon={<AlertTriangle size={15} />} onClick={() => navigate('/crm?proposal=expiring')} />
-        </div>
-        {attention.agenda.next_appointment && <button type="button" className="dashboard-next" onClick={() => navigate(`/agenda?date=${attention.today}`)} style={{ width: '100%', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left' }}><span className="dashboard-next__time">{formatTime(attention.agenda.next_appointment.scheduled_at)}</span><span className="dashboard-next__body"><span className="dashboard-next__name">Próximo: {attention.agenda.next_appointment.patient_name}</span><span className="dashboard-next__service" style={{ display: 'block' }}>{attention.agenda.next_appointment.service_name ?? 'Serviço não informado'}</span></span><ChevronRight size={16} /></button>}
-      </>}
-    </section>
+    <header className="dashboard-header"><div><h1 className="page-title">Hoje</h1><p className="page-sub">Resumo operacional primeiro; desempenho e gestão abaixo.</p></div><div className="dashboard-header__actions"><button type="button" className="btn btn--secondary btn--sm dashboard-refresh" onClick={() => void refresh()} disabled={isRefreshing}><RefreshCw size={16} className={isRefreshing ? 'spin' : undefined} /><span>Atualizar desempenho</span></button></div></header>
+    <OperationalHomeSection today={today} />
+    {error && <div className="dashboard-error" role="alert"><strong>Não foi possível atualizar o desempenho.</strong> {error instanceof Error ? error.message : 'Tente novamente.'}</div>}
 
     <section className="dashboard-section" aria-labelledby="dashboard-performance-title"><div className="dashboard-section__heading"><div><h2 id="dashboard-performance-title" className="dashboard-section__title">Desempenho</h2><p className="dashboard-section__sub">Fluxos respeitam o período · snapshots continuam marcados como “Agora”</p></div><strong style={{ color: 'var(--text-2)', fontSize: '0.78rem' }}>{periodLabel}</strong></div>
       <div className="dashboard-period-bar"><div className="dashboard-periods" aria-label="Filtro de período">{PERIOD_PRESETS.map(item => <button key={item.key} type="button" className={`dashboard-period${preset === item.key ? ' dashboard-period--active' : ''}`} onClick={() => { setPreset(item.key); setShowCustom(false); setCustomError(null); }}>{item.label}</button>)}<button type="button" className={`dashboard-period${preset === 'custom' ? ' dashboard-period--active' : ''}`} onClick={() => setShowCustom(value => !value)}>Personalizado</button></div><span className="dashboard-section__sub">Comparação: período anterior equivalente</span>{showCustom && <div className="dashboard-custom-period"><label>De<input type="date" value={customDraft.startDate} onChange={event => setCustomDraft(value => ({ ...value, startDate: event.target.value }))} /></label><label>Até<input type="date" value={customDraft.endDateInclusive} onChange={event => setCustomDraft(value => ({ ...value, endDateInclusive: event.target.value }))} /></label><button type="button" className="btn btn--primary btn--sm" onClick={applyCustom}>Aplicar</button>{customError && <span style={{ color: 'var(--red)', fontSize: '0.75rem', alignSelf: 'center' }}>{customError}</span>}</div>}</div>
@@ -76,6 +64,6 @@ export function DashboardPage() {
         <div className="dashboard-grid-3" style={{ marginTop: 12 }}><MetricCard label="Retornos concluídos" value={`${overview.returns.completed}`} icon={<RotateCcw size={15} />} comparison={{ current: overview.returns.completed, previous: overview.returns.previous_completed }} onClick={() => navigate('/retornos')} /><MetricCard label="Perdidos no CRM" value={`${overview.crm.lost}`} note="Deals fechados como perdidos no período" /><MetricCard label="Conversão de propostas" value={percent(overview.proposals.conversion_rate)} icon={<FileText size={15} />} note="Aceitas ÷ (aceitas + recusadas)" /></div>
       </section>
     </>}
-    <footer style={{ marginTop: 28, color: 'var(--text-3)', fontSize: '0.7rem', display: 'flex', gap: 6, alignItems: 'center' }}><TrendingUp size={13} /> Fluxos seguem {periodLabel}. Pipeline, pendências e créditos disponíveis são snapshots atuais.</footer>
+    <footer style={{ marginTop: 28, color: 'var(--text-3)', fontSize: '0.7rem', display: 'flex', gap: 6, alignItems: 'center' }}><TrendingUp size={13} /> Desempenho segue {periodLabel}. Prioridades operacionais usam a fila factual de Hoje.</footer>
   </div>;
 }
