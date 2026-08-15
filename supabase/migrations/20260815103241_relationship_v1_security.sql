@@ -1,0 +1,11 @@
+revoke all on table public.relationship_person_context_v1 from public,anon,authenticated;
+revoke all on table public.relationship_opportunity_sources_v1 from public,anon,authenticated;
+alter function public.list_relationship_opportunities_v1(text,text,boolean,integer,integer) security definer;
+alter function public.get_relationship_person_v1(text,uuid) security definer;
+alter function public.get_relationship_opportunity_counts_v1() security definer;
+revoke all on function public.list_relationship_opportunities_v1(text,text,boolean,integer,integer) from public,anon;
+revoke all on function public.get_relationship_person_v1(text,uuid) from public,anon;
+revoke all on function public.get_relationship_opportunity_counts_v1() from public,anon;
+grant execute on function public.list_relationship_opportunities_v1(text,text,boolean,integer,integer) to authenticated;
+grant execute on function public.get_relationship_person_v1(text,uuid) to authenticated;
+grant execute on function public.get_relationship_opportunity_counts_v1() to authenticated;
