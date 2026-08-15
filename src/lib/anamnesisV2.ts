@@ -7,9 +7,6 @@ import type {
 
 export const ANAMNESIS_FORM_SCHEMA_VERSION = 2;
 export const ANAMNESIS_AUTOSAVE_MS = 1000;
-const RECOVERY_DB = 'hub-giulia-anamnesis-recovery-v1';
-const RECOVERY_STORE = 'drafts';
-const RECOVERY_TTL_MS = 24 * 60 * 60 * 1000;
 
 export type AnswerStatus = 'reported' | 'none' | null;
 export type AnamnesisSaveStatus =
@@ -149,12 +146,8 @@ export function validateAnamnesisForCompletion(draft: AnamnesisDraft): string[] 
     const area = draft[rule.area] as Record<string, unknown>;
     if (area[rule.flag] === true && !String(area[rule.detail] ?? '').trim()) issues.push(rule.label);
   }
-  if (draft.medicationsStatus === 'reported' && !draft.medications.trim()) {
-    issues.push('Medicamentos em uso: descreva os medicamentos informados.');
-  }
-  if (draft.allergiesStatus === 'reported' && !draft.allergies.trim()) {
-    issues.push('Alergias conhecidas: descreva as alergias informadas.');
-  }
+  if (draft.medicationsStatus === 'reported' && !draft.medications.trim()) issues.push('Medicamentos em uso: descreva os medicamentos informados.');
+  if (draft.allergiesStatus === 'reported' && !draft.allergies.trim()) issues.push('Alergias conhecidas: descreva as alergias informadas.');
   return issues;
 }
 
@@ -172,83 +165,29 @@ export function hasUnsyncedAnamnesis(status: AnamnesisSaveStatus) {
   return ['pending', 'saving', 'offline', 'error', 'session-expired', 'conflict'].includes(status);
 }
 
-interface RecoveryRecord {
-  key: string;
-  userId: string;
-  patientId: string;
-  draft: AnamnesisDraft;
-  baseRevision: number;
-  savedAt: number;
-  expiresAt: number;
-}
-
-const recoveryKey = (userId: string, patientId: string) => `${userId}:${patientId}`;
-
-function openRecoveryDb(): Promise<IDBDatabase | null> {
-  if (typeof indexedDB === 'undefined') return Promise.resolve(null);
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open(RECOVERY_DB, 1);
-    request.onupgradeneeded = () => {
-      if (!request.result.objectStoreNames.contains(RECOVERY_STORE)) {
-        request.result.createObjectStore(RECOVERY_STORE, { keyPath: 'key' });
-      }
-    };
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
-  });
-}
-
-async function withStore<T>(
-  mode: IDBTransactionMode,
-  run: (store: IDBObjectStore) => IDBRequest<T>,
-): Promise<T | null> {
-  const db = await openRecoveryDb();
-  if (!db) return null;
-  try {
-    return await new Promise<T>((resolve, reject) => {
-      const tx = db.transaction(RECOVERY_STORE, mode);
-      const request = run(tx.objectStore(RECOVERY_STORE));
-      request.onsuccess = () => resolve(request.result);
-      request.onerror = () => reject(request.error);
-    });
-  } finally {
-    db.close();
-  }
-}
-
-export async function saveAnamnesisRecovery(
-  userId: string,
-  patientId: string,
-  draft: AnamnesisDraft,
-  baseRevision: number,
-) {
-  const now = Date.now();
-  const record: RecoveryRecord = {
-    key: recoveryKey(userId, patientId),
-    userId,
-    patientId,
-    draft,
-    baseRevision,
-    savedAt: now,
-    expiresAt: now + RECOVERY_TTL_MS,
-  };
-  await withStore('readwrite', store => store.put(record));
+// Hub Giulia 3.5 privacy policy: clinical drafts are never persisted in
+// localStorage/IndexedDB. The autosave source of truth is the server-side draft.
+// These compatibility functions remain intentionally memoryless so existing
+// Anamnese 2.0 call sites do not gain an offline clinical database.
+export async function saveAnamnesisRecovery(userId: string, patientId: string, draft: AnamnesisDraft, baseRevision: number) {
+  void userId; void patientId; void draft; void baseRevision;
 }
 
 export async function loadAnamnesisRecovery(userId: string, patientId: string) {
-  const record = await withStore<RecoveryRecord>('readonly', store => store.get(recoveryKey(userId, patientId)));
-  if (!record) return null;
-  if (record.expiresAt <= Date.now()) {
-    await clearAnamnesisRecovery(userId, patientId);
-    return null;
-  }
-  return record;
+  void userId; void patientId;
+  return null;
 }
 
 export async function clearAnamnesisRecovery(userId: string, patientId: string) {
-  await withStore('readwrite', store => store.delete(recoveryKey(userId, patientId)));
+  void userId; void patientId;
 }
 
 export async function clearAllAnamnesisRecoveries() {
-  await withStore('readwrite', store => store.clear());
+  if (typeof indexedDB === 'undefined') return;
+  await new Promise<void>(resolve => {
+    const request = indexedDB.deleteDatabase('hub-giulia-anamnesis-recovery-v1');
+    request.onsuccess = () => resolve();
+    request.onerror = () => resolve();
+    request.onblocked = () => resolve();
+  });
 }

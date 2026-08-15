@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Archive, CalendarPlus, ClipboardPlus, Mail, MessageCircle, Pencil, Phone, RotateCcw, StickyNote, TrendingUp, X } from 'lucide-react';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { Archive, CalendarPlus, ClipboardPlus, HeartPulse, Mail, MessageCircle, Pencil, Phone, RotateCcw, StickyNote, TrendingUp, X } from 'lucide-react';
 import type { Patient } from '../../types';
 import { ageLabel } from '../../lib/dateUtils';
 import { buildWhatsAppUrl } from '../../lib/whatsapp';
@@ -51,10 +51,12 @@ const initials = (name: string) => name.split(' ').slice(0, 2).map(word => word[
 
 export function PacienteView({ patient, archived = false, sourceAppointmentId, initialTab, onClose, onUpdate, onArchive, onRestore }: Props) {
   const navigate = useNavigate();
+  const location = useLocation();
   const { confirm, toast } = useToast();
   const [tab, setTab] = useState<TabKey>(initialTab ?? 'overview');
   const [signatureRequest, setSignatureRequest] = useState<SignatureRequest | null>(null);
   const [crmSummary, setCrmSummary] = useState<CrmPipelineCard | null>(null);
+  const returnTo = new URLSearchParams(location.search).get('return_to');
 
   useEffect(() => { if (initialTab) setTab(initialTab); }, [initialTab]);
   useEffect(() => {
@@ -63,13 +65,15 @@ export function PacienteView({ patient, archived = false, sourceAppointmentId, i
     return () => { alive = false; };
   }, [patient.id]);
 
-  const schedule = () => navigate(`/agenda?patient_id=${patient.id}`, { state: { patient: { id: patient.id, name: patient.name, phone: patient.phone }, from: '/pacientes' } });
+  const schedule = () => navigate(`/agenda?patient_id=${patient.id}`, { state: { patient: { id: patient.id, name: patient.name, phone: patient.phone }, from: returnTo ?? `/pacientes/${patient.id}` } });
   const crmOpportunity = () => navigate(`/crm?patient_id=${patient.id}`);
   const register = () => {
     const query = new URLSearchParams({ patient_id: patient.id });
     if (sourceAppointmentId) query.set('appointment_id', sourceAppointmentId);
-    navigate(`/registrar?${query.toString()}`, { state: { patient, patientId: patient.id, appointmentId: sourceAppointmentId, from: '/pacientes' } });
+    if (returnTo?.startsWith('/')) query.set('return_to', returnTo);
+    navigate(`/registrar?${query.toString()}`, { state: { patient, patientId: patient.id, appointmentId: sourceAppointmentId, from: returnTo ?? `/pacientes/${patient.id}` } });
   };
+  const attendance = () => { if (sourceAppointmentId) navigate(`/atendimento/${sourceAppointmentId}`); };
   const whatsapp = () => { if (!patient.phone) return; const url = buildWhatsAppUrl(patient.phone, `Olá ${patient.name}!`); if (url) window.open(url, '_blank', 'noopener,noreferrer'); };
 
   const archiveOrRestore = async () => {
@@ -93,7 +97,7 @@ export function PacienteView({ patient, archived = false, sourceAppointmentId, i
   if (signatureRequest) return <Suspense fallback={<div className="full-loader">Carregando assinatura...</div>}><SignatureScreen patient={patient} contractId={signatureRequest.contractId ?? null} initialProcedureId={signatureRequest.procedureId ?? null} initialAppointmentId={signatureRequest.appointmentId ?? null} onClose={() => setSignatureRequest(null)} onDone={() => { setSignatureRequest(null); setTab('contracts'); }} /></Suspense>;
 
   return <div className="drawer-overlay" onClick={onClose}>
-    <aside className="drawer" style={{ width: 'min(980px, 100vw)' }} role="dialog" aria-modal="true" aria-labelledby="paciente-view-title" onClick={event => event.stopPropagation()}>
+    <aside className="drawer patient-360-drawer" style={{ width: 'min(980px, 100vw)' }} role="dialog" aria-modal="true" aria-labelledby="paciente-view-title" onClick={event => event.stopPropagation()}>
       <div className="drawer-header">
         <button className="drawer-back" onClick={onClose} aria-label="Fechar"><X size={18} /></button>
         <div className="avatar">{initials(patient.name)}</div>
@@ -108,17 +112,18 @@ export function PacienteView({ patient, archived = false, sourceAppointmentId, i
         </div>
       </div>
 
-      <div style={{ display: 'flex', gap: 7, padding: '10px 14px', borderBottom: '1px solid var(--border)', background: 'var(--bg-2)', overflowX: 'auto', flexShrink: 0 }}>
-        <button className="btn btn--primary btn--sm" onClick={schedule}><CalendarPlus size={15} /> Agendar</button>
-        <button className="btn btn--secondary btn--sm" onClick={crmOpportunity}><TrendingUp size={15} /> Nova oportunidade</button>
+      <div className="patient-quick-actions">
+        {sourceAppointmentId && <button className="btn btn--primary btn--sm" onClick={attendance}><HeartPulse size={15} /> Atendimento</button>}
+        <button className={`btn ${sourceAppointmentId ? 'btn--secondary' : 'btn--primary'} btn--sm`} onClick={schedule}><CalendarPlus size={15} /> Agendar</button>
         <button className="btn btn--secondary btn--sm" onClick={register}><ClipboardPlus size={15} /> Registrar</button>
         <button className="btn btn--secondary btn--sm" onClick={whatsapp} disabled={!patient.phone}><MessageCircle size={15} /> WhatsApp</button>
-        <button className="btn btn--secondary btn--sm" onClick={() => setTab('notes')}><StickyNote size={15} /> Nova nota</button>
+        <button className="btn btn--secondary btn--sm" onClick={crmOpportunity}><TrendingUp size={15} /> Oportunidade</button>
+        <button className="btn btn--secondary btn--sm" onClick={() => setTab('notes')}><StickyNote size={15} /> Nota</button>
         <button className="btn btn--ghost btn--sm" onClick={() => setTab('data')}><Pencil size={15} /> Editar</button>
         <button className="btn btn--ghost btn--sm" onClick={() => void archiveOrRestore()}>{archived ? <RotateCcw size={15} /> : <Archive size={15} />}{archived ? 'Restaurar' : 'Arquivar'}</button>
       </div>
 
-      <div className="sub-tabs" style={{ overflowX: 'auto', flexShrink: 0 }}>{TABS.map(([label, key]) => <button key={key} className={`sub-tab${tab === key ? ' sub-tab--active' : ''}`} onClick={() => setTab(key)}>{label}</button>)}</div>
+      <div className="sub-tabs patient-360-tabs">{TABS.map(([label, key]) => <button key={key} className={`sub-tab${tab === key ? ' sub-tab--active' : ''}`} onClick={() => setTab(key)}>{label}</button>)}</div>
 
       <div className="drawer-body">
         {tab === 'overview' ? <div style={{ display: 'grid', gap: 12 }}><PatientCommunicationCard patientId={patient.id} /><OverviewTab patientId={patient.id} onAgenda={schedule} onReturns={() => navigate(`/retornos?patient_id=${patient.id}`)} onHistory={() => setTab('procedures')} onFinance={() => setTab('finance')} onNotes={() => setTab('notes')} onAnamnesis={() => setTab('anamnesis')} onTimeline={() => setTab('timeline')} /></div> : <Suspense fallback={<div className="loading-state">Carregando...</div>}>
