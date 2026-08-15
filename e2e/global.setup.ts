@@ -1,5 +1,5 @@
 import fs from 'node:fs/promises';
-import { adminClient, E2E_USERS } from './helpers';
+import { adminClient, E2E_USERS, signedInClient } from './helpers';
 
 async function assertNoError(error: { message?: string } | null, context: string) {
   if (error) throw new Error(`${context}: ${error.message ?? 'unknown isolated E2E setup error'}`);
@@ -30,8 +30,11 @@ export default async function globalSetup() {
     created[key] = data.user.id;
   }
 
-  const { data: service, error: serviceError } = await admin.from('services').insert({
-    user_id: created.a,
+  // Keep service_role restricted to Auth administration. Application fixtures are
+  // written through User A so RLS/defaults/grants are exercised exactly as runtime.
+  const tenantA = await signedInClient('a');
+
+  const { data: service, error: serviceError } = await tenantA.from('services').insert({
     name: 'E2E TEST Service',
     type: 'servico',
     price: 100,
@@ -41,8 +44,7 @@ export default async function globalSetup() {
   }).select('id').single();
   await assertNoError(serviceError, 'seed E2E service');
 
-  const { data: patient, error: patientError } = await admin.from('patients').insert({
-    user_id: created.a,
+  const { data: patient, error: patientError } = await tenantA.from('patients').insert({
     name: 'E2E TEST Seed Patient',
     phone: '43999990000',
     email: 'seed-patient@hub-giulia.local',
@@ -51,8 +53,7 @@ export default async function globalSetup() {
 
   const scheduledAt = '2030-01-15T13:00:00.000Z';
   const endAt = '2030-01-15T14:00:00.000Z';
-  const { data: appointment, error: appointmentError } = await admin.from('appointments').insert({
-    user_id: created.a,
+  const { data: appointment, error: appointmentError } = await tenantA.from('appointments').insert({
     patient_id: patient!.id,
     service_id: service!.id,
     scheduled_at: scheduledAt,
@@ -62,8 +63,7 @@ export default async function globalSetup() {
   }).select('id').single();
   await assertNoError(appointmentError, 'seed E2E appointment');
 
-  const { data: contact, error: contactError } = await admin.from('contacts').insert({
-    user_id: created.a,
+  const { data: contact, error: contactError } = await tenantA.from('contacts').insert({
     name: 'E2E TEST Contact',
     phone: '43999990001',
     source: 'other',
@@ -71,8 +71,7 @@ export default async function globalSetup() {
   }).select('id').single();
   await assertNoError(contactError, 'seed E2E CRM contact');
 
-  const { data: deal, error: dealError } = await admin.from('deals').insert({
-    user_id: created.a,
+  const { data: deal, error: dealError } = await tenantA.from('deals').insert({
     contact_id: contact!.id,
     title: 'E2E TEST Deal',
     value: 100,
