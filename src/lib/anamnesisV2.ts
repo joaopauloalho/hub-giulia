@@ -69,6 +69,11 @@ export interface AnamnesisVersion {
   created_at: string;
 }
 
+export interface AnamnesisRecoveryRecord {
+  draft: AnamnesisDraft;
+  baseRevision: number;
+}
+
 export const emptyAnamnesisDraft = (): AnamnesisDraft => ({
   conditions: {},
   medications: '',
@@ -173,7 +178,7 @@ export async function saveAnamnesisRecovery(userId: string, patientId: string, d
   void userId; void patientId; void draft; void baseRevision;
 }
 
-export async function loadAnamnesisRecovery(userId: string, patientId: string) {
+export async function loadAnamnesisRecovery(userId: string, patientId: string): Promise<AnamnesisRecoveryRecord | null> {
   void userId; void patientId;
   return null;
 }

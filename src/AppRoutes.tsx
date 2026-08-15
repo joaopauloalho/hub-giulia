@@ -4,7 +4,7 @@ import { useAuth } from './hooks/useAuth';
 import { Layout } from './components/layout/Layout';
 
 const LoginPage = lazy(() => import('./pages/auth/LoginPage').then(module => ({ default: module.LoginPage })));
-const AgendaPage = lazy(() => import('./pages/agenda/AgendaPage').then(module => ({ default: module.AgendaPage })));
+const AgendaPage = lazy(() => import('./pages/agenda/AgendaPage').then(module => ({ default: module.AgendaV2Page })));
 const DashboardPage = lazy(() => import('./pages/dashboard/DashboardPage').then(module => ({ default: module.DashboardPage })));
 const PacientesPage = lazy(() => import('./pages/pacientes/PacientesPage').then(module => ({ default: module.PacientesPage })));
 const RegistrarPage = lazy(() => import('./pages/registrar/RegistrarPage').then(module => ({ default: module.RegistrarPage })));

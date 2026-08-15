@@ -5,7 +5,7 @@ import { Layout } from './components/layout/Layout';
 import { DirtySurface } from './components/layout/DirtySurface';
 
 const LoginPage = lazy(() => import('./pages/auth/LoginPage').then(module => ({ default: module.LoginPage })));
-const AgendaPage = lazy(() => import('./pages/agenda/AgendaPage').then(module => ({ default: module.AgendaPage })));
+const AgendaPage = lazy(() => import('./pages/agenda/AgendaPage').then(module => ({ default: module.AgendaV2Page })));
 const DashboardPage = lazy(() => import('./pages/dashboard/DashboardPage').then(module => ({ default: module.DashboardPage })));
 const CommunicationPage = lazy(() => import('./pages/comunicacao/CommunicationPage').then(module => ({ default: module.CommunicationPage })));
 const CrmPage = lazy(() => import('./pages/crm/CrmPage').then(module => ({ default: module.CrmPage })));
