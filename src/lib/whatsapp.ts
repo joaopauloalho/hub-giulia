@@ -1,7 +1,28 @@
+import { normalizePhone } from './patientInput';
+
+export function whatsappRecipientDigits(phone: string | null | undefined): string | null {
+  const raw = phone?.trim();
+  if (!raw) return null;
+
+  const rawDigits = raw.replace(/\D/g, '');
+  if (raw.startsWith('+')) return rawDigits.length >= 8 && rawDigits.length <= 15 ? rawDigits : null;
+  if (rawDigits.startsWith('55') && (rawDigits.length === 12 || rawDigits.length === 13)) return rawDigits;
+
+  const normalized = normalizePhone(raw);
+  const digits = (normalized ?? raw).replace(/\D/g, '');
+  if (digits.length === 10 || digits.length === 11) return `55${digits}`;
+  return null;
+}
+
+export function buildSafeWhatsAppUrl(phone: string | null | undefined, message: string): string | null {
+  const recipient = whatsappRecipientDigits(phone);
+  if (!recipient) return null;
+  return `https://wa.me/${recipient}?text=${encodeURIComponent(message)}`;
+}
+
+// Compatibilidade com os fluxos existentes. Novos fluxos devem preferir buildSafeWhatsAppUrl.
 export function buildWhatsAppUrl(phone: string, message: string): string {
-  const digits = phone.replace(/\D/g, '');
-  const withDDI = digits.startsWith('55') ? digits : `55${digits}`;
-  return `https://wa.me/${withDDI}?text=${encodeURIComponent(message)}`;
+  return buildSafeWhatsAppUrl(phone, message) ?? '';
 }
 
 function appointmentParts(scheduledAt: string) {
