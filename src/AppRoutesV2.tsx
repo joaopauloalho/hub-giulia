@@ -6,6 +6,7 @@ import { Layout } from './components/layout/Layout';
 const LoginPage = lazy(() => import('./pages/auth/LoginPage').then(module => ({ default: module.LoginPage })));
 const AgendaPage = lazy(() => import('./pages/agenda/AgendaPage').then(module => ({ default: module.AgendaPage })));
 const DashboardPage = lazy(() => import('./pages/dashboard/DashboardPage').then(module => ({ default: module.DashboardPage })));
+const CommunicationPage = lazy(() => import('./pages/comunicacao/CommunicationPage').then(module => ({ default: module.CommunicationPage })));
 const CrmPage = lazy(() => import('./pages/crm/CrmPage').then(module => ({ default: module.CrmPage })));
 const ProposalEditorPage = lazy(() => import('./pages/crm/ProposalEditorPage').then(module => ({ default: module.ProposalEditorPage })));
 const PacientesPage = lazy(() => import('./pages/pacientes/PacientesPage').then(module => ({ default: module.PacientesPage })));
@@ -33,6 +34,7 @@ export default function AppRoutesV2() {
           <Route path="/" element={<ProtectedRoute><Layout /></ProtectedRoute>}>
             <Route index element={<Navigate to="/dashboard" replace />} />
             <Route path="dashboard" element={<DashboardPage />} />
+            <Route path="comunicacao" element={<CommunicationPage />} />
             <Route path="agenda" element={<AgendaPage />} />
             <Route path="retornos" element={<RetornosHubPage />} />
             <Route path="crm" element={<CrmPage />} />

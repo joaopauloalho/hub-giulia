@@ -1,8 +1,9 @@
 import { NavLink } from 'react-router-dom';
-import { BookOpen, CalendarDays, LayoutDashboard, PlusCircle, RotateCcw, TrendingUp, Users, Wallet } from 'lucide-react';
+import { BookOpen, CalendarDays, LayoutDashboard, MessageCircle, PlusCircle, RotateCcw, TrendingUp, Users, Wallet } from 'lucide-react';
 
 const TABS = [
   { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
+  { to: '/comunicacao', icon: MessageCircle, label: 'Comunicação' },
   { to: '/agenda', icon: CalendarDays, label: 'Agenda' },
   { to: '/retornos', icon: RotateCcw, label: 'Retornos' },
   { to: '/crm', icon: TrendingUp, label: 'CRM' },
@@ -16,15 +17,8 @@ export function BottomTabBar() {
   return (
     <nav className="bottom-tabs" aria-label="Navegação principal">
       {TABS.map(({ to, icon: Icon, label }) => (
-        <NavLink
-          key={to}
-          to={to}
-          className={({ isActive }) =>
-            `tab-item${isActive ? ' tab-item--active' : ''}`
-          }
-        >
-          <Icon />
-          <span>{label}</span>
+        <NavLink key={to} to={to} className={({ isActive }) => `tab-item${isActive ? ' tab-item--active' : ''}`}>
+          <Icon /><span>{label}</span>
         </NavLink>
       ))}
     </nav>

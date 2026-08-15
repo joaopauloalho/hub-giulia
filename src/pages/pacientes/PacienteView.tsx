@@ -8,6 +8,7 @@ import { CRM_STAGE_LABEL } from '../../lib/crm';
 import { getCrmPatientSummary, type CrmPipelineCard } from '../../hooks/useCrm';
 import { useToast } from '../../hooks/useToast';
 import { OverviewTab } from './tabs/OverviewTab';
+import { PatientCommunicationCard } from '../../components/communications/PatientCommunicationCard';
 
 const DadosTab = lazy(() => import('./tabs/DadosTab').then(module => ({ default: module.DadosTab })));
 const AnamneseTab = lazy(() => import('./tabs/AnamneseTab').then(module => ({ default: module.AnamneseTab })));
@@ -45,12 +46,7 @@ const TABS = [
 ] as const;
 export type TabKey = typeof TABS[number][1];
 
-type SignatureRequest = {
-  contractId?: string;
-  procedureId?: string;
-  appointmentId?: string;
-};
-
+type SignatureRequest = { contractId?: string; procedureId?: string; appointmentId?: string };
 const initials = (name: string) => name.split(' ').slice(0, 2).map(word => word[0]).join('').toUpperCase();
 
 export function PacienteView({ patient, archived = false, sourceAppointmentId, initialTab, onClose, onUpdate, onArchive, onRestore }: Props) {
@@ -60,15 +56,10 @@ export function PacienteView({ patient, archived = false, sourceAppointmentId, i
   const [signatureRequest, setSignatureRequest] = useState<SignatureRequest | null>(null);
   const [crmSummary, setCrmSummary] = useState<CrmPipelineCard | null>(null);
 
-  useEffect(() => {
-    if (initialTab) setTab(initialTab);
-  }, [initialTab]);
-
+  useEffect(() => { if (initialTab) setTab(initialTab); }, [initialTab]);
   useEffect(() => {
     let alive = true;
-    void getCrmPatientSummary(patient.id)
-      .then(summary => { if (alive) setCrmSummary(summary); })
-      .catch(error => console.warn('[patient360:crm-summary]', error));
+    void getCrmPatientSummary(patient.id).then(summary => { if (alive) setCrmSummary(summary); }).catch(error => console.warn('[patient360:crm-summary]', error));
     return () => { alive = false; };
   }, [patient.id]);
 
@@ -79,27 +70,13 @@ export function PacienteView({ patient, archived = false, sourceAppointmentId, i
     if (sourceAppointmentId) query.set('appointment_id', sourceAppointmentId);
     navigate(`/registrar?${query.toString()}`, { state: { patient, patientId: patient.id, appointmentId: sourceAppointmentId, from: '/pacientes' } });
   };
-  const whatsapp = () => {
-    if (!patient.phone) return;
-    window.open(buildWhatsAppUrl(patient.phone, `Olá ${patient.name}!`), '_blank', 'noopener,noreferrer');
-  };
+  const whatsapp = () => { if (!patient.phone) return; const url = buildWhatsAppUrl(patient.phone, `Olá ${patient.name}!`); if (url) window.open(url, '_blank', 'noopener,noreferrer'); };
 
   const archiveOrRestore = async () => {
-    const ok = await confirm({
-      title: archived ? 'Restaurar paciente' : 'Arquivar paciente',
-      message: archived ? `Restaurar ${patient.name} para a lista ativa?` : `Arquivar ${patient.name}? O histórico clínico e financeiro será preservado e poderá ser restaurado.`,
-      confirmLabel: archived ? 'Restaurar' : 'Arquivar',
-      cancelLabel: 'Cancelar',
-      tone: 'warning',
-    });
+    const ok = await confirm({ title: archived ? 'Restaurar paciente' : 'Arquivar paciente', message: archived ? `Restaurar ${patient.name} para a lista ativa?` : `Arquivar ${patient.name}? O histórico clínico e financeiro será preservado e poderá ser restaurado.`, confirmLabel: archived ? 'Restaurar' : 'Arquivar', cancelLabel: 'Cancelar', tone: 'warning' });
     if (!ok) return;
-    try {
-      if (archived) await onRestore(); else await onArchive();
-      toast.success(archived ? 'Paciente restaurada.' : 'Paciente arquivada.');
-    } catch (err) {
-      console.error('[patient360:archive]', err);
-      toast.error('Não foi possível atualizar o arquivamento.');
-    }
+    try { if (archived) await onRestore(); else await onArchive(); toast.success(archived ? 'Paciente restaurada.' : 'Paciente arquivada.'); }
+    catch (err) { console.error('[patient360:archive]', err); toast.error('Não foi possível atualizar o arquivamento.'); }
   };
 
   const openTimelineEvent = (eventType: string) => {
@@ -113,18 +90,7 @@ export function PacienteView({ patient, archived = false, sourceAppointmentId, i
     if (eventType === 'injectable') setTab('injectables');
   };
 
-  if (signatureRequest) {
-    return <Suspense fallback={<div className="full-loader">Carregando assinatura...</div>}>
-      <SignatureScreen
-        patient={patient}
-        contractId={signatureRequest.contractId ?? null}
-        initialProcedureId={signatureRequest.procedureId ?? null}
-        initialAppointmentId={signatureRequest.appointmentId ?? null}
-        onClose={() => setSignatureRequest(null)}
-        onDone={() => { setSignatureRequest(null); setTab('contracts'); }}
-      />
-    </Suspense>;
-  }
+  if (signatureRequest) return <Suspense fallback={<div className="full-loader">Carregando assinatura...</div>}><SignatureScreen patient={patient} contractId={signatureRequest.contractId ?? null} initialProcedureId={signatureRequest.procedureId ?? null} initialAppointmentId={signatureRequest.appointmentId ?? null} onClose={() => setSignatureRequest(null)} onDone={() => { setSignatureRequest(null); setTab('contracts'); }} /></Suspense>;
 
   return <div className="drawer-overlay" onClick={onClose}>
     <aside className="drawer" style={{ width: 'min(980px, 100vw)' }} role="dialog" aria-modal="true" aria-labelledby="paciente-view-title" onClick={event => event.stopPropagation()}>
@@ -152,12 +118,10 @@ export function PacienteView({ patient, archived = false, sourceAppointmentId, i
         <button className="btn btn--ghost btn--sm" onClick={() => void archiveOrRestore()}>{archived ? <RotateCcw size={15} /> : <Archive size={15} />}{archived ? 'Restaurar' : 'Arquivar'}</button>
       </div>
 
-      <div className="sub-tabs" style={{ overflowX: 'auto', flexShrink: 0 }}>
-        {TABS.map(([label, key]) => <button key={key} className={`sub-tab${tab === key ? ' sub-tab--active' : ''}`} onClick={() => setTab(key)}>{label}</button>)}
-      </div>
+      <div className="sub-tabs" style={{ overflowX: 'auto', flexShrink: 0 }}>{TABS.map(([label, key]) => <button key={key} className={`sub-tab${tab === key ? ' sub-tab--active' : ''}`} onClick={() => setTab(key)}>{label}</button>)}</div>
 
       <div className="drawer-body">
-        {tab === 'overview' ? <OverviewTab patientId={patient.id} onAgenda={schedule} onReturns={() => navigate(`/retornos?patient_id=${patient.id}`)} onHistory={() => setTab('procedures')} onFinance={() => setTab('finance')} onNotes={() => setTab('notes')} onAnamnesis={() => setTab('anamnesis')} onTimeline={() => setTab('timeline')} /> : <Suspense fallback={<div className="loading-state">Carregando...</div>}>
+        {tab === 'overview' ? <div style={{ display: 'grid', gap: 12 }}><PatientCommunicationCard patientId={patient.id} /><OverviewTab patientId={patient.id} onAgenda={schedule} onReturns={() => navigate(`/retornos?patient_id=${patient.id}`)} onHistory={() => setTab('procedures')} onFinance={() => setTab('finance')} onNotes={() => setTab('notes')} onAnamnesis={() => setTab('anamnesis')} onTimeline={() => setTab('timeline')} /></div> : <Suspense fallback={<div className="loading-state">Carregando...</div>}>
           {tab === 'timeline' && <TimelineTab patientId={patient.id} onOpen={openTimelineEvent} />}
           {tab === 'procedures' && <HistoricoTab patientId={patient.id} onPhotos={() => setTab('photos')} onInjectables={() => setTab('injectables')} onContract={procedureId => setSignatureRequest({ procedureId })} />}
           {tab === 'anamnesis' && <AnamneseTab patientId={patient.id} />}
