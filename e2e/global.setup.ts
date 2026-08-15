@@ -41,12 +41,24 @@ export default async function globalSetup() {
     cost_per_unit: 20,
     duration_minutes: 60,
     active: true,
+    is_injectable: true,
     return_enabled: true,
     return_type: 'clinical_return',
     return_min_days: 7,
     return_max_days: 14,
   }).select('id').single();
   await assertNoError(serviceError, 'seed E2E service');
+
+  const { data: injectableProduct, error: injectableProductError } = await tenantA.from('injectable_products').insert({
+    name: 'E2E TEST Injectable Product',
+    category: 'toxina',
+    brand: 'E2E',
+    substance: 'E2E TEST substance',
+    default_unit: 'U',
+    presentation: 'E2E TEST vial',
+    active: true,
+  }).select('id').single();
+  await assertNoError(injectableProductError, 'seed E2E injectable product');
 
   const aftercare = await tenantA.rpc('save_service_aftercare_protocol_v1', {
     p_service_id: service!.id,
@@ -96,6 +108,7 @@ export default async function globalSetup() {
   await fs.writeFile('.e2e-state.json', JSON.stringify({
     users: created,
     serviceId: service!.id,
+    injectableProductId: injectableProduct!.id,
     patientId: patient!.id,
     appointmentId: appointment!.id,
     contactId: contact!.id,
