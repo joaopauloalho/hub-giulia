@@ -1,18 +1,18 @@
 import { NavLink } from 'react-router-dom';
-import { BookOpen, CalendarDays, HeartHandshake, LayoutDashboard, LogOut, MessageCircle, PlusCircle, RotateCcw, TrendingUp, Users, Wallet } from 'lucide-react';
+import { BookOpen, CalendarDays, HeartHandshake, LayoutDashboard, LogOut, MessageCircle, RotateCcw, ShieldCheck, TrendingUp, Users, Wallet } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 
 const tabs = [
-  { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
+  { to: '/dashboard', icon: LayoutDashboard, label: 'Hoje' },
+  { to: '/agenda', icon: CalendarDays, label: 'Agenda' },
   { to: '/comunicacao', icon: MessageCircle, label: 'Comunicação' },
   { to: '/relacionamento', icon: HeartHandshake, label: 'Relacionamento' },
-  { to: '/agenda', icon: CalendarDays, label: 'Agenda' },
-  { to: '/retornos', icon: RotateCcw, label: 'Retornos' },
-  { to: '/crm', icon: TrendingUp, label: 'CRM' },
   { to: '/pacientes', icon: Users, label: 'Pacientes' },
-  { to: '/registrar', icon: PlusCircle, label: 'Registrar' },
+  { to: '/crm', icon: TrendingUp, label: 'CRM' },
+  { to: '/retornos', icon: RotateCcw, label: 'Retornos' },
   { to: '/financeiro', icon: Wallet, label: 'Financeiro' },
-  { to: '/catalogo', icon: BookOpen, label: 'Catalogo' },
+  { to: '/saude', icon: ShieldCheck, label: 'Saúde' },
+  { to: '/catalogo', icon: BookOpen, label: 'Catálogo' },
 ];
 
 export function SideRailV2() {
