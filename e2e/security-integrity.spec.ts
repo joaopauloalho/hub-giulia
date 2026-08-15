@@ -103,6 +103,7 @@ test('procedure idempotency rejects a parallel duplicate and finance remains ten
     gross_value: 100,
     covered_value: 0,
     idempotency_key: idempotencyKey,
+    idempotency_payload_hash: 'e2e-same-procedure-payload-v1',
   };
 
   const attempts = await Promise.all([
