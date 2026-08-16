@@ -1,6 +1,7 @@
 import { NavLink } from 'react-router-dom';
 import { BookOpen, CalendarDays, FileText, HeartHandshake, LayoutDashboard, LogOut, MessageCircle, RotateCcw, ShieldCheck, TrendingUp, Users, Wallet } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
+import './sideRail391.css';
 
 const tabs = [
   { to: '/dashboard', icon: LayoutDashboard, label: 'Hoje', end: true },
