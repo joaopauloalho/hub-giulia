@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
-import { BookOpen, CalendarDays, CircleEllipsis, HeartHandshake, LayoutDashboard, MessageCircle, Package, PlusCircle, RotateCcw, ShieldCheck, TrendingUp, Users, Wallet, X } from 'lucide-react';
+import { BookOpen, CalendarDays, CircleEllipsis, FileText, HeartHandshake, LayoutDashboard, MessageCircle, Package, PlusCircle, RotateCcw, ShieldCheck, TrendingUp, Users, Wallet, X } from 'lucide-react';
 
 const PRIMARY = [
   { to: '/dashboard', icon: LayoutDashboard, label: 'Hoje' },
@@ -12,6 +12,7 @@ const PRIMARY = [
 const MORE = [
   { to: '/relacionamento', icon: HeartHandshake, label: 'Relacionamento', note: 'Pessoas que merecem atenção' },
   { to: '/crm', icon: TrendingUp, label: 'CRM', note: 'Leads e oportunidades' },
+  { to: '/crm/propostas-em-aberto', icon: FileText, label: 'Propostas em aberto', note: 'Enviadas aguardando decisão' },
   { to: '/retornos', icon: RotateCcw, label: 'Retornos', note: 'Acompanhamentos clínicos' },
   { to: '/registrar', icon: PlusCircle, label: 'Registrar', note: 'Novo procedimento' },
   { to: '/financeiro', icon: Wallet, label: 'Financeiro', note: 'Recebimentos e resultados' },

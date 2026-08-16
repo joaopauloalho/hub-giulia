@@ -65,6 +65,13 @@ self.addEventListener('fetch', event => {
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
 
+  // Bearer-link clinical signing is always network-only and never becomes
+  // the reusable application shell stored for offline navigation.
+  if (url.pathname.startsWith('/assinar/anamnese/')) {
+    event.respondWith(fetch(request, { cache: 'no-store' }));
+    return;
+  }
+
   if (request.mode === 'navigate') {
     event.respondWith(networkFirstNavigation(request));
     return;
