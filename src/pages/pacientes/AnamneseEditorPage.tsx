@@ -1,232 +1,172 @@
-import { useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, CheckCircle2, CloudOff, RefreshCw, ShieldAlert } from 'lucide-react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { ArrowLeft, CheckCircle2, CloudOff, RefreshCw, Save, ShieldAlert } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import { useAnamneseDraftV2 } from '../../hooks/useAnamneseDraftV2';
-import {
-  validateAnamnesisForCompletion,
-  type AnswerStatus,
-  type AnamnesisSaveStatus,
-} from '../../lib/anamnesisV2';
-import type {
-  AnamnesisAesthetics,
-  AnamnesisConditions,
-  AnamnesisHabits,
-  AnamnosisSurgicalHistory,
-} from '../../types';
+import { validateAnamnesisForCompletion, type AnamnesisSaveStatus, type ClinicalAnswerMap } from '../../lib/anamnesisV2';
 import './anamnese.css';
+import './anamnese391.css';
 
 const SECTIONS = [
-  ['conditions', 'Condições'],
-  ['medications', 'Medicamentos e alergias'],
-  ['history', 'Histórico médico'],
-  ['womens-health', 'Saúde feminina'],
-  ['habits', 'Hábitos'],
-  ['aesthetics', 'Rotina estética'],
-  ['review', 'Revisão'],
+  ['conditions', 'Condições'], ['medications', 'Medicamentos'], ['allergies', 'Alergias'], ['history', 'Histórico médico'],
+  ['womens-health', 'Saúde feminina'], ['food', 'Alimentação'], ['routine', 'Hábitos / rotina'], ['procedures', 'Procedimentos'],
+  ['skin-review', 'Pele e recomendações'], ['review', 'Revisão'],
 ] as const;
 
-const CONDITIONS: [keyof AnamnesisConditions, string][] = [
-  ['hipertensao', 'Hipertensão'],
-  ['hipotensao', 'Hipotensão'],
-  ['diabetes', 'Diabetes'],
-  ['cancer', 'Câncer'],
-  ['problemas_cardiacos', 'Problemas cardíacos'],
-  ['disfuncao_renal', 'Disfunção renal'],
-  ['problemas_vasculares', 'Problemas vasculares'],
-  ['epilepsia', 'Epilepsia'],
-  ['problemas_respiratorios', 'Problemas respiratórios'],
-  ['problemas_tireoide', 'Problemas de tireoide'],
-  ['problemas_coagulacao', 'Problemas de coagulação'],
-  ['marcapasso', 'Marcapasso'],
-  ['fumante', 'Fumante'],
-  ['hiv_aids', 'HIV/AIDS'],
-  ['hepatite', 'Hepatite'],
-];
+const CONDITIONS = [
+  ['hipertensao', 'Hipertensão'], ['hipotensao', 'Hipotensão'], ['diabetes', 'Diabetes'], ['cancer', 'Câncer'],
+  ['problemas_cardiacos', 'Problemas cardíacos'], ['disfuncao_renal', 'Disfunção renal'], ['problemas_vasculares', 'Problemas vasculares'],
+  ['epilepsia', 'Epilepsia'], ['problemas_respiratorios', 'Problemas respiratórios'], ['problemas_tireoide', 'Problemas de tireoide'],
+  ['problemas_coagulacao', 'Problemas de coagulação'], ['marcapasso', 'Marcapasso'], ['fumante', 'Fumante'], ['hiv_aids', 'HIV/AIDS'], ['hepatite', 'Hepatite'],
+] as const;
 
-const HABITS: [keyof AnamnesisHabits, string][] = [
-  ['refrigerante', 'Refrigerante'],
-  ['fast_food', 'Fast food'],
-  ['doces', 'Doces'],
-  ['frituras', 'Frituras'],
-  ['cigarros', 'Cigarros'],
-  ['bebidas_alcoolicas', 'Bebidas alcoólicas'],
-];
+const ALLERGIES = [
+  ['alergia_medicamento', 'Alergia a medicamento?', 'alergia_medicamento_detalhe', 'Descreva medicamento e reação'],
+  ['alergia_frutos_mar', 'Alergia a frutos do mar?', 'alergia_frutos_mar_detalhe', 'Descreva'],
+  ['alergia_abelha', 'Alergia a picada de abelha/insetos?', 'alergia_abelha_detalhe', 'Descreva a reação'],
+  ['outras_alergias', 'Outras alergias?', 'outras_alergias_detalhe', 'Descreva'],
+] as const;
+
+const HISTORY = [
+  ['recebeu_anestesia', 'Já recebeu anestesia alguma vez?', 'recebeu_anestesia_detalhe', 'Conte qual anestesia/procedimento e se teve alguma reação.'],
+  ['cirurgias_recentes', 'Cirurgias recentes', 'cirurgias_recentes_detalhe', 'Qual / quando?'],
+  ['protese_metalica', 'Prótese metálica', 'protese_metalica_regiao', 'Região / contexto'],
+  ['desmaios', 'Desmaios/convulsões', 'desmaio_porque', 'Contexto'],
+  ['herpes', 'Herpes', 'herpes_detalhe', 'Frequência / contexto'],
+  ['tratamento_medico', 'Em tratamento médico', 'tratamento_medico_detalhe', 'Qual tratamento?'],
+  ['acne', 'Tem acne?', 'acne_detalhe', 'Descreva'],
+] as const;
+
+const HISTORY_SIMPLE = [
+  ['ansioso', 'Ansiedade'], ['estressado', 'Estresse elevado'], ['enxaqueca', 'Enxaqueca'], ['intestino_regular', 'Intestino regular'],
+] as const;
+
+const FOOD = [
+  ['leite_derivados', 'Leite e derivados', 'leite_derivados_frequencia'], ['doces', 'Açúcar / doces', 'doces_frequencia'],
+  ['refrigerante', 'Refrigerante', 'refrigerante_frequencia'], ['fast_food', 'Fast food', 'fast_food_frequencia'],
+  ['frituras', 'Frituras', 'frituras_frequencia'], ['bebidas_alcoolicas', 'Bebidas alcoólicas', 'bebidas_alcoolicas_frequencia'],
+] as const;
+
+const ROUTINE = [
+  ['alimentacao_especial', 'Segue alguma dieta específica?', 'alimentacao_especial_qual', 'Qual dieta?'],
+  ['suplemento', 'Faz uso de suplementos?', 'suplemento_quais', 'Qual(is)?'],
+  ['atividade_fisica', 'Pratica atividade física?', 'atividade_fisica_detalhe', 'Tipo / frequência'],
+] as const;
+
+const PROCEDURES = [
+  ['limpeza_pele', 'Limpeza de pele', 'limpeza_pele_data'], ['microagulhamento', 'Microagulhamento', 'microagulhamento_data'],
+  ['peeling', 'Peeling', 'peeling_detalhe'], ['laser', 'Laser', 'laser_detalhe'], ['toxina_botulinica', 'Toxina botulínica', 'toxina_botulinica_data'],
+  ['fios_sustentacao', 'Fios de sustentação', 'fios_sustentacao_data'], ['preenchimento_hialuronico', 'Preenchimento com ácido hialurônico', 'preenchimento_hialuronico_data'],
+  ['bioestimulador', 'Bioestimulador', 'bioestimulador_data'], ['plastica_facial', 'Plástica facial', 'plastica_facial_detalhe'],
+  ['pmma', 'PMMA', 'pmma_regiao'], ['outros_tratamentos', 'Outros tratamentos estéticos', 'outros_tratamentos_detalhe'],
+] as const;
 
 function saveStatusLabel(status: AnamnesisSaveStatus, savedAt?: string | null) {
   if (status === 'saving') return 'Salvando…';
   if (status === 'pending') return 'Alterações aguardando autosave';
   if (status === 'offline') return 'Sem conexão — aguardando sincronização';
   if (status === 'error') return 'Erro ao salvar';
-  if (status === 'session-expired') return 'Sessão expirada — alterações preservadas';
+  if (status === 'session-expired') return 'Sessão expirada — alterações preservadas na tela';
   if (status === 'conflict') return 'Alterada em outro dispositivo';
-  if (status === 'saved' && savedAt) {
-    const date = new Date(savedAt);
-    return `Salvo às ${date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`;
-  }
+  if (status === 'saved' && savedAt) return `Salvo às ${new Date(savedAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`;
   return 'Rascunho ainda não salvo';
 }
 
-function TriStateField({
-  label,
-  value,
-  onChange,
-}: {
-  label: string;
-  value?: boolean;
-  onChange: (value: boolean | undefined) => void;
-}) {
+function BinaryField({ id, label, value, onChange, help }: { id: string; label: string; value?: boolean; onChange: (value: boolean) => void; help?: string }) {
+  const labelId = `${id}-label`;
   return (
-    <div className="anamnesis-question">
-      <span className="anamnesis-question__label">{label}</span>
-      <div className="anamnesis-choice-group" role="group" aria-label={label}>
-        <button type="button" className={value === true ? 'is-selected' : ''} aria-pressed={value === true} onClick={() => onChange(true)}>Sim</button>
-        <button type="button" className={value === false ? 'is-selected' : ''} aria-pressed={value === false} onClick={() => onChange(false)}>Não</button>
-        <button type="button" className={value === undefined ? 'is-selected is-muted' : 'is-muted'} aria-pressed={value === undefined} onClick={() => onChange(undefined)}>Não resp.</button>
+    <div className="anamnesis-question" id={id} tabIndex={-1}>
+      <div className="anamnesis-question__copy">
+        <span className="anamnesis-question__label" id={labelId}>{label}</span>
+        {help && <small>{help}</small>}
+      </div>
+      <div className="anamnesis-choice-group" role="radiogroup" aria-labelledby={labelId} data-focus-target tabIndex={-1}>
+        <button type="button" role="radio" aria-checked={value === true} className={value === true ? 'is-selected' : ''} onClick={() => onChange(true)}>Sim</button>
+        <button type="button" role="radio" aria-checked={value === false} className={value === false ? 'is-selected' : ''} onClick={() => onChange(false)}>Não</button>
       </div>
     </div>
   );
 }
 
-function ConditionalField({
-  label,
-  value,
-  onChange,
-  detail,
-  onDetail,
-  placeholder,
-  type = 'text',
-}: {
-  label: string;
-  value?: boolean;
-  onChange: (value: boolean | undefined) => void;
-  detail?: string;
-  onDetail: (value: string) => void;
-  placeholder: string;
-  type?: string;
-}) {
+function DetailQuestion(props: { area: string; flag: string; label: string; value?: boolean; detail?: string; setFlag: (value: boolean) => void; setDetail: (value: string) => void; placeholder: string; help?: string }) {
   return (
     <div className="anamnesis-conditional">
-      <TriStateField label={label} value={value} onChange={onChange} />
-      {value === true && (
-        <input
-          className="field-input"
-          type={type}
-          value={detail ?? ''}
-          placeholder={placeholder}
-          onChange={event => onDetail(event.target.value)}
-          aria-label={`${label}: detalhe`}
+      <BinaryField id={`q-${props.area}-${props.flag}`} label={props.label} value={props.value} onChange={props.setFlag} help={props.help} />
+      {props.value === true && (
+        <textarea
+          id={`detail-${props.area}-${props.flag}`}
+          data-focus-target
+          className="field-input anamnesis-detail"
+          rows={2}
+          value={props.detail ?? ''}
+          placeholder={props.placeholder}
+          onChange={event => props.setDetail(event.target.value)}
+          aria-label={`${props.label}: descrição`}
         />
       )}
     </div>
   );
 }
 
-function TextStatusField({
-  label,
-  status,
-  text,
-  noneLabel,
-  reportedLabel,
-  placeholder,
-  onStatus,
-  onText,
-}: {
-  label: string;
-  status: AnswerStatus;
-  text: string;
-  noneLabel: string;
-  reportedLabel: string;
-  placeholder: string;
-  onStatus: (status: AnswerStatus) => void;
-  onText: (value: string) => void;
-}) {
+function ProcedureQuestion({ flag, label, value, note, onFlag, onNote }: { flag: string; label: string; value?: boolean; note?: string; onFlag: (value: boolean) => void; onNote: (value: string) => void }) {
   return (
-    <div className="anamnesis-text-status">
-      <label className="field-label">{label}</label>
-      <div className="anamnesis-choice-group anamnesis-choice-group--wide" role="group" aria-label={`${label}: situação`}>
-        <button type="button" className={status === 'reported' ? 'is-selected' : ''} onClick={() => onStatus('reported')}>{reportedLabel}</button>
-        <button type="button" className={status === 'none' ? 'is-selected' : ''} onClick={() => onStatus('none')}>{noneLabel}</button>
-        <button type="button" className={status === null ? 'is-selected is-muted' : 'is-muted'} onClick={() => onStatus(null)}>Não respondido</button>
+    <div className="anamnesis-procedure-card">
+      <BinaryField id={`q-aesthetics-${flag}`} label={label} value={value} onChange={onFlag} />
+      <div className="field">
+        <label className="field-label" htmlFor={`detail-aesthetics-${flag}`}>Observações</label>
+        <textarea
+          id={`detail-aesthetics-${flag}`}
+          data-focus-target
+          className="field-input anamnesis-detail"
+          rows={2}
+          value={note ?? ''}
+          onChange={event => onNote(event.target.value)}
+          placeholder="Ex.: há 6 meses, 3 sessões, não lembra quando, reação, outra clínica…"
+        />
       </div>
-      {status === 'reported' && (
-        <textarea className="field-input" rows={3} value={text} placeholder={placeholder} onChange={event => onText(event.target.value)} />
-      )}
     </div>
   );
 }
 
-function Section({ id, title, children }: { id: string; title: string; children: React.ReactNode }) {
-  return (
-    <section id={id} className="anamnesis-section" tabIndex={-1}>
-      <h2>{title}</h2>
-      {children}
-    </section>
-  );
+function LargeTextarea({ id, label, value, onChange }: { id: string; label: string; value?: string; onChange: (value: string) => void }) {
+  return <div className="field field--full"><label className="field-label" htmlFor={id}>{label}</label><textarea id={id} className="field-input anamnesis-large-text" rows={5} value={value ?? ''} onChange={event => onChange(event.target.value)} /></div>;
+}
+
+function Section({ id, title, children }: { id: string; title: string; children: ReactNode }) {
+  return <section id={id} className="anamnesis-section" tabIndex={-1}><h2>{title}</h2>{children}</section>;
 }
 
 export function AnamneseEditorPage() {
   const { patientId = '' } = useParams();
   const navigate = useNavigate();
   const [patientName, setPatientName] = useState('Paciente');
-  const [validationIssues, setValidationIssues] = useState<string[]>([]);
+  const [validationIssues, setValidationIssues] = useState<ReturnType<typeof validateAnamnesisForCompletion>>([]);
   const [exitWarning, setExitWarning] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
-
-  const {
-    draft,
-    current,
-    loading,
-    loadError,
-    saveStatus,
-    saveMessage,
-    finalizing,
-    setDraft,
-    flush,
-    retry,
-    reloadServer,
-    finalize,
-    hasPendingChanges,
-  } = useAnamneseDraftV2(patientId);
+  const { draft, current, loading, loadError, saveStatus, saveMessage, finalizing, setDraft, flush, retry, reloadServer, finalize, hasPendingChanges } = useAnamneseDraftV2(patientId);
 
   useEffect(() => {
     let active = true;
-    supabase
-      .from('patients')
-      .select('name')
-      .eq('id', patientId)
-      .maybeSingle()
-      .then(({ data, error }) => {
-        if (!active || error || !data) return;
-        setPatientName(String(data.name));
-      });
+    void supabase.from('patients').select('name').eq('id', patientId).maybeSingle().then(({ data }) => {
+      if (active && data) setPatientName(String(data.name));
+    });
     return () => { active = false; };
   }, [patientId]);
 
   const backUrl = `/pacientes?patient_id=${encodeURIComponent(patientId)}&tab=anamnesis`;
-
-  const setCondition = (key: keyof AnamnesisConditions, value: boolean | undefined) =>
-    setDraft(currentDraft => ({ ...currentDraft, conditions: { ...currentDraft.conditions, [key]: value } }));
-
-  const setSurgical = (key: keyof AnamnosisSurgicalHistory, value: boolean | string | undefined) =>
-    setDraft(currentDraft => ({ ...currentDraft, surgicalHistory: { ...currentDraft.surgicalHistory, [key]: value } }));
-
-  const setHabit = (key: keyof AnamnesisHabits, value: boolean | string | undefined) =>
-    setDraft(currentDraft => ({ ...currentDraft, habits: { ...currentDraft.habits, [key]: value } }));
-
-  const setAesthetic = (key: keyof AnamnesisAesthetics, value: boolean | string | undefined) =>
-    setDraft(currentDraft => ({ ...currentDraft, aesthetics: { ...currentDraft.aesthetics, [key]: value } }));
-
-  const statusText = saveStatusLabel(saveStatus, current?.last_saved_at);
-  const statusClass = ['offline', 'error', 'session-expired', 'conflict'].includes(saveStatus)
-    ? 'anamnesis-save-status is-alert'
-    : 'anamnesis-save-status';
-
-  const goSection = (id: string) => {
-    void flush();
-    document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  const setMap = (area: 'conditions' | 'surgicalHistory' | 'habits' | 'aesthetics', key: string, value: boolean | string | undefined) => {
+    setDraft(previous => ({ ...previous, [area]: { ...(previous[area] as ClinicalAnswerMap), [key]: value } }));
   };
-
+  const statusText = saveStatusLabel(saveStatus, current?.last_saved_at);
+  const statusClass = ['offline', 'error', 'session-expired', 'conflict'].includes(saveStatus) ? 'anamnesis-save-status is-alert' : 'anamnesis-save-status';
+  const focusIssue = (fieldId: string) => {
+    const element = document.getElementById(fieldId);
+    element?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    window.setTimeout(() => {
+      const target = (element?.matches('textarea,input,button') ? element : element?.querySelector<HTMLElement>('[data-focus-target],textarea,input,button')) as HTMLElement | null;
+      target?.focus();
+    }, 250);
+  };
   const tryLeave = async () => {
     setActionError(null);
     await flush();
@@ -236,27 +176,16 @@ export function AnamneseEditorPage() {
     }
     navigate(backUrl);
   };
-
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape') return;
-      event.preventDefault();
-      void tryLeave();
-    };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  });
-
   const handleFinalize = async () => {
     setActionError(null);
     setExitWarning(false);
+    await flush();
     const issues = validateAnamnesisForCompletion(draft);
     setValidationIssues(issues);
-    if (issues.length > 0) {
-      document.getElementById('review')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    if (issues.length) {
+      focusIssue(issues[0].fieldId);
       return;
     }
-
     try {
       const result = await finalize();
       navigate(`${backUrl}&version=${result.version_number}`, { replace: true });
@@ -264,11 +193,9 @@ export function AnamneseEditorPage() {
       setActionError(error instanceof Error ? error.message : 'Não foi possível concluir a anamnese.');
     }
   };
-
   const review = useMemo(() => ({
-    conditionsAnswered: Object.values(draft.conditions).filter(value => typeof value === 'boolean').length,
+    answered: Object.values(draft.conditions).filter(value => typeof value === 'boolean').length,
     medications: draft.medicationsStatus,
-    allergies: draft.allergiesStatus,
   }), [draft]);
 
   if (!patientId) return <div className="empty-state"><p>Paciente inválida.</p></div>;
@@ -278,191 +205,98 @@ export function AnamneseEditorPage() {
   return (
     <div className="anamnesis-editor-page">
       <header className="anamnesis-editor-header">
-        <button className="btn btn--ghost btn--sm anamnesis-back" type="button" onClick={() => void tryLeave()}>
-          <ArrowLeft size={17} /> Voltar
-        </button>
-        <div className="anamnesis-editor-heading">
-          <strong>{patientName}</strong>
-          <span>Anamnese · {current?.status === 'completed' ? `Concluída · versão ${current.latest_version_number}` : 'Rascunho'}</span>
+        <button className="btn btn--ghost btn--sm anamnesis-back" type="button" onClick={() => void tryLeave()}><ArrowLeft size={17} /> Voltar</button>
+        <div className="anamnesis-editor-heading"><strong>{patientName}</strong><span>Anamnese · {current?.status === 'completed' ? `Concluída · versão ${current.latest_version_number}` : 'Rascunho'}</span></div>
+        <div className={statusClass}>{saveStatus === 'offline' ? <CloudOff size={14} /> : saveStatus === 'saved' ? <CheckCircle2 size={14} /> : <RefreshCw size={14} className={saveStatus === 'saving' ? 'is-spinning' : ''} />}<span>{statusText}</span></div>
+        <div className="anamnesis-header-actions">
+          <button className="btn btn--secondary btn--sm" type="button" disabled={saveStatus === 'saving'} onClick={() => void flush()}><Save size={14} /> Salvar rascunho</button>
+          <button className="btn btn--primary btn--sm anamnesis-finalize" type="button" disabled={finalizing || (current?.status !== 'draft' && !hasPendingChanges())} onClick={() => void handleFinalize()}>{finalizing ? 'Concluindo…' : current?.latest_version_number ? 'Concluir nova versão' : 'Concluir anamnese'}</button>
         </div>
-        <div className={statusClass}>
-          {saveStatus === 'offline' ? <CloudOff size={14} /> : saveStatus === 'saved' ? <CheckCircle2 size={14} /> : <RefreshCw size={14} className={saveStatus === 'saving' ? 'is-spinning' : ''} />}
-          <span>{statusText}</span>
-        </div>
-        <button
-          className="btn btn--primary btn--sm anamnesis-finalize"
-          type="button"
-          disabled={finalizing || (current?.status !== 'draft' && !hasPendingChanges())}
-          onClick={() => void handleFinalize()}
-        >
-          {finalizing ? 'Concluindo…' : current?.latest_version_number ? 'Concluir nova versão' : 'Concluir anamnese'}
-        </button>
       </header>
 
       {(saveMessage || actionError || exitWarning) && (
         <div className="anamnesis-editor-banner" role="status">
-          <div>
-            <strong>{exitWarning ? 'Existem alterações que ainda não foram salvas.' : actionError ? 'Ação não concluída.' : 'Estado do salvamento'}</strong>
-            <p>{actionError ?? saveMessage ?? 'Tente sincronizar antes de sair.'}</p>
-          </div>
+          <div><strong>{exitWarning ? 'Existem alterações que ainda não foram salvas.' : actionError ? 'Ação não concluída.' : 'Estado do salvamento'}</strong><p>{actionError ?? saveMessage ?? 'Tente sincronizar antes de sair.'}</p></div>
           <div className="anamnesis-editor-banner__actions">
-            {saveStatus === 'conflict' ? (
-              <button className="btn btn--secondary btn--sm" type="button" onClick={() => void reloadServer()}>Recarregar versão atual</button>
-            ) : (
-              <button className="btn btn--secondary btn--sm" type="button" onClick={() => void retry()}>Tentar salvar</button>
-            )}
-            {exitWarning && <button className="btn btn--ghost btn--sm" type="button" onClick={() => setExitWarning(false)}>Continuar editando</button>}
+            {saveStatus === 'conflict' ? <button className="btn btn--secondary btn--sm" onClick={() => void reloadServer()}>Recarregar versão atual</button> : <button className="btn btn--secondary btn--sm" onClick={() => void retry()}>Tentar salvar</button>}
+            {exitWarning && <button className="btn btn--ghost btn--sm" onClick={() => setExitWarning(false)}>Continuar editando</button>}
           </div>
         </div>
       )}
 
       <div className="anamnesis-editor-layout">
         <nav className="anamnesis-section-nav" aria-label="Seções da anamnese">
-          {SECTIONS.map(([id, label]) => (
-            <button key={id} type="button" onClick={() => goSection(id)}>{label}</button>
-          ))}
+          {SECTIONS.map(([id, label]) => <button key={id} type="button" onClick={() => { void flush(); document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }}>{label}</button>)}
         </nav>
-
         <main className="anamnesis-form">
           <Section id="conditions" title="Condições de Saúde">
-            <p className="anamnesis-section-help">Cada item distingue Sim, Não e Não respondido.</p>
-            <div className="anamnesis-grid">
-              {CONDITIONS.map(([key, label]) => (
-                <TriStateField key={key} label={label} value={draft.conditions[key]} onChange={value => setCondition(key, value)} />
-              ))}
+            <p className="anamnesis-section-help">No rascunho uma pergunta pode ficar em branco. Ao concluir, cada item obrigatório precisa de Sim ou Não.</p>
+            <div className="anamnesis-grid">{CONDITIONS.map(([key, label]) => <BinaryField key={key} id={`q-conditions-${key}`} label={label} value={draft.conditions[key] as boolean | undefined} onChange={value => setMap('conditions', key, value)} />)}</div>
+          </Section>
+
+          <Section id="medications" title="Medicamentos">
+            <div className="anamnesis-text-status" id="q-medications">
+              <BinaryField id="q-medications-choice" label="Faz uso contínuo de algum medicamento?" value={draft.medicationsStatus === 'reported' ? true : draft.medicationsStatus === 'none' ? false : undefined} onChange={value => setDraft(previous => ({ ...previous, medicationsStatus: value ? 'reported' : 'none' }))} />
+              {draft.medicationsStatus === 'reported' && <div className="field"><label className="field-label" htmlFor="detail-medications">Qual(is)?</label><textarea id="detail-medications" data-focus-target className="field-input" rows={3} value={draft.medications} onChange={event => setDraft(previous => ({ ...previous, medications: event.target.value }))} /></div>}
             </div>
           </Section>
 
-          <Section id="medications" title="Medicamentos e Alergias">
-            <TextStatusField
-              label="Medicamentos em uso"
-              status={draft.medicationsStatus}
-              text={draft.medications}
-              reportedLabel="Utiliza"
-              noneLabel="Não utiliza"
-              placeholder="Nome, dose, frequência..."
-              onStatus={status => setDraft(value => ({ ...value, medicationsStatus: status }))}
-              onText={medications => setDraft(value => ({ ...value, medications }))}
-            />
-            <TextStatusField
-              label="Alergias conhecidas"
-              status={draft.allergiesStatus}
-              text={draft.allergies}
-              reportedLabel="Possui"
-              noneLabel="Não possui"
-              placeholder="Alergias a medicamentos, produtos, alimentos..."
-              onStatus={status => setDraft(value => ({ ...value, allergiesStatus: status }))}
-              onText={allergies => setDraft(value => ({ ...value, allergies }))}
-            />
+          <Section id="allergies" title="Alergias">
+            <p className="anamnesis-section-help">Alergias ficam centralizadas aqui. Respostas antigas continuam apenas no histórico; não são convertidas automaticamente.</p>
+            {ALLERGIES.map(([flag, label, detail, placeholder]) => <DetailQuestion key={flag} area="surgicalHistory" flag={flag} label={label} value={draft.surgicalHistory[flag] as boolean | undefined} detail={draft.surgicalHistory[detail] as string | undefined} setFlag={value => setMap('surgicalHistory', flag, value)} setDetail={value => setMap('surgicalHistory', detail, value)} placeholder={placeholder} />)}
           </Section>
 
           <Section id="history" title="Histórico Médico">
-            <ConditionalField label="Cirurgias recentes" value={draft.surgicalHistory.cirurgias_recentes} onChange={value => setSurgical('cirurgias_recentes', value)} detail={draft.surgicalHistory.cirurgias_recentes_detalhe} placeholder="Qual/quando?" onDetail={value => setSurgical('cirurgias_recentes_detalhe', value)} />
-            <ConditionalField label="Prótese metálica" value={draft.surgicalHistory.protese_metalica} onChange={value => setSurgical('protese_metalica', value)} detail={draft.surgicalHistory.protese_metalica_regiao} placeholder="Região" onDetail={value => setSurgical('protese_metalica_regiao', value)} />
-            <ConditionalField label="Desmaios/convulsões" value={draft.surgicalHistory.desmaios} onChange={value => setSurgical('desmaios', value)} detail={draft.surgicalHistory.desmaio_porque} placeholder="Por quê?" onDetail={value => setSurgical('desmaio_porque', value)} />
-            <ConditionalField label="Herpes" value={draft.surgicalHistory.herpes} onChange={value => setSurgical('herpes', value)} detail={draft.surgicalHistory.herpes_detalhe} placeholder="Com que frequência?" onDetail={value => setSurgical('herpes_detalhe', value)} />
-            <ConditionalField label="Alergia a anestesia" value={draft.surgicalHistory.alergia_anestesia} onChange={value => setSurgical('alergia_anestesia', value)} detail={draft.surgicalHistory.alergia_anestesia_detalhe} placeholder="Qual?" onDetail={value => setSurgical('alergia_anestesia_detalhe', value)} />
-            <ConditionalField label="Alergia a abelha/insetos" value={draft.surgicalHistory.alergia_abelha} onChange={value => setSurgical('alergia_abelha', value)} detail={draft.surgicalHistory.alergia_abelha_detalhe} placeholder="Reação" onDetail={value => setSurgical('alergia_abelha_detalhe', value)} />
-            <ConditionalField label="Em tratamento médico" value={draft.surgicalHistory.tratamento_medico} onChange={value => setSurgical('tratamento_medico', value)} detail={draft.surgicalHistory.tratamento_medico_detalhe} placeholder="Qual tratamento?" onDetail={value => setSurgical('tratamento_medico_detalhe', value)} />
-            <div className="anamnesis-grid">
-              <TriStateField label="Ansiedade" value={draft.surgicalHistory.ansioso} onChange={value => setSurgical('ansioso', value)} />
-              <TriStateField label="Estresse elevado" value={draft.surgicalHistory.estressado} onChange={value => setSurgical('estressado', value)} />
-              <TriStateField label="Enxaqueca" value={draft.surgicalHistory.enxaqueca} onChange={value => setSurgical('enxaqueca', value)} />
-              <TriStateField label="Intestino regular" value={draft.surgicalHistory.intestino_regular} onChange={value => setSurgical('intestino_regular', value)} />
-            </div>
+            {HISTORY.map(([flag, label, detail, placeholder]) => <DetailQuestion key={flag} area="surgicalHistory" flag={flag} label={label} value={draft.surgicalHistory[flag] as boolean | undefined} detail={draft.surgicalHistory[detail] as string | undefined} setFlag={value => setMap('surgicalHistory', flag, value)} setDetail={value => setMap('surgicalHistory', detail, value)} placeholder={placeholder} help={flag === 'recebeu_anestesia' ? 'Incluindo anestesia odontológica.' : undefined} />)}
+            <div className="anamnesis-grid">{HISTORY_SIMPLE.map(([key, label]) => <BinaryField key={key} id={`q-surgicalHistory-${key}`} label={label} value={draft.surgicalHistory[key] as boolean | undefined} onChange={value => setMap('surgicalHistory', key, value)} />)}</div>
           </Section>
 
           <Section id="womens-health" title="Saúde Feminina">
-            <div className="anamnesis-question anamnesis-question--stack">
-              <span className="anamnesis-question__label">Gestante?</span>
-              <div className="anamnesis-choice-group">
-                {[
-                  ['sim', 'Sim'],
-                  ['não', 'Não'],
-                  ['tentando', 'Tentando'],
-                  ['', 'Não resp.'],
-                ].map(([value, label]) => (
-                  <button key={value || 'empty'} type="button" className={(draft.surgicalHistory.gestante ?? '') === value ? 'is-selected' : ''} onClick={() => setSurgical('gestante', value || undefined)}>{label}</button>
-                ))}
+            <div className="anamnesis-question anamnesis-question--stack" id="q-surgicalHistory-gestante">
+              <span className="anamnesis-question__label" id="gestante-label">Gestante?</span>
+              <div className="anamnesis-choice-group" role="radiogroup" aria-labelledby="gestante-label" data-focus-target>
+                {[['sim', 'Sim'], ['não', 'Não'], ['tentando', 'Tentando']].map(([value, label]) => <button key={value} type="button" role="radio" aria-checked={draft.surgicalHistory.gestante === value} className={draft.surgicalHistory.gestante === value ? 'is-selected' : ''} onClick={() => setMap('surgicalHistory', 'gestante', value)}>{label}</button>)}
               </div>
             </div>
-            {draft.surgicalHistory.gestante === 'sim' && (
-              <div className="form-grid">
-                <div className="field">
-                  <label className="field-label">Quantas gestações?</label>
-                  <input className="field-input" value={draft.surgicalHistory.quantas_gestacoes ?? ''} onChange={event => setSurgical('quantas_gestacoes', event.target.value)} />
-                </div>
-                <div className="field">
-                  <label className="field-label">Tipo de parto</label>
-                  <input className="field-input" value={draft.surgicalHistory.tipo_parto ?? ''} placeholder="Normal / Cesárea" onChange={event => setSurgical('tipo_parto', event.target.value)} />
-                </div>
-              </div>
-            )}
-            <TriStateField label="Menstruação regular" value={draft.surgicalHistory.menstruacao_regular} onChange={value => setSurgical('menstruacao_regular', value)} />
-            <div className="field">
-              <label className="field-label">Método contraceptivo</label>
-              <input className="field-input" value={draft.surgicalHistory.metodo_contraceptivo ?? ''} onChange={event => setSurgical('metodo_contraceptivo', event.target.value)} />
-            </div>
-            <ConditionalField label="TPM intensa" value={draft.surgicalHistory.tpm} onChange={value => setSurgical('tpm', value)} detail={draft.surgicalHistory.tpm_o_que_faz} placeholder="O que costuma fazer?" onDetail={value => setSurgical('tpm_o_que_faz', value)} />
+            {draft.surgicalHistory.gestante === 'sim' && <div className="form-grid"><div className="field"><label className="field-label">Quantas gestações?</label><input className="field-input" value={String(draft.surgicalHistory.quantas_gestacoes ?? '')} onChange={event => setMap('surgicalHistory', 'quantas_gestacoes', event.target.value)} /></div><div className="field"><label className="field-label">Tipo de parto</label><input className="field-input" value={String(draft.surgicalHistory.tipo_parto ?? '')} onChange={event => setMap('surgicalHistory', 'tipo_parto', event.target.value)} /></div></div>}
+            <BinaryField id="q-surgicalHistory-menstruacao_regular" label="Menstruação regular" value={draft.surgicalHistory.menstruacao_regular as boolean | undefined} onChange={value => setMap('surgicalHistory', 'menstruacao_regular', value)} />
+            <div className="field"><label className="field-label">Método contraceptivo</label><input className="field-input" value={String(draft.surgicalHistory.metodo_contraceptivo ?? '')} onChange={event => setMap('surgicalHistory', 'metodo_contraceptivo', event.target.value)} /></div>
+            <DetailQuestion area="surgicalHistory" flag="colica_menstrual" label="Tem cólica menstrual?" value={draft.surgicalHistory.colica_menstrual as boolean | undefined} detail={draft.surgicalHistory.colica_menstrual_detalhe as string | undefined} setFlag={value => setMap('surgicalHistory', 'colica_menstrual', value)} setDetail={value => setMap('surgicalHistory', 'colica_menstrual_detalhe', value)} placeholder="Descreva intensidade/contexto" />
           </Section>
 
-          <Section id="habits" title="Hábitos Alimentares">
-            <div className="anamnesis-grid">
-              {HABITS.map(([key, label]) => (
-                <TriStateField key={key} label={label} value={draft.habits[key] as boolean | undefined} onChange={value => setHabit(key, value)} />
-              ))}
-            </div>
-            <ConditionalField label="Alimentação especial / dieta" value={draft.habits.alimentacao_especial} onChange={value => setHabit('alimentacao_especial', value)} detail={draft.habits.alimentacao_especial_qual} placeholder="Qual dieta?" onDetail={value => setHabit('alimentacao_especial_qual', value)} />
-            <ConditionalField label="Suplementação" value={draft.habits.suplemento} onChange={value => setHabit('suplemento', value)} detail={draft.habits.suplemento_quais} placeholder="Quais suplementos?" onDetail={value => setHabit('suplemento_quais', value)} />
-            <ConditionalField label="Atividade física" value={draft.habits.atividade_fisica} onChange={value => setHabit('atividade_fisica', value)} detail={draft.habits.atividade_fisica_detalhe} placeholder="Tipo / frequência" onDetail={value => setHabit('atividade_fisica_detalhe', value)} />
-            <div className="field">
-              <label className="field-label">Quantidade de água por dia</label>
-              <input className="field-input" value={draft.habits.quantidade_agua ?? ''} placeholder="Ex: 2 litros" onChange={event => setHabit('quantidade_agua', event.target.value)} />
-            </div>
+          <Section id="food" title="Alimentação">
+            <p className="anamnesis-section-help">Ao marcar Sim, informe a frequência. Em telas largas o campo fica ao lado; no celular quebra para a linha abaixo.</p>
+            {FOOD.map(([flag, label, detail]) => <DetailQuestion key={flag} area="habits" flag={flag} label={label} value={draft.habits[flag] as boolean | undefined} detail={draft.habits[detail] as string | undefined} setFlag={value => setMap('habits', flag, value)} setDetail={value => setMap('habits', detail, value)} placeholder="Frequência" />)}
+            <BinaryField id="q-habits-cigarros" label="Cigarros" value={draft.habits.cigarros as boolean | undefined} onChange={value => setMap('habits', 'cigarros', value)} />
+            <div className="field"><label className="field-label">Quantidade de água por dia</label><input className="field-input" value={String(draft.habits.quantidade_agua ?? '')} placeholder="Ex.: 2 litros" onChange={event => setMap('habits', 'quantidade_agua', event.target.value)} /></div>
           </Section>
 
-          <Section id="aesthetics" title="Rotina Estética">
+          <Section id="routine" title="Hábitos / Rotina">
+            {ROUTINE.map(([flag, label, detail, placeholder]) => <DetailQuestion key={flag} area="habits" flag={flag} label={label} value={draft.habits[flag] as boolean | undefined} detail={draft.habits[detail] as string | undefined} setFlag={value => setMap('habits', flag, value)} setDetail={value => setMap('habits', detail, value)} placeholder={placeholder} />)}
+          </Section>
+
+          <Section id="procedures" title="Procedimentos anteriores">
+            <p className="anamnesis-section-help">Todos os campos ficam abertos. Não há data obrigatória: escreva como a paciente relata, por exemplo “há 6 meses”, “3 sessões” ou “não lembra”.</p>
+            <div className="anamnesis-procedure-grid">{PROCEDURES.map(([flag, label, detail]) => <ProcedureQuestion key={flag} flag={flag} label={label} value={draft.aesthetics[flag] as boolean | undefined} note={draft.aesthetics[detail] as string | undefined} onFlag={value => setMap('aesthetics', flag, value)} onNote={value => setMap('aesthetics', detail, value)} />)}</div>
+          </Section>
+
+          <Section id="skin-review" title="Pele e recomendações">
             <div className="form-grid">
-              <div className="field field--full">
-                <label className="field-label">Cuidados diários em casa</label>
-                <textarea className="field-input" rows={3} value={draft.aesthetics.cuidados_diarios ?? ''} placeholder="Sabonete, hidratante, protetor..." onChange={event => setAesthetic('cuidados_diarios', event.target.value)} />
-              </div>
-              <div className="field field--full">
-                <label className="field-label">Produtos em uso no rosto</label>
-                <textarea className="field-input" rows={3} value={draft.aesthetics.produtos_em_uso ?? ''} onChange={event => setAesthetic('produtos_em_uso', event.target.value)} />
-              </div>
+              <div className="field field--full"><label className="field-label">Cuidados diários em casa</label><textarea className="field-input" rows={3} value={String(draft.aesthetics.cuidados_diarios ?? '')} onChange={event => setMap('aesthetics', 'cuidados_diarios', event.target.value)} /></div>
+              <div className="field field--full"><label className="field-label">Produtos em uso no rosto</label><textarea className="field-input" rows={3} value={String(draft.aesthetics.produtos_em_uso ?? '')} onChange={event => setMap('aesthetics', 'produtos_em_uso', event.target.value)} /></div>
             </div>
-            <ConditionalField label="Usa produto com ácido" value={draft.aesthetics.produto_com_acido} onChange={value => setAesthetic('produto_com_acido', value)} detail={draft.aesthetics.produto_com_acido_detalhe} placeholder="Qual ácido / concentração?" onDetail={value => setAesthetic('produto_com_acido_detalhe', value)} />
-            <ConditionalField label="Limpeza de pele recente" value={draft.aesthetics.limpeza_pele} onChange={value => setAesthetic('limpeza_pele', value)} detail={draft.aesthetics.limpeza_pele_data} placeholder="Data" type="date" onDetail={value => setAesthetic('limpeza_pele_data', value)} />
-            <ConditionalField label="Microagulhamento recente" value={draft.aesthetics.microagulhamento} onChange={value => setAesthetic('microagulhamento', value)} detail={draft.aesthetics.microagulhamento_data} placeholder="Data" type="date" onDetail={value => setAesthetic('microagulhamento_data', value)} />
-            <ConditionalField label="Peeling recente" value={draft.aesthetics.peeling} onChange={value => setAesthetic('peeling', value)} detail={draft.aesthetics.peeling_detalhe} placeholder="Tipo / data" onDetail={value => setAesthetic('peeling_detalhe', value)} />
-            <ConditionalField label="Toxina botulínica" value={draft.aesthetics.toxina_botulinica} onChange={value => setAesthetic('toxina_botulinica', value)} detail={draft.aesthetics.toxina_botulinica_data} placeholder="Última aplicação" type="date" onDetail={value => setAesthetic('toxina_botulinica_data', value)} />
-            <ConditionalField label="Fios de sustentação" value={draft.aesthetics.fios_sustentacao} onChange={value => setAesthetic('fios_sustentacao', value)} detail={draft.aesthetics.fios_sustentacao_data} placeholder="Quando?" type="date" onDetail={value => setAesthetic('fios_sustentacao_data', value)} />
-            <ConditionalField label="Preenchimento com ácido hialurônico" value={draft.aesthetics.preenchimento_hialuronico} onChange={value => setAesthetic('preenchimento_hialuronico', value)} detail={draft.aesthetics.preenchimento_hialuronico_data} placeholder="Quando?" type="date" onDetail={value => setAesthetic('preenchimento_hialuronico_data', value)} />
-            <ConditionalField label="Bioestimulador" value={draft.aesthetics.bioestimulador} onChange={value => setAesthetic('bioestimulador', value)} detail={draft.aesthetics.bioestimulador_data} placeholder="Quando?" type="date" onDetail={value => setAesthetic('bioestimulador_data', value)} />
-            <ConditionalField label="Plástica facial" value={draft.aesthetics.plastica_facial} onChange={value => setAesthetic('plastica_facial', value)} detail={draft.aesthetics.plastica_facial_detalhe} placeholder="Qual / quando?" onDetail={value => setAesthetic('plastica_facial_detalhe', value)} />
-            <ConditionalField label="PMMA" value={draft.aesthetics.pmma} onChange={value => setAesthetic('pmma', value)} detail={draft.aesthetics.pmma_regiao} placeholder="Região" onDetail={value => setAesthetic('pmma_regiao', value)} />
-            <ConditionalField label="Outros tratamentos estéticos" value={draft.aesthetics.outros_tratamentos} onChange={value => setAesthetic('outros_tratamentos', value)} detail={draft.aesthetics.outros_tratamentos_detalhe} placeholder="Quais?" onDetail={value => setAesthetic('outros_tratamentos_detalhe', value)} />
-            <ConditionalField label="Alterações recentes na pele" value={draft.aesthetics.alteracoes_recentes} onChange={value => setAesthetic('alteracoes_recentes', value)} detail={draft.aesthetics.alteracoes_recentes_detalhe} placeholder="Descrever" onDetail={value => setAesthetic('alteracoes_recentes_detalhe', value)} />
+            <DetailQuestion area="aesthetics" flag="produto_com_acido" label="Usa produto com ácido?" value={draft.aesthetics.produto_com_acido as boolean | undefined} detail={draft.aesthetics.produto_com_acido_detalhe as string | undefined} setFlag={value => setMap('aesthetics', 'produto_com_acido', value)} setDetail={value => setMap('aesthetics', 'produto_com_acido_detalhe', value)} placeholder="Qual ácido / concentração?" />
+            <DetailQuestion area="aesthetics" flag="alteracoes_recentes" label="Alterações recentes na pele?" value={draft.aesthetics.alteracoes_recentes as boolean | undefined} detail={draft.aesthetics.alteracoes_recentes_detalhe as string | undefined} setFlag={value => setMap('aesthetics', 'alteracoes_recentes', value)} setDetail={value => setMap('aesthetics', 'alteracoes_recentes_detalhe', value)} placeholder="Descreva" />
+            <div className="field"><label className="field-label">Última LP / última limpeza de pele</label><input className="field-input" value={String(draft.aesthetics.ultima_limpeza_pele ?? '')} placeholder="Ex.: há 2 meses, não lembra, janeiro mais ou menos, nunca fez" onChange={event => setMap('aesthetics', 'ultima_limpeza_pele', event.target.value)} /></div>
+            <LargeTextarea id="pele-paciente" label="Pele da paciente" value={draft.aesthetics.pele_paciente as string | undefined} onChange={value => setMap('aesthetics', 'pele_paciente', value)} />
+            <LargeTextarea id="observacoes-gerais" label="Observações gerais" value={draft.aesthetics.observacoes_gerais as string | undefined} onChange={value => setMap('aesthetics', 'observacoes_gerais', value)} />
+            <LargeTextarea id="minhas-recomendacoes" label="Minhas recomendações" value={draft.aesthetics.minhas_recomendacoes as string | undefined} onChange={value => setMap('aesthetics', 'minhas_recomendacoes', value)} />
           </Section>
 
           <Section id="review" title="Revisão">
-            <div className="anamnesis-review-grid">
-              <div><span>Condições respondidas</span><strong>{review.conditionsAnswered} de {CONDITIONS.length}</strong></div>
-              <div><span>Medicamentos</span><strong>{review.medications === 'reported' ? 'Informados' : review.medications === 'none' ? 'Não utiliza' : 'Não respondido'}</strong></div>
-              <div><span>Alergias</span><strong>{review.allergies === 'reported' ? 'Informadas' : review.allergies === 'none' ? 'Não possui' : 'Não respondido'}</strong></div>
-            </div>
-            {validationIssues.length > 0 ? (
-              <div className="anamnesis-validation" role="alert">
-                <strong>Revise antes de concluir:</strong>
-                <ul>{validationIssues.map(issue => <li key={issue}>{issue}</li>)}</ul>
-              </div>
-            ) : (
-              <p className="anamnesis-section-help">Não há campos condicionais pendentes. Respostas opcionais podem permanecer como “Não respondido”.</p>
-            )}
-            <button className="btn btn--primary btn--md" type="button" disabled={finalizing || (current?.status !== 'draft' && !hasPendingChanges())} onClick={() => void handleFinalize()}>
-              {finalizing ? 'Concluindo…' : current?.latest_version_number ? 'Concluir nova versão' : 'Concluir anamnese'}
-            </button>
+            <div className="anamnesis-review-grid"><div><span>Condições respondidas</span><strong>{review.answered} de {CONDITIONS.length}</strong></div><div><span>Medicamentos</span><strong>{review.medications === 'reported' ? 'Sim' : review.medications === 'none' ? 'Não' : 'Pendente'}</strong></div><div><span>Estado</span><strong>{current?.status === 'draft' ? 'Rascunho' : 'Versão concluída'}</strong></div></div>
+            {validationIssues.length > 0 ? <div className="anamnesis-validation" role="alert"><strong>Revise estas perguntas antes de concluir:</strong><ul>{validationIssues.map(issue => <li key={`${issue.fieldId}-${issue.message}`}><button type="button" onClick={() => focusIssue(issue.fieldId)}>{issue.message}</button></li>)}</ul></div> : <p className="anamnesis-section-help">O rascunho pode ser salvo parcialmente. A validação completa ocorre ao concluir.</p>}
+            <button className="btn btn--primary btn--md" type="button" disabled={finalizing || (current?.status !== 'draft' && !hasPendingChanges())} onClick={() => void handleFinalize()}>{finalizing ? 'Concluindo…' : current?.latest_version_number ? 'Concluir nova versão' : 'Concluir anamnese'}</button>
           </Section>
         </main>
       </div>
