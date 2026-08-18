@@ -8,7 +8,10 @@ export type RelationshipTemplateOverride = { template_key: CommunicationTemplate
 
 function counts(value: unknown): RelationshipCounts {
   const item = (value ?? {}) as Partial<Record<keyof RelationshipCounts, unknown>>;
-  return { total: Number(item.total ?? 0), return: Number(item.return ?? 0), proposal: Number(item.proposal ?? 0), credit: Number(item.credit ?? 0), reactivation: Number(item.reactivation ?? 0), snoozed: Number(item.snoozed ?? 0) };
+  return {
+    total: Number(item.total ?? 0), return: Number(item.return ?? 0), proposal: Number(item.proposal ?? 0),
+    credit: Number(item.credit ?? 0), reactivation: Number(item.reactivation ?? 0), reschedule: Number(item.reschedule ?? 0), snoozed: Number(item.snoozed ?? 0),
+  };
 }
 
 export function useRelationshipCenter(options: { category?: string | null; search?: string; includeSnoozed?: boolean; page?: number } = {}) {
@@ -31,8 +34,8 @@ export function useRelationshipCenter(options: { category?: string | null; searc
     setLoading(true); setError(null);
     try {
       const [listResult, countsResult, prefResult, communicationPrefResult, templatesResult, profileResult] = await Promise.all([
-        supabase.rpc('list_relationship_opportunities_v1', { p_category: category, p_search: search || null, p_include_snoozed: includeSnoozed, p_limit: 50, p_offset: page * 50 }),
-        supabase.rpc('get_relationship_opportunity_counts_v1'),
+        supabase.rpc('list_relationship_opportunities_v2', { p_category: category, p_search: search || null, p_include_snoozed: includeSnoozed, p_limit: 50, p_offset: page * 50 }),
+        supabase.rpc('get_relationship_opportunity_counts_v2'),
         supabase.from('relationship_preferences').select('returns_enabled,proposals_enabled,credits_enabled,reactivation_enabled,reactivation_after_days,recent_contact_cooldown_days').maybeSingle(),
         supabase.from('communication_preferences').select('confirmation_lead_hours,proposal_followup_days,package_expiry_days').maybeSingle(),
         supabase.from('communication_templates').select('template_key,body,enabled'),
@@ -90,7 +93,15 @@ export function useRelationshipCenter(options: { category?: string | null; searc
 
   const recordManualContact = useCallback(async (person: RelationshipPerson, opportunity: RelationshipOpportunity, recipientPhone: string, body: string) => {
     const idempotencyKey = crypto.randomUUID();
-    if (opportunity.type === 'reactivation') {
+    if (opportunity.type === 'reschedule') {
+      const { error: recordError } = await supabase.rpc('record_appointment_recovery_contact_v1', {
+        p_appointment_id: opportunity.source_id,
+        p_recipient_phone: recipientPhone,
+        p_message_body: body,
+        p_idempotency_key: idempotencyKey,
+      });
+      if (recordError) throw recordError;
+    } else if (opportunity.type === 'reactivation') {
       if (!person.patient_id) throw new Error('Reativação exige paciente vinculada.');
       const { error: recordError } = await supabase.rpc('record_relationship_manual_contact_v1', { p_patient_id: person.patient_id, p_recipient_phone: recipientPhone, p_message_body: body, p_idempotency_key: idempotencyKey });
       if (recordError) throw recordError;
@@ -114,7 +125,14 @@ export function useRelationshipCenter(options: { category?: string | null; searc
     await refresh();
   }, [refresh]);
 
-  return { items, summary, preferences, communicationPreferences, templateMap, clinicName, loading, error, pageSize: 50, refresh, savePreferences, snoozePerson, recordManualContact };
+  const dismissOpportunity = useCallback(async (opportunity: RelationshipOpportunity) => {
+    if (opportunity.type !== 'reschedule') throw new Error('Somente oportunidades de reagendamento podem ser dispensadas aqui.');
+    const { error: dismissError } = await supabase.rpc('dismiss_appointment_recovery_v1', { p_appointment_id: opportunity.source_id });
+    if (dismissError) throw dismissError;
+    await refresh();
+  }, [refresh]);
+
+  return { items, summary, preferences, communicationPreferences, templateMap, clinicName, loading, error, pageSize: 50, refresh, savePreferences, snoozePerson, recordManualContact, dismissOpportunity };
 }
 
 export function useRelationshipCounts() {
@@ -124,7 +142,7 @@ export function useRelationshipCounts() {
   const refresh = useCallback(async () => {
     if (!user) { setSummary(EMPTY_RELATIONSHIP_COUNTS); setLoading(false); return; }
     setLoading(true);
-    const { data, error } = await supabase.rpc('get_relationship_opportunity_counts_v1');
+    const { data, error } = await supabase.rpc('get_relationship_opportunity_counts_v2');
     if (!error) setSummary(counts(data));
     setLoading(false);
   }, [user]);
@@ -140,7 +158,7 @@ export function useRelationshipPersonDetail(personType: RelationshipPersonType, 
     let alive = true;
     if (!personId) { setPerson(null); setLoading(false); return () => { alive = false; }; }
     setLoading(true); setError(null);
-    void supabase.rpc('get_relationship_person_v1', { p_person_type: personType, p_person_id: personId }).then(({ data, error: rpcError }) => {
+    void supabase.rpc('get_relationship_person_v2', { p_person_type: personType, p_person_id: personId }).then(({ data, error: rpcError }) => {
       if (!alive) return;
       if (rpcError) { setError(rpcError.message); setPerson(null); }
       else {

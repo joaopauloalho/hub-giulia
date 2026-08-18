@@ -1,7 +1,7 @@
 import type { CommunicationTemplateKey } from './communications';
 
 export type RelationshipPersonType = 'patient' | 'contact';
-export type RelationshipOpportunityType = 'return' | 'proposal' | 'credit' | 'reactivation';
+export type RelationshipOpportunityType = 'return' | 'proposal' | 'credit' | 'reactivation' | 'reschedule';
 
 export type RelationshipCreditBalance = {
   package_item_id: string;
@@ -14,7 +14,7 @@ export type RelationshipOpportunity = {
   key: string;
   type: RelationshipOpportunityType;
   priority_class: string;
-  source_type: 'procedure_return' | 'proposal_version' | 'package' | 'relationship_patient';
+  source_type: 'procedure_return' | 'proposal_version' | 'package' | 'relationship_patient' | 'appointment';
   source_id: string;
   status: string;
   label: string;
@@ -52,6 +52,7 @@ export type RelationshipCounts = {
   proposal: number;
   credit: number;
   reactivation: number;
+  reschedule: number;
   snoozed: number;
 };
 
@@ -79,6 +80,7 @@ export const EMPTY_RELATIONSHIP_COUNTS: RelationshipCounts = {
   proposal: 0,
   credit: 0,
   reactivation: 0,
+  reschedule: 0,
   snoozed: 0,
 };
 
@@ -87,11 +89,14 @@ export const RELATIONSHIP_TYPE_LABEL: Record<RelationshipOpportunityType, string
   proposal: 'Proposta',
   credit: 'Crédito',
   reactivation: 'Reativação',
+  reschedule: 'Reagendar',
 };
 
 const PRIORITY_ORDER: Record<string, number> = {
   return_overdue: 60,
   return_due: 50,
+  appointment_no_show_recovery: 45,
+  appointment_cancel_recovery: 44,
   credit_expiry: 40,
   return_upcoming: 35,
   proposal_followup: 30,

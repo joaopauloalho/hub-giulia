@@ -12,12 +12,13 @@ import { clinicDateIso, clinicLocalToIso, clinicTime, displayEndTime } from '../
 type ConflictFinder = (scheduledAt: string, durationMinutes: number, ignoreId?: string) => Promise<{ scheduled_at: string } | null>;
 type PatientSeed = Pick<Patient, 'id' | 'name' | 'phone'>;
 
-export function AgendaFormDrawer({ initialDate, initialTime, initialPatientId, initialPatient, initialServiceId, appointment, findConflict, onCreate, onUpdate, onClose }: {
+export function AgendaFormDrawer({ initialDate, initialTime, initialPatientId, initialPatient, initialServiceId, initialDuration, appointment, findConflict, onCreate, onUpdate, onClose }: {
   initialDate: string;
   initialTime: string;
   initialPatientId?: string | null;
   initialPatient?: PatientSeed | null;
   initialServiceId?: string | null;
+  initialDuration?: number | null;
   appointment: AgendaAppointment | null;
   findConflict: ConflictFinder;
   onCreate: (input: AgendaInput) => Promise<AgendaAppointment>;
@@ -32,7 +33,7 @@ export function AgendaFormDrawer({ initialDate, initialTime, initialPatientId, i
   const [time, setTime] = useState(appointment ? clinicTime(appointment.scheduled_at) : initialTime);
   const [patientId, setPatientId] = useState(appointment?.patient_id ?? initialPatientId ?? initialPatient?.id ?? '');
   const [serviceId, setServiceId] = useState(appointment?.service_id ?? initialServiceId ?? '');
-  const [duration, setDuration] = useState(appointment?.duration_minutes ?? appointment?.service?.duration_minutes ?? 60);
+  const [duration, setDuration] = useState(appointment?.duration_minutes ?? appointment?.service?.duration_minutes ?? initialDuration ?? 60);
   const [notes, setNotes] = useState(appointment?.notes ?? '');
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
@@ -44,10 +45,10 @@ export function AgendaFormDrawer({ initialDate, initialTime, initialPatientId, i
   useDirtyFormGuard(`agenda-form-${appointment?.id ?? 'new'}`, dirty && !saving);
 
   useEffect(() => {
-    if (appointment || !initialServiceId || serviceId !== initialServiceId) return;
+    if (appointment || initialDuration || !initialServiceId || serviceId !== initialServiceId) return;
     const service = servicos.find(item => item.id === initialServiceId);
     if (service?.duration_minutes && service.duration_minutes > 0) setDuration(service.duration_minutes);
-  }, [appointment, initialServiceId, serviceId, servicos]);
+  }, [appointment, initialDuration, initialServiceId, serviceId, servicos]);
 
   const selectedPatient = pacientes.find(item => item.id === patientId)
     ?? (appointment?.patient_id === patientId ? appointment.patient : undefined)

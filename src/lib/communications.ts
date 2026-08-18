@@ -7,6 +7,8 @@ export const COMMUNICATION_TEMPLATE_KEYS = [
   'aftercare_instructions',
   'post_procedure_checkin',
   'relationship_reactivation',
+  'waitlist_slot',
+  'appointment_recovery',
 ] as const;
 
 export type CommunicationTemplateKey = typeof COMMUNICATION_TEMPLATE_KEYS[number];
@@ -91,6 +93,8 @@ export const DEFAULT_COMMUNICATION_TEMPLATES: Record<CommunicationTemplateKey, s
   aftercare_instructions: 'Oi, {first_name}! Tudo bem? Seguem as orientações combinadas no seu atendimento:\n\n{aftercare_instructions}\n\nQualquer dúvida, estou à disposição.',
   post_procedure_checkin: 'Oi, {first_name}! Tudo bem? Passando para saber como você está após o seu atendimento. Está tudo correndo bem?',
   relationship_reactivation: 'Oi, {first_name}! Tudo bem? Faz um tempinho que não nos vemos e passei para saber como você está. Se precisar de alguma coisa, estou por aqui.',
+  waitlist_slot: 'Oi, {first_name}! Abriu um horário em {date}, às {time}. Como você comentou que tinha interesse em antecipar, quis te avisar 😊 Se quiser, consigo verificar esse horário para você.',
+  appointment_recovery: 'Oi, {first_name}! Tudo bem? Vi que ficou sem um novo horário agendado. Se quiser, posso te ajudar a encontrar uma nova data.',
 };
 
 export const COMMUNICATION_PLACEHOLDERS = [
@@ -129,6 +133,8 @@ export const TEMPLATE_LABEL: Record<CommunicationTemplateKey, string> = {
   aftercare_instructions: 'Orientações pós-atendimento',
   post_procedure_checkin: 'Check-in pós-atendimento',
   relationship_reactivation: 'Relacionamento / reativação',
+  waitlist_slot: 'Lista de encaixe / horário disponível',
+  appointment_recovery: 'Reagendar após cancelamento ou falta',
 };
 
 export const PRIORITY_LABEL: Record<CommunicationPriority, string> = {
@@ -253,5 +259,7 @@ export function communicationStatusLabel(context: string): string {
     aftercare_instructions: 'Orientações pós-atendimento',
     post_procedure_checkin: 'Check-in pós-atendimento',
     relationship_reactivation: 'Relacionamento / reativação',
+    waitlist_slot: 'Lista de encaixe',
+    appointment_recovery: 'Reagendamento',
   } as Record<string, string>)[context] ?? 'Comunicação';
 }
