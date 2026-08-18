@@ -29,16 +29,17 @@ describe('CRM 2.0 stable contracts', () => {
     ]);
   });
 
-  it('keeps structured lead-source keys stable', () => {
+  it('uses the shared acquisition-source keys for new CRM data', () => {
     expect(CRM_SOURCE_KEYS).toEqual([
       'instagram',
-      'whatsapp',
       'referral',
       'google',
+      'partnership',
       'existing_patient',
       'campaign',
       'other',
     ]);
+    expect(CRM_SOURCE_KEYS).not.toContain('whatsapp');
   });
 
   it('keeps loss reasons structured for conversion analytics', () => {
