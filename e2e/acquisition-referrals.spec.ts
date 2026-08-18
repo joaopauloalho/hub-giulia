@@ -4,10 +4,26 @@ import { browserLogin, signedInClient, anonClient } from './helpers';
 
 const suffix = () => randomUUID().slice(0, 8);
 
+type PatientRow = {
+  id: string;
+  acquisition_source: string | null;
+  referred_by_patient_id: string | null;
+  referrer_name: string | null;
+};
+
+type AcquisitionSourceRow = {
+  source: string | null;
+  attended_patients: number;
+  procedures: number;
+  production_value: number;
+};
+
+type AcquisitionReport = { sources: AcquisitionSourceRow[] };
+
 async function insertPatient(client: Awaited<ReturnType<typeof signedInClient>>, data: Record<string, unknown>) {
-  const { data: row, error } = await client.from('patients').insert(data).select('*').single();
+  const { data: row, error } = await client.from('patients').insert(data).select('id,acquisition_source,referred_by_patient_id,referrer_name').single();
   if (error) throw error;
-  return row as Record<string, any>;
+  return row as PatientRow;
 }
 
 test.describe.serial('Hub Giulia 4.2 acquisition and referrals', () => {
@@ -63,18 +79,21 @@ test.describe.serial('Hub Giulia 4.2 acquisition and referrals', () => {
     const start = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-01`;
     const nextMonth = new Date(today.getFullYear(), today.getMonth()+1, 1);
     const end = `${nextMonth.getFullYear()}-${String(nextMonth.getMonth()+1).padStart(2,'0')}-01`;
-    const { data: report, error: reportError } = await a.rpc('get_acquisition_summary_v1', { p_start_date: start, p_end_date_exclusive: end });
+    const { data: reportData, error: reportError } = await a.rpc('get_acquisition_summary_v1', { p_start_date: start, p_end_date_exclusive: end });
     if (reportError) throw reportError;
-    const instagram = report.sources.find((row: any) => row.source === 'instagram');
-    expect(Number(instagram.attended_patients)).toBeGreaterThanOrEqual(1);
-    expect(Number(instagram.procedures)).toBeGreaterThanOrEqual(4);
-    expect(Number(instagram.production_value)).toBeGreaterThanOrEqual(400);
+    const report = reportData as AcquisitionReport;
+    const instagram = report.sources.find(row => row.source === 'instagram');
+    expect(instagram).toBeTruthy();
+    expect(Number(instagram?.attended_patients)).toBeGreaterThanOrEqual(1);
+    expect(Number(instagram?.procedures)).toBeGreaterThanOrEqual(4);
+    expect(Number(instagram?.production_value)).toBeGreaterThanOrEqual(400);
 
     await a.from('patients').update({ archived_at: new Date().toISOString() }).eq('id', patient.id);
-    const { data: reportArchived, error: archivedError } = await a.rpc('get_acquisition_summary_v1', { p_start_date: start, p_end_date_exclusive: end });
+    const { data: reportArchivedData, error: archivedError } = await a.rpc('get_acquisition_summary_v1', { p_start_date: start, p_end_date_exclusive: end });
     if (archivedError) throw archivedError;
-    const archivedInstagram = reportArchived.sources.find((row: any) => row.source === 'instagram');
-    expect(Number(archivedInstagram.procedures)).toBeGreaterThanOrEqual(4);
+    const reportArchived = reportArchivedData as AcquisitionReport;
+    const archivedInstagram = reportArchived.sources.find(row => row.source === 'instagram');
+    expect(Number(archivedInstagram?.procedures)).toBeGreaterThanOrEqual(4);
   });
 
   test('anonymous report access is denied', async () => {
