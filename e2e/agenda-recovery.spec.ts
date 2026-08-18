@@ -25,8 +25,6 @@ async function createAppointment(patientId: string, serviceId: string, scheduled
   return data!;
 }
 
-test.describe.configure({ mode: 'serial' });
-
 test('waitlist is owner-scoped, idempotent, deterministically matched and fulfilled only after a real appointment', async () => {
   const seeded = await state();
   const a = await signedInClient('a');
@@ -162,8 +160,9 @@ test('Patient 360 waitlist and Relationship Reagendar remain touch-usable on pho
   for (const viewport of [{ width: 390, height: 844 }, { width: 1024, height: 768 }]) {
     await page.setViewportSize(viewport);
     await page.goto(`/pacientes/${seeded.patientId}`);
-    await expect(page.getByText('Lista de encaixe', { exact: true })).toBeVisible();
-    const edit = page.getByRole('button', { name: 'Editar', exact: true }).last();
+    const waitlistCard = page.locator('section.card').filter({ hasText: 'Lista de encaixe' }).first();
+    await expect(waitlistCard.getByText('Lista de encaixe', { exact: true })).toBeVisible();
+    const edit = waitlistCard.getByRole('button', { name: 'Editar', exact: true });
     await expect(edit).toBeVisible();
     const box = await edit.boundingBox();
     expect(box?.height ?? 0).toBeGreaterThanOrEqual(44);
