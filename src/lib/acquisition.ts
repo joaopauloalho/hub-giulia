@@ -38,6 +38,9 @@ export const emptyAcquisitionDraft = (): AcquisitionDraft => ({
 
 const clean = (value: string | null | undefined) => value?.trim() || null;
 
+export const isAcquisitionSource = (value: string): value is AcquisitionSource =>
+  (ACQUISITION_SOURCE_KEYS as readonly string[]).includes(value);
+
 export function normalizeAcquisitionDraft(input: AcquisitionDraft): AcquisitionDraft {
   const source = input.source ?? null;
   let sourceDetail = clean(input.sourceDetail);
@@ -60,11 +63,11 @@ export function normalizeAcquisitionDraft(input: AcquisitionDraft): AcquisitionD
 }
 
 export function formatAcquisitionLabel(
-  source: AcquisitionSource | null | undefined,
+  source: AcquisitionSource | string | null | undefined,
   sourceDetail?: string | null,
   referrerName?: string | null,
 ): string {
-  if (!source) return 'Não informada';
+  if (!source || !isAcquisitionSource(source)) return 'Não informada';
   const base = ACQUISITION_SOURCE_LABEL[source];
   if (source === 'referral' && clean(referrerName)) return `${base} — ${clean(referrerName)}`;
   if (ACQUISITION_DETAIL_SOURCES.includes(source) && clean(sourceDetail)) return `${base} — ${clean(sourceDetail)}`;
