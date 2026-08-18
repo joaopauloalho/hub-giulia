@@ -32,6 +32,8 @@ import { useToast } from '../../hooks/useToast';
 import { supabase } from '../../lib/supabase';
 import { buildWhatsAppUrl } from '../../lib/whatsapp';
 import { clinicDateIso } from '../../lib/agendaTime';
+import { AcquisitionFields } from '../../components/patients/AcquisitionFields';
+import { emptyAcquisitionDraft, formatAcquisitionLabel, type AcquisitionDraft } from '../../lib/acquisition';
 import { PROPOSAL_STATUS_LABEL, proposalDate, proposalMoney, type ProposalEffectiveStatus, type ProposalSummary } from '../../lib/proposals';
 import {
   CRM_CHANNEL_KEYS,
@@ -100,7 +102,7 @@ function CrmCard({ card, onOpen, onMove }: { card: CrmPipelineCard; onOpen: () =
           {card.interests.length > 3 && <span className="crm-tag">+{card.interests.length - 3}</span>}
         </div>}
         <div className="crm-card-meta">
-          <span>{CRM_SOURCE_LABEL[card.source]}</span>
+          <span>{formatAcquisitionLabel(card.source, card.source_detail, card.referrer_patient_name ?? card.referrer_name)}</span>
           {value && <strong>{value}</strong>}
           {card.patient_id && <span>Paciente vinculada</span>}
         </div>
@@ -148,14 +150,13 @@ function NewLeadModal({ patient, onClose, crm }: { patient: PatientSeed | null; 
   const [name, setName] = useState(patient?.name ?? '');
   const [phone, setPhone] = useState(patient?.phone ?? '');
   const [email, setEmail] = useState(patient?.email ?? '');
-  const [source, setSource] = useState<CrmSource>(patient ? 'existing_patient' : 'whatsapp');
-  const [sourceDetail, setSourceDetail] = useState('');
+  const [acquisition, setAcquisition] = useState<AcquisitionDraft>(() => ({ ...emptyAcquisitionDraft(), source: patient ? 'existing_patient' : null }));
   const [form, setForm] = useState(emptyOpportunity);
   const [duplicates, setDuplicates] = useState<CrmContactCandidate[]>([]);
   const [saving, setSaving] = useState(false);
   const [idempotencyKey] = useState(createCrmIdempotencyKey);
 
-  const dirty = Boolean((!patient && (name.trim() || phone?.trim() || email?.trim() || sourceDetail.trim())) || form.title.trim() || form.value || form.expectedClose || form.note.trim() || form.interests.length);
+  const dirty = Boolean((!patient && (name.trim() || phone?.trim() || email?.trim() || acquisition.source || acquisition.sourceDetail?.trim() || acquisition.referredByPatientId || acquisition.referrerName?.trim())) || form.title.trim() || form.value || form.expectedClose || form.note.trim() || form.interests.length);
   const requestClose = async () => {
     if (!dirty) { onClose(); return; }
     const ok = await confirm({ title: 'Descartar alterações?', message: 'Os dados deste lead ainda não foram salvos.', confirmLabel: 'Descartar', cancelLabel: 'Continuar editando', tone: 'warning' });
@@ -191,7 +192,7 @@ function NewLeadModal({ patient, onClose, crm }: { patient: PatientSeed | null; 
         const candidates = await crm.findContactCandidates(phone, email);
         if (candidates.length) { setDuplicates(candidates); return; }
       }
-      await crm.createLead({ ...opportunityInput(), name, phone, email, source, sourceDetail });
+      await crm.createLead({ ...opportunityInput(), name, phone, email, source: acquisition.source, sourceDetail: acquisition.sourceDetail, referredByPatientId: acquisition.referredByPatientId, referrerName: acquisition.referrerName });
       toast.success('Lead criado no CRM.'); onClose();
     } catch (error) { console.error('[crm:create-lead]', error); toast.error('Não foi possível criar o lead.'); }
     finally { setSaving(false); }
@@ -200,7 +201,7 @@ function NewLeadModal({ patient, onClose, crm }: { patient: PatientSeed | null; 
   return <div className="crm-modal-overlay" onMouseDown={event => event.target === event.currentTarget && void requestClose()}><form className="crm-modal" onSubmit={event => { event.preventDefault(); void submit(false); }}>
     <div className="crm-modal-head"><div style={{ flex: 1 }}><strong>{patient ? 'Nova oportunidade' : 'Novo lead'}</strong><div className="page-sub">{patient ? `Paciente: ${patient.name}` : 'Contato + oportunidade em uma operação atômica'}</div></div><button type="button" className="icon-btn" onClick={() => void requestClose()}><X size={18} /></button></div>
     <div className="crm-modal-body"><div className="crm-form-grid">
-      {!patient && <><div className="crm-form-span"><label className="field-label">Nome</label><input className="field-input" value={name} onChange={event => setName(event.target.value)} autoFocus /></div><div><label className="field-label">WhatsApp / telefone</label><input className="field-input" value={phone ?? ''} onChange={event => setPhone(event.target.value)} inputMode="tel" /></div><div><label className="field-label">Email</label><input className="field-input" value={email ?? ''} onChange={event => setEmail(event.target.value)} inputMode="email" /></div><div><label className="field-label">Origem</label><select className="field-select" value={source} onChange={event => setSource(event.target.value as CrmSource)}>{CRM_SOURCE_KEYS.map(key => <option value={key} key={key}>{CRM_SOURCE_LABEL[key]}</option>)}</select></div><div><label className="field-label">Detalhe da origem</label><input className="field-input" value={sourceDetail} onChange={event => setSourceDetail(event.target.value)} placeholder="Ex.: Maria / Dia das Mães" /></div></>}
+      {!patient && <><div className="crm-form-span"><label className="field-label">Nome</label><input className="field-input" value={name} onChange={event => setName(event.target.value)} autoFocus /></div><div><label className="field-label">WhatsApp / telefone</label><input className="field-input" value={phone ?? ''} onChange={event => setPhone(event.target.value)} inputMode="tel" /></div><div><label className="field-label">Email</label><input className="field-input" value={email ?? ''} onChange={event => setEmail(event.target.value)} inputMode="email" /></div><div className="crm-form-span"><AcquisitionFields idPrefix="crm-lead-acquisition" value={acquisition} onChange={setAcquisition}/></div></>}
       <div className="crm-form-span"><label className="field-label">Interesses</label><div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) minmax(0,1fr) auto', gap: 6 }}><select className="field-select" value={form.interestServiceId} onChange={event => setForm(current => ({ ...current, interestServiceId: event.target.value }))}><option value="">Serviço cadastrado</option>{servicos.filter(item => item.active).map(item => <option value={item.id} key={item.id}>{item.name}</option>)}</select><input className="field-input" value={form.interestLabel} onChange={event => setForm(current => ({ ...current, interestLabel: event.target.value }))} placeholder="ou interesse livre" /><button type="button" className="btn btn--secondary btn--sm" onClick={addInterest}>Adicionar</button></div>{form.interests.length > 0 && <div className="crm-card-tags">{form.interests.map((item, index) => <button className="crm-tag" type="button" key={`${item.service_id}-${item.label}-${index}`} onClick={() => setForm(current => ({ ...current, interests: current.interests.filter((_, itemIndex) => itemIndex !== index) }))}>{item.label} ×</button>)}</div>}</div>
       <div className="crm-form-span"><label className="field-label">Título da oportunidade</label><input className="field-input" value={form.title} onChange={event => setForm(current => ({ ...current, title: event.target.value }))} placeholder="Ex.: Botox Full Face" /></div>
       <div><label className="field-label">Valor estimado</label><input className="field-input" value={form.value} onChange={event => setForm(current => ({ ...current, value: event.target.value }))} inputMode="decimal" placeholder="Opcional" /></div>
@@ -327,7 +328,7 @@ function DetailDrawer({ card, crm, onClose, onStage }: { card: CrmPipelineCard; 
   return <div className="drawer-overlay" onClick={onClose}><aside className="drawer crm-drawer" role="dialog" aria-modal="true" onClick={event => event.stopPropagation()}>
     <div className="drawer-header"><button className="drawer-back" onClick={onClose}><X size={18} /></button><div style={{ flex: 1, minWidth: 0 }}><div className="drawer-title">{card.contact_name}</div><div className="drawer-sub">{card.title} · {CRM_STAGE_LABEL[card.stage]}</div></div></div>
     <div className="crm-detail-hero">
-      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', fontSize: 12, color: 'var(--text-2)' }}>{card.phone && <span><Phone size={12} style={{ verticalAlign: -2 }} /> {card.phone}</span>}{card.email && <span>{card.email}</span>}<span>{CRM_SOURCE_LABEL[card.source]}{card.source_detail ? ` · ${card.source_detail}` : ''}</span>{estimatedValue && <strong>{estimatedValue}</strong>}</div>
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', fontSize: 12, color: 'var(--text-2)' }}>{card.phone && <span><Phone size={12} style={{ verticalAlign: -2 }} /> {card.phone}</span>}{card.email && <span>{card.email}</span>}<span>{formatAcquisitionLabel(card.source, card.source_detail, card.referrer_patient_name ?? card.referrer_name)}</span>{estimatedValue && <strong>{estimatedValue}</strong>}</div>
       <div className="crm-card-tags">{card.interests.map(item => <span className="crm-tag" key={item.id ?? item.label}>{item.label}</span>)}</div>
       <div className="crm-detail-actions">
         <button className="btn btn--secondary btn--sm" disabled={!card.phone} onClick={openWhatsapp}><MessageCircle size={15} /> WhatsApp</button>
@@ -400,7 +401,7 @@ export function CrmPage() {
   const mobileCards = stage === 'all' ? crm.cards.filter(card => CRM_OPEN_STAGES.includes(card.stage)) : crm.cards;
 
   return <div className="page crm-page">
-    <div className="page-header"><div><h1 className="page-title">CRM</h1><p className="page-sub">Leads, oportunidades e follow-ups comerciais</p></div><button className="btn btn--primary btn--md" onClick={() => { setPatientSeed(null); navigate('/crm', { replace: true }); setNewOpen(true); }}><Plus size={16} /> Novo lead</button></div>
+    <div className="page-header"><div><h1 className="page-title">CRM</h1><p className="page-sub">Leads, oportunidades e follow-ups comerciais</p></div><div style={{display:'flex',gap:8,flexWrap:'wrap'}}><button className="btn btn--ghost btn--md" onClick={() => navigate('/crm/aquisicao')}>Aquisição & Indicações</button><button className="btn btn--primary btn--md" onClick={() => { setPatientSeed(null); navigate('/crm', { replace: true }); setNewOpen(true); }}><Plus size={16} /> Novo lead</button></div></div>
     <div className="crm-metrics"><div className="card crm-metric"><strong>{crm.cards.filter(card => card.stage === 'new').length}</strong><span className="page-sub">Novos no pipeline</span></div><div className="card crm-metric"><strong>{crm.metrics.overdue}</strong><span className="page-sub">Follow-ups atrasados</span></div><div className="card crm-metric"><strong>{crm.metrics.open}</strong><span className="page-sub">Oportunidades abertas</span></div><div className="card crm-metric"><strong>{formatCrmValue(crm.metrics.openValue) ?? '—'}</strong><span className="page-sub">Valor estimado em aberto</span></div></div>
     <div className="card crm-attention"><span className="crm-attention-label"><AlertTriangle size={14} style={{ verticalAlign: -2 }} /> Precisa de atenção</span><button className={`btn btn--sm ${attention === 'overdue' ? 'btn--primary' : 'btn--ghost'}`} onClick={() => setAttention(attention === 'overdue' ? 'all' : 'overdue')}>Atrasados {attentionCounts.overdue}</button><button className={`btn btn--sm ${attention === 'today' ? 'btn--primary' : 'btn--ghost'}`} onClick={() => setAttention(attention === 'today' ? 'all' : 'today')}>Hoje {attentionCounts.today}</button><button className={`btn btn--sm ${attention === 'upcoming' ? 'btn--primary' : 'btn--ghost'}`} onClick={() => setAttention(attention === 'upcoming' ? 'all' : 'upcoming')}>Próximos {attentionCounts.upcoming}</button></div>
     <div className="card" style={{ padding: 10, marginBottom: 10 }}><div className="crm-toolbar"><div className="crm-search" style={{ position: 'relative', flex: 1, minWidth: 200 }}><Search size={15} style={{ position: 'absolute', left: 11, top: 11 }} /><input className="field-input" style={{ paddingLeft: 33 }} value={search} onChange={event => setSearch(event.target.value)} placeholder="Buscar nome, telefone ou email" /></div><select className="field-select" value={stage} onChange={event => setStage(event.target.value as CrmStage | 'all')}><option value="all">Todos os estágios</option>{CRM_STAGE_KEYS.map(key => <option value={key} key={key}>{CRM_STAGE_LABEL[key]}</option>)}</select><select className="field-select" value={source} onChange={event => setSource(event.target.value as CrmSource | 'all')}><option value="all">Todas as origens</option>{CRM_SOURCE_KEYS.map(key => <option value={key} key={key}>{CRM_SOURCE_LABEL[key]}</option>)}</select><select className="field-select" value={serviceId} onChange={event => setServiceId(event.target.value)}><option value="">Todos os interesses</option>{servicos.filter(item => item.active).map(item => <option value={item.id} key={item.id}>{item.name}</option>)}</select></div></div>

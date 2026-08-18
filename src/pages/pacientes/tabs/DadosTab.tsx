@@ -4,6 +4,8 @@ import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import type { Patient } from '../../../types';
 import { ageLabel, birthDateIsoToInput, formatBirthDateInput, parseBirthDateInput } from '../../../lib/dateUtils';
+import { AcquisitionFields } from '../../../components/patients/AcquisitionFields';
+import { normalizeAcquisitionDraft } from '../../../lib/acquisition';
 
 interface Props {
   patient: Patient;
@@ -52,6 +54,10 @@ export function DadosTab({ patient, onUpdate }: Props) {
       emergency_phone: patient.emergency_phone,
       convenio: patient.convenio,
       notes: patient.notes,
+      acquisition_source: patient.acquisition_source,
+      acquisition_source_detail: patient.acquisition_source_detail,
+      referred_by_patient_id: patient.referred_by_patient_id,
+      referrer_name: patient.referrer_name,
     });
     setBirthInput(birthDateIsoToInput(patient.birth_date));
     setEditing(true);
@@ -62,7 +68,8 @@ export function DadosTab({ patient, onUpdate }: Props) {
     try {
       const birthDate = birthInput ? parseBirthDateInput(birthInput) : null;
       if (birthInput && !birthDate) return;
-      await onUpdate({ ...form, birth_date: birthDate });
+      const acquisition = normalizeAcquisitionDraft({ source: form.acquisition_source ?? null, sourceDetail: form.acquisition_source_detail ?? null, referredByPatientId: form.referred_by_patient_id ?? null, referrerName: form.referrer_name ?? null });
+      await onUpdate({ ...form, birth_date: birthDate, acquisition_source: acquisition.source, acquisition_source_detail: acquisition.sourceDetail, referred_by_patient_id: acquisition.referredByPatientId, referrer_name: acquisition.referrerName });
       setEditing(false);
     } finally {
       setSaving(false);
@@ -124,6 +131,8 @@ export function DadosTab({ patient, onUpdate }: Props) {
                 onChange={e => set(key, e.target.value)} />
             </div>
           ))}
+          <div className="form-section-title">Origem</div>
+          <div className="field field--full"><AcquisitionFields idPrefix="edit-patient-acquisition" excludePatientId={patient.id} value={{ source: form.acquisition_source ?? null, sourceDetail: form.acquisition_source_detail ?? null, referredByPatientId: form.referred_by_patient_id ?? null, referrerName: form.referrer_name ?? null }} onChange={next=>setForm(current=>({ ...current, acquisition_source: next.source, acquisition_source_detail: next.sourceDetail, referred_by_patient_id: next.referredByPatientId, referrer_name: next.referrerName }))}/></div>
           <div className="form-section-title">Emergência</div>
           <div className="field">
             <label className="field-label">Nome</label>

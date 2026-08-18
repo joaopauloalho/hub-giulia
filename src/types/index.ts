@@ -1,3 +1,5 @@
+import type { AcquisitionSource } from '../lib/acquisition';
+
 export interface Patient {
   id: string;
   user_id: string;
@@ -17,6 +19,10 @@ export interface Patient {
   notes: string | null;
   photo_url: string | null;
   start_date: string | null;
+  acquisition_source: AcquisitionSource | null;
+  acquisition_source_detail: string | null;
+  referred_by_patient_id: string | null;
+  referrer_name: string | null;
   created_at: string;
 }
 
