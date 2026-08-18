@@ -44,7 +44,7 @@ function sessionExpiredError() { return new Error('Sua sessão expirou. Entre no
 function friendlyAgendaError(error: unknown) {
   const value = error as { code?: string; message?: string } | null;
   if (value?.code === '23P01' || /appointments_no_active_overlap|exclusion|APPOINTMENT_TIME_CONFLICT/i.test(value?.message ?? '')) {
-    return new Error('Já existe um atendimento nesse horário.');
+    return new Error('Esse horário acabou de ser ocupado. Escolha outro horário.');
   }
   if (/APPOINTMENT_STATUS_TRANSITION_INVALID/i.test(value?.message ?? '')) {
     return new Error('Essa mudança de status não é permitida para este agendamento.');
