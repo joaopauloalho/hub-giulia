@@ -157,7 +157,12 @@ export function RelationshipPage() {
     const match = hub.items.find(item => item.person_type === personType && item.person_id === personId);
     if (match) setSelected(match);
   }, [hub.items, params]);
-  useEffect(() => { if (selected) { const fresh = hub.items.find(item => item.person_type === selected.person_type && item.person_id === selected.person_id); if (fresh) setSelected(fresh); else if (!hub.loading) setSelected(null); } }, [hub.items, hub.loading, selected?.person_id, selected?.person_type]);
+  useEffect(() => {
+    if (!selected) return;
+    const fresh = hub.items.find(item => item.person_type === selected.person_type && item.person_id === selected.person_id);
+    if (fresh && fresh !== selected) setSelected(fresh);
+    else if (!fresh && !hub.loading) setSelected(null);
+  }, [hub.items, hub.loading, selected]);
 
   const returnTo = useMemo(() => {
     const next = new URLSearchParams();
