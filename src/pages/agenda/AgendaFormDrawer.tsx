@@ -80,7 +80,7 @@ export function AgendaFormDrawer({ initialDate, initialTime, initialPatientId, i
     try {
       const scheduledAt = clinicLocalToIso(date, time);
       const conflict = await findConflict(scheduledAt, duration, appointment?.id);
-      if (conflict) { setError(`Já existe um atendimento às ${clinicTime(conflict.scheduled_at)} nesse período.`); return; }
+      if (conflict) { setError('Esse horário acabou de ser ocupado. Escolha outro horário.'); return; }
       const input: AgendaInput = { patient_id: patientId, service_id: serviceId || null, scheduled_at: scheduledAt, duration_minutes: duration, notes: notes.trim() || null };
       if (appointment) await onUpdate(appointment.id, input); else await onCreate(input);
       setDirty(false);
