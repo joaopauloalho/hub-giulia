@@ -39,7 +39,7 @@ export function PatientAcquisitionCard({ patient }: { patient: Patient }) {
       {(summary?.referred_count ?? 0) > 0 && <div style={{ textAlign: 'right' }}><div className="section-title" style={{ marginBottom: 5 }}>Indicações</div><strong>{summary?.referred_count} paciente{summary?.referred_count === 1 ? '' : 's'}</strong></div>}
     </div>
     {(summary?.referred_count ?? 0) > 0 && <>
-      <button type="button" className="btn btn--ghost btn--sm" style={{ marginTop: 8 }} onClick={() => setOpen(value => !value)}><Users size={14} /> {open ? 'Ocultar' : 'Ver quem indicou'} {open ? <ChevronUp size={14}/> : <ChevronDown size={14}/>}</button>
+      <button type="button" className="btn btn--ghost btn--sm" style={{ marginTop: 8 }} onClick={() => setOpen(value => !value)}><Users size={14} /> {open ? 'Ocultar' : 'Ver indicações'} {open ? <ChevronUp size={14}/> : <ChevronDown size={14}/>}</button>
       {open && <div data-testid="patient-referrals-list" style={{ display: 'grid', gap: 6, marginTop: 8 }}>
         <div className="page-sub">{summary?.referred_attended_count ?? 0} com atendimento registrado.</div>
         {summary?.referred_patients.map(item => <div key={item.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, padding: '8px 0', borderTop: '1px solid var(--border)' }}><span>{item.name}{item.archived ? ' (arquivada)' : ''}</span><span className="page-sub">{item.has_attendance ? 'Com atendimento' : 'Sem atendimento'}</span></div>)}
