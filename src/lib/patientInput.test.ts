@@ -15,6 +15,8 @@ const base: PatientCreateData = {
   profession: null, civil_status: null, weight: null, height: null, instagram: null,
   emergency_name: null, emergency_phone: null, convenio: null, notes: null,
   photo_url: null, start_date: null,
+  acquisition_source: null, acquisition_source_detail: null,
+  referred_by_patient_id: null, referrer_name: null,
 };
 
 describe('patientInput', () => {
@@ -24,6 +26,12 @@ describe('patientInput', () => {
     expect(data.email).toBe('maria@exemplo.com');
     expect(data.cpf).toBe('52998224725');
     expect(data.phone).toBe('(43) 99999-8888');
+  });
+
+  it('normalizes acquisition fields without inventing history', () => {
+    expect(normalizePatientCreateData({ ...base }).acquisition_source).toBeNull();
+    expect(normalizePatientCreateData({ ...base, acquisition_source: 'referral', referrer_name: '  Fernanda Souza  ' }).referrer_name).toBe('Fernanda Souza');
+    expect(normalizePatientCreateData({ ...base, acquisition_source: 'instagram', referrer_name: 'Maria' }).referrer_name).toBeNull();
   });
 
   it('validates required name, email and CPF', () => {
