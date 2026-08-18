@@ -1,5 +1,6 @@
 import type { PostgrestError } from '@supabase/supabase-js';
 import type { Patient } from '../types';
+import { normalizeAcquisitionDraft } from './acquisition';
 
 export type PatientCreateData = Omit<Patient, 'id' | 'user_id' | 'created_at'>;
 
@@ -73,6 +74,12 @@ export function birthDateInputError(value: string, now = new Date()): string | n
 export function normalizePatientCreateData(data: PatientCreateData): PatientCreateData {
   const email = data.email?.trim().toLowerCase() || null;
   const cpf = data.cpf?.replace(/\D/g, '') || null;
+  const acquisition = normalizeAcquisitionDraft({
+    source: data.acquisition_source,
+    sourceDetail: data.acquisition_source_detail,
+    referredByPatientId: data.referred_by_patient_id,
+    referrerName: data.referrer_name,
+  });
 
   return {
     ...data,
@@ -81,6 +88,10 @@ export function normalizePatientCreateData(data: PatientCreateData): PatientCrea
     cpf,
     phone: normalizePhone(data.phone),
     emergency_phone: normalizePhone(data.emergency_phone),
+    acquisition_source: acquisition.source,
+    acquisition_source_detail: acquisition.sourceDetail,
+    referred_by_patient_id: acquisition.referredByPatientId,
+    referrer_name: acquisition.referrerName,
   };
 }
 

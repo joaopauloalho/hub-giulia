@@ -1,5 +1,6 @@
 import { addIsoDays, clinicDateIso } from './agendaTime';
 import { normalizePhone } from './patientInput';
+import { ACQUISITION_SOURCE_KEYS, ACQUISITION_SOURCE_LABEL, type AcquisitionSource } from './acquisition';
 
 export const CRM_STAGE_KEYS = ['new', 'contacted', 'assessment_scheduled', 'proposal_sent', 'negotiation', 'won', 'lost'] as const;
 export type CrmStage = typeof CRM_STAGE_KEYS[number];
@@ -16,18 +17,9 @@ export const CRM_STAGE_LABEL: Record<CrmStage, string> = {
   lost: 'Perdido',
 };
 
-export const CRM_SOURCE_KEYS = ['instagram', 'whatsapp', 'referral', 'google', 'existing_patient', 'campaign', 'other'] as const;
-export type CrmSource = typeof CRM_SOURCE_KEYS[number];
-
-export const CRM_SOURCE_LABEL: Record<CrmSource, string> = {
-  instagram: 'Instagram',
-  whatsapp: 'WhatsApp',
-  referral: 'Indicação',
-  google: 'Google',
-  existing_patient: 'Paciente existente',
-  campaign: 'Campanha',
-  other: 'Outro',
-};
+export const CRM_SOURCE_KEYS = ACQUISITION_SOURCE_KEYS;
+export type CrmSource = AcquisitionSource;
+export const CRM_SOURCE_LABEL = ACQUISITION_SOURCE_LABEL;
 
 export const CRM_LOSS_REASON_KEYS = ['price', 'postponed', 'no_response', 'competitor', 'not_interested', 'clinical_decision', 'other'] as const;
 export type CrmLossReason = typeof CRM_LOSS_REASON_KEYS[number];

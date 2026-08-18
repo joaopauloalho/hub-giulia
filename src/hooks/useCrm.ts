@@ -40,8 +40,11 @@ export type CrmPipelineCard = {
   phone: string | null;
   email: string | null;
   instagram: string | null;
-  source: CrmSource;
+  source: CrmSource | null;
   source_detail: string | null;
+  referred_by_patient_id: string | null;
+  referrer_name: string | null;
+  referrer_patient_name: string | null;
   contact_archived_at: string | null;
   patient_name: string | null;
   interests: CrmInterest[];
@@ -111,8 +114,10 @@ export type NewCrmLeadInput = NewCrmOpportunityInput & {
   phone?: string | null;
   email?: string | null;
   instagram?: string | null;
-  source: CrmSource;
+  source: CrmSource | null;
   sourceDetail?: string | null;
+  referredByPatientId?: string | null;
+  referrerName?: string | null;
 };
 
 const interestsPayload = (items: CrmInterest[] = []) => items.map(item => ({
@@ -191,13 +196,15 @@ export function useCrm(filters: CrmFilters = {}) {
 
   const createLead = async (input: NewCrmLeadInput) => {
     const key = input.idempotencyKey ?? createCrmIdempotencyKey();
-    const { data, error: rpcError } = await supabase.rpc('create_crm_lead_v1', {
+    const { data, error: rpcError } = await supabase.rpc('create_crm_lead_v2', {
       p_name: input.name.trim(),
       p_phone: normalizeCrmPhone(input.phone ?? null),
       p_email: normalizeCrmEmail(input.email ?? null),
       p_instagram: input.instagram?.trim() || null,
       p_source: input.source,
       p_source_detail: input.sourceDetail?.trim() || null,
+      p_referred_by_patient_id: input.referredByPatientId ?? null,
+      p_referrer_name: input.referrerName?.trim() || null,
       p_title: input.title.trim() || null,
       p_value: input.value ?? null,
       p_expected_close: input.expectedClose || null,

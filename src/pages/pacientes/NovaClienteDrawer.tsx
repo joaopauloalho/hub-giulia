@@ -3,11 +3,13 @@ import { X } from 'lucide-react';
 import { useToast } from '../../hooks/useToast';
 import { ageLabel, birthDateIsoToInput, formatBirthDateInput, parseBirthDateInput } from '../../lib/dateUtils';
 import { birthDateInputError, normalizePatientCreateData, patientCreateFriendlyError, validatePatientCreateData, type PatientCreateData } from '../../lib/patientInput';
+import { AcquisitionFields } from '../../components/patients/AcquisitionFields';
 
 const empty: PatientCreateData = {
   name: '', birth_date: null, phone: null, email: null, cpf: null, profession: null,
   civil_status: null, weight: null, height: null, instagram: null, emergency_name: null,
   emergency_phone: null, convenio: null, notes: null, photo_url: null, start_date: null,
+  acquisition_source: null, acquisition_source_detail: null, referred_by_patient_id: null, referrer_name: null,
 };
 interface Props { open: boolean; onClose: () => void; onCreate: (data: PatientCreateData) => Promise<void>; }
 function Field({ label, children }: { label: string; children: React.ReactNode }) { return <div className="field"><label className="field-label">{label}</label>{children}</div>; }
@@ -68,6 +70,8 @@ export function NovaClienteDrawer({ open, onClose, onCreate }: Props) {
         <Field label="CPF"><input className="field-input" inputMode="numeric" placeholder="000.000.000-00" value={form.cpf??''} onChange={e=>set('cpf',e.target.value)}/></Field>
         <Field label="Profissão"><input className="field-input" value={form.profession??''} onChange={e=>set('profession',e.target.value)}/></Field>
         <Field label="Instagram"><input className="field-input" placeholder="@usuario" value={form.instagram??''} onChange={e=>set('instagram',e.target.value)}/></Field>
+        <div className="form-section-title">Origem</div>
+        <div className="field field--full"><AcquisitionFields idPrefix="new-patient-acquisition" value={{ source: form.acquisition_source, sourceDetail: form.acquisition_source_detail, referredByPatientId: form.referred_by_patient_id, referrerName: form.referrer_name }} onChange={next=>setForm(current=>({ ...current, acquisition_source: next.source, acquisition_source_detail: next.sourceDetail, referred_by_patient_id: next.referredByPatientId, referrer_name: next.referrerName }))}/></div>
         <Field label="Peso"><input className="field-input" placeholder="Ex: 65 kg" value={form.weight??''} onChange={e=>set('weight',e.target.value)}/></Field>
         <Field label="Altura"><input className="field-input" placeholder="Ex: 1,68 m" value={form.height??''} onChange={e=>set('height',e.target.value)}/></Field>
         <Field label="Convênio"><input className="field-input" value={form.convenio??''} onChange={e=>set('convenio',e.target.value)}/></Field>
