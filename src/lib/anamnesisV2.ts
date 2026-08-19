@@ -1,5 +1,5 @@
-export const ANAMNESIS_FORM_SCHEMA_VERSION = 3;
-export const ANAMNESIS_AUTOSAVE_MS = 1000;
+export const ANAMNESIS_FORM_SCHEMA_VERSION = 4;
+export const ANAMNESIS_AUTOSAVE_MS = 300;
 
 export type AnswerStatus = 'reported' | 'none' | null;
 export type ClinicalAnswerMap = Record<string, boolean | string | undefined>;
@@ -9,7 +9,7 @@ export interface AnamnesisDraft {
   conditions: ClinicalAnswerMap;
   medications: string;
   medicationsStatus: AnswerStatus;
-  /** Legacy v1/v2 top-level allergy payload. Readable but never reinterpreted as v3 answers. */
+  /** Legacy v1/v2 top-level allergy payload. Readable but never reinterpreted as v3/v4 answers. */
   allergies: string;
   allergiesStatus: AnswerStatus;
   surgicalHistory: ClinicalAnswerMap;
@@ -63,6 +63,7 @@ type Area = 'conditions' | 'surgicalHistory' | 'habits' | 'aesthetics';
 type RequiredBinary = { area: Area; key: string; label: string };
 type DetailRule = { area: Exclude<Area, 'conditions'>; flag: string; detail: string; label: string };
 
+/** Legacy v3 catalog kept for historical rendering/tests. v4 completion is fully optional. */
 export const REQUIRED_BINARY_FIELDS: RequiredBinary[] = [
   ...[
     ['hipertensao','Hipertensão'],['hipotensao','Hipotensão'],['diabetes','Diabetes'],['cancer','Câncer'],
@@ -90,6 +91,7 @@ export const REQUIRED_BINARY_FIELDS: RequiredBinary[] = [
   ].map(([key,label]) => ({ area: 'aesthetics' as const, key, label })),
 ];
 
+/** Legacy v3 detail catalog kept so immutable historical snapshots remain understandable. */
 export const DETAIL_RULES: DetailRule[] = [
   { area:'surgicalHistory', flag:'alergia_medicamento', detail:'alergia_medicamento_detalhe', label:'Alergia a medicamento: descreva medicamento e reação.' },
   { area:'surgicalHistory', flag:'alergia_frutos_mar', detail:'alergia_frutos_mar_detalhe', label:'Alergia a frutos do mar: descreva.' },
@@ -132,6 +134,12 @@ export const emptyAnamnesisDraft = (): AnamnesisDraft => ({
   surgicalHistory: {}, habits: {}, aesthetics: {},
 });
 
+function sanitizeAesthetics(aesthetics: ClinicalAnswerMap | null | undefined): ClinicalAnswerMap {
+  const next = { ...(aesthetics ?? {}) };
+  delete next.ultima_limpeza_pele;
+  return next;
+}
+
 export function currentRowToDraft(row: AnamnesisCurrentRow | null): AnamnesisDraft {
   if (!row) return emptyAnamnesisDraft();
   return {
@@ -140,7 +148,7 @@ export function currentRowToDraft(row: AnamnesisCurrentRow | null): AnamnesisDra
     medicationsStatus: row.medications_status ?? (row.medications?.trim() ? 'reported' : null),
     allergies: row.allergies ?? '',
     allergiesStatus: row.allergies_status ?? (row.allergies?.trim() ? 'reported' : null),
-    surgicalHistory: row.surgical_history ?? {}, habits: row.habits ?? {}, aesthetics: row.aesthetics ?? {},
+    surgicalHistory: row.surgical_history ?? {}, habits: row.habits ?? {}, aesthetics: sanitizeAesthetics(row.aesthetics),
   };
 }
 
@@ -149,35 +157,18 @@ export function draftToRpcAnswers(draft: AnamnesisDraft) {
     conditions: draft.conditions,
     medications: draft.medications || null,
     medications_status: draft.medicationsStatus,
-    // Preserve legacy allergy columns exactly; v3 allergy answers live in surgical_history.
+    // Preserve legacy allergy columns exactly; v3/v4 allergy answers live in surgical_history.
     allergies: draft.allergies || null,
     allergies_status: draft.allergiesStatus,
     surgical_history: draft.surgicalHistory,
     habits: draft.habits,
-    aesthetics: draft.aesthetics,
+    aesthetics: sanitizeAesthetics(draft.aesthetics),
   };
 }
 
 export function validateAnamnesisForCompletion(draft: AnamnesisDraft): AnamnesisValidationIssue[] {
-  const issues: AnamnesisValidationIssue[] = [];
-  for (const field of REQUIRED_BINARY_FIELDS) {
-    const area = draft[field.area];
-    if (typeof area[field.key] !== 'boolean') issues.push({ fieldId: `q-${field.area}-${field.key}`, message: `${field.label}: selecione Sim ou Não.` });
-  }
-  if (draft.medicationsStatus !== 'reported' && draft.medicationsStatus !== 'none') {
-    issues.push({ fieldId: 'q-medications', message: 'Medicamento de uso contínuo: selecione Sim ou Não.' });
-  } else if (draft.medicationsStatus === 'reported' && !draft.medications.trim()) {
-    issues.push({ fieldId: 'detail-medications', message: 'Medicamento de uso contínuo: informe qual(is).' });
-  }
-  const gestante = String(draft.surgicalHistory.gestante ?? '');
-  if (!['sim','não','tentando'].includes(gestante)) issues.push({ fieldId: 'q-surgicalHistory-gestante', message: 'Gestante: selecione uma opção.' });
-  for (const rule of DETAIL_RULES) {
-    const area = draft[rule.area];
-    if (area[rule.flag] === true && !String(area[rule.detail] ?? '').trim()) {
-      issues.push({ fieldId: `detail-${rule.area}-${rule.flag}`, message: rule.label });
-    }
-  }
-  return issues;
+  void draft;
+  return [];
 }
 
 export function isAnamnesisConflict(error: unknown) {
