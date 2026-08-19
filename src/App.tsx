@@ -1,6 +1,7 @@
 import { Component, type ReactNode } from 'react';
 import AppRoutesV2 from './AppRoutesV2';
 import { safeLogError } from './lib/safeLogger';
+import './pages/pacientes/anamnesis-tablet-guard.css';
 
 class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
   state: { error: Error | null } = { error: null };
