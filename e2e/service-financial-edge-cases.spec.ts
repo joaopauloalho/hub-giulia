@@ -130,7 +130,7 @@ test('voucher redemption stays visible but unvalued instead of inventing economi
     user_id: seeded.users.a,
     patient_id: patient.data!.id,
     performed_at: '2026-08-24T10:00:00-03:00',
-    services_ids: [service.data!.id],
+    services_ids: [],
     total_value: 0,
     total_cost: 100,
     payment_method: 'package_credit',
@@ -139,7 +139,7 @@ test('voucher redemption stays visible but unvalued instead of inventing economi
     paid_fee_value: 0,
     paid_net_value: 0,
     pending_amount: 0,
-    item_names_snapshot: [service.data!.name],
+    item_names_snapshot: [],
     gross_value: 600,
     covered_value: 600,
   }).select('id').single();
