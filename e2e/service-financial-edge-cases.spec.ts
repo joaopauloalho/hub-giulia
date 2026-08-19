@@ -139,7 +139,6 @@ test('voucher redemption stays visible but unvalued instead of inventing economi
     paid_fee_value: 0,
     paid_net_value: 0,
     pending_amount: 0,
-    item_names_snapshot: [],
     gross_value: 600,
     covered_value: 600,
   }).select('id').single();
