@@ -50,7 +50,7 @@ function SummaryCards({ summary }: { summary: FinanceiroSummary }) {
     { label: 'Líquido pago', value: summary.liquido, icon: Wallet, color: 'var(--primary)', bg: 'var(--bg-2)', border: 'var(--border)' },
     { label: 'Pendente', value: summary.pendente, icon: Clock, color: 'var(--amber)', bg: '#fffbf0', border: '#fde68a' },
     { label: 'Custos', value: summary.custos, icon: TrendingDown, color: 'var(--red)', bg: 'var(--bg-2)', border: 'var(--border)' },
-    { label: 'Lucro realizado', value: summary.lucro, icon: TrendingUp, color: summary.lucro >= 0 ? 'var(--green)' : 'var(--red)', bg: summary.lucro >= 0 ? '#f0fdf4' : '#fef2f2', border: summary.lucro >= 0 ? '#bbf7d0' : '#fecaca' },
+    { label: 'Líquido pago após custos', value: summary.lucro, icon: TrendingUp, color: summary.lucro >= 0 ? 'var(--green)' : 'var(--red)', bg: summary.lucro >= 0 ? '#f0fdf4' : '#fef2f2', border: summary.lucro >= 0 ? '#bbf7d0' : '#fecaca' },
   ];
 
   return (
@@ -174,7 +174,7 @@ function ProcedureRow({ proc, services, onRemove }: { proc: Procedure; services:
     { label: 'Líquido pago', value: currency(values.liquido) },
     ...(values.pendente > 0 ? [{ label: 'Pendente', value: currency(values.pendente) }] : []),
     { label: 'Custo', value: `-${currency(values.custo)}` },
-    { label: 'Lucro realizado', value: currency(values.lucro) },
+    { label: 'Líquido pago após custos', value: currency(values.lucro) },
   ];
 
   return (
