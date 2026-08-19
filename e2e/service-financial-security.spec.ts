@@ -1,7 +1,7 @@
 import fs from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { expect, test } from '@playwright/test';
-import { anonClient, signedInClient } from './helpers';
+import { adminClient, anonClient, signedInClient } from './helpers';
 
 type E2EState = {
   users: { a: string; b: string };
@@ -38,16 +38,18 @@ function foreignAttendanceArgs(seeded: E2EState) {
   };
 }
 
-test('create_procedure_v3 SECURITY DEFINER still rejects cross-tenant patient/service references', async () => {
+test('create_procedure_v3 SECURITY DEFINER rejects cross-tenant references without side effects', async () => {
   const seeded = await state();
   const tenantB = await signedInClient('b');
-  const attempt = await tenantB.rpc('create_procedure_v3', foreignAttendanceArgs(seeded));
+  const args = foreignAttendanceArgs(seeded);
+
+  const attempt = await tenantB.rpc('create_procedure_v3', args);
   expect(attempt.error).not.toBeNull();
 
-  const leakedProcedure = await tenantB
+  const leakedProcedure = await adminClient()
     .from('procedures')
-    .select('id')
-    .eq('idempotency_key', foreignAttendanceArgs(seeded).p_idempotency_key);
+    .select('id,user_id')
+    .eq('idempotency_key', args.p_idempotency_key);
   expect(leakedProcedure.error).toBeNull();
   expect(leakedProcedure.data).toEqual([]);
 });
