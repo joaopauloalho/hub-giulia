@@ -51,7 +51,7 @@ export function FinanceiroReportPDF({ month, summary, procedures, services }: {
     ['Liquido pago', summary.liquido],
     ['Pendente', summary.pendente],
     ['Custos', summary.custos],
-    ['Lucro realizado', summary.lucro],
+    ['Liquido pago apos custos', summary.lucro],
   ];
 
   return (
@@ -78,7 +78,7 @@ export function FinanceiroReportPDF({ month, summary, procedures, services }: {
           <Text style={styles.cMethod}>Metodo</Text>
           <Text style={styles.cMoney}>Venda</Text>
           <Text style={styles.cMoney}>Liquido</Text>
-          <Text style={styles.cProfit}>Lucro</Text>
+          <Text style={styles.cProfit}>Apos custos</Text>
         </View>
         {procedures.map(proc => {
           const values = getProcedureFinancials(proc);
@@ -96,7 +96,7 @@ export function FinanceiroReportPDF({ month, summary, procedures, services }: {
         })}
 
         <Text style={styles.footer}>
-          Vendas: {currency(summary.vendas)} - Liquido: {currency(summary.liquido)} - Lucro: {currency(summary.lucro)}
+          Vendas: {currency(summary.vendas)} - Liquido: {currency(summary.liquido)} - Liquido apos custos: {currency(summary.lucro)}
         </Text>
       </Page>
     </Document>
