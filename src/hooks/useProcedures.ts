@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 import type { Procedure, PaymentMethod } from '../types';
 import type { PackageCoverageSelection } from '../types/packages';
+import type { ProcedureMaterialInput } from '../types/materials';
 import { useAtomicAttendance } from './useAtomicAttendance';
 import { POSTGREST_SELECT } from '../lib/postgrestRelationshipHints';
 import {
@@ -43,6 +44,7 @@ interface CreateProcedureInput {
   pix_installments_count?: number;
   payment_entries?: PaymentEntryInput[];
   coverage_entries?: PackageCoverageSelection[];
+  material_entries?: ProcedureMaterialInput[];
   item_values?: Array<{ service_id: string; qty?: number; final_price: number }>;
 }
 
@@ -101,6 +103,7 @@ export function useProcedures(patientId?: string) {
     const operation = (async () => {
       try {
         const coverageEntries = input.coverage_entries ?? [];
+        const materialEntries = input.material_entries ?? [];
         const paymentInput = input.payment_entries ?? [];
         if (input.total_value > 0.02 && paymentInput.length === 0) throw new Error('ATTENDANCE_PAYMENTS_REQUIRED');
         if (input.total_value <= 0.02 && coverageEntries.length === 0 && paymentInput.length === 0) throw new Error('ATTENDANCE_PAYMENTS_REQUIRED');
@@ -144,6 +147,7 @@ export function useProcedures(patientId?: string) {
           items,
           payment_entries: paymentEntries,
           coverages: coverageEntries,
+          materials: materialEntries,
           injectable_maps: injectableDraft ? [] : (injectablePoints.length > 0 ? [{ points: injectablePoints }] : []),
           injectable_draft_id: injectableDraft?.mapId ?? null,
           injectable_draft_revision: injectableDraft?.revision ?? null,
