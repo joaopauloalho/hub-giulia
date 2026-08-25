@@ -1,3 +1,5 @@
+import type { TraceabilityMode } from './traceability';
+
 export interface Material {
   id: string;
   user_id: string;
@@ -7,13 +9,21 @@ export interface Material {
   stock_quantity: number;
   minimum_stock: number;
   active: boolean;
+  traceability_mode: TraceabilityMode;
   created_at: string;
   updated_at: string;
+}
+
+export interface MaterialTraceabilityInput {
+  lot_number?: string | null;
+  expires_on?: string | null;
+  evidence_upload_id?: string | null;
 }
 
 export interface ProcedureMaterialInput {
   material_id: string;
   quantity: number;
+  traceability?: MaterialTraceabilityInput | null;
 }
 
 export interface ProcedureMaterial {
@@ -53,4 +63,5 @@ export interface MaterialDraft {
   initial_stock: number;
   minimum_stock: number;
   active: boolean;
+  traceability_mode: TraceabilityMode;
 }
