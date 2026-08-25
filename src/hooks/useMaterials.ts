@@ -8,6 +8,7 @@ function normalize(row: Record<string, unknown>): Material {
     unit_cost: Number(row.unit_cost ?? 0),
     stock_quantity: Number(row.stock_quantity ?? 0),
     minimum_stock: Number(row.minimum_stock ?? 0),
+    traceability_mode: row.traceability_mode === 'optional' || row.traceability_mode === 'recommended' ? row.traceability_mode : 'none',
   } as Material;
 }
 
@@ -36,7 +37,7 @@ export function useMaterials(options: { activeOnly?: boolean } = {}) {
   useEffect(() => { void refresh(); }, [refresh]);
 
   const create = async (draft: MaterialDraft) => {
-    const { data, error: rpcError } = await supabase.rpc('create_material_v1', {
+    const { data, error: rpcError } = await supabase.rpc('create_material_v2', {
       p_idempotency_key: crypto.randomUUID(),
       p_name: draft.name,
       p_unit_label: draft.unit_label,
@@ -44,6 +45,7 @@ export function useMaterials(options: { activeOnly?: boolean } = {}) {
       p_initial_stock: draft.initial_stock,
       p_minimum_stock: draft.minimum_stock,
       p_active: draft.active,
+      p_traceability_mode: draft.traceability_mode,
     });
     if (rpcError) throw rpcError;
     await refresh();
@@ -51,13 +53,14 @@ export function useMaterials(options: { activeOnly?: boolean } = {}) {
   };
 
   const update = async (materialId: string, draft: Omit<MaterialDraft, 'initial_stock'>) => {
-    const { data, error: rpcError } = await supabase.rpc('update_material_v1', {
+    const { data, error: rpcError } = await supabase.rpc('update_material_v2', {
       p_material_id: materialId,
       p_name: draft.name,
       p_unit_label: draft.unit_label,
       p_unit_cost: draft.unit_cost,
       p_minimum_stock: draft.minimum_stock,
       p_active: draft.active,
+      p_traceability_mode: draft.traceability_mode,
     });
     if (rpcError) throw rpcError;
     await refresh();
