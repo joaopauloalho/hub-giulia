@@ -1,8 +1,10 @@
 import { useMemo, useState } from 'react';
-import { AlertTriangle, Boxes, Minus, Pencil, Plus, Search, ToggleLeft, ToggleRight, X } from 'lucide-react';
+import { AlertTriangle, Boxes, Minus, Pencil, Plus, Search, ShieldCheck, ToggleLeft, ToggleRight, X } from 'lucide-react';
 import { useMaterials } from '../../hooks/useMaterials';
 import { useToast } from '../../hooks/useToast';
 import type { Material, MaterialDraft } from '../../types/materials';
+import type { TraceabilityMode } from '../../types/traceability';
+import { traceabilityModeLabel } from '../../lib/productTraceability';
 
 const normalizeMoneyInput = (value: string) => {
   const clean = value.replace(/[^\d.,]/g, '');
@@ -25,6 +27,12 @@ const formatMoney = (value: number) => value.toLocaleString('pt-BR', { style: 'c
 type Filter = 'all' | 'low' | 'inactive';
 type Drawer = { type: 'new' } | { type: 'edit'; material: Material } | { type: 'entry'; material: Material } | { type: 'adjust'; material: Material } | null;
 
+const TRACEABILITY_OPTIONS: Array<{ value: TraceabilityMode; label: string; description: string }> = [
+  { value: 'none', label: 'Não utilizar', description: 'Fluxo rápido, sem lote, validade ou foto.' },
+  { value: 'optional', label: 'Opcional', description: 'Permite registrar lote, validade e foto quando fizer sentido.' },
+  { value: 'recommended', label: 'Recomendada', description: 'Destaca a rastreabilidade no atendimento, sem bloquear a finalização.' },
+];
+
 function MaterialForm({ material, onClose, onSave }: { material?: Material; onClose: () => void; onSave: (draft: MaterialDraft) => Promise<void> }) {
   const [name, setName] = useState(material?.name ?? '');
   const [unit, setUnit] = useState(material?.unit_label ?? 'un.');
@@ -32,6 +40,7 @@ function MaterialForm({ material, onClose, onSave }: { material?: Material; onCl
   const [initialStock, setInitialStock] = useState('0');
   const [minimumStock, setMinimumStock] = useState(material ? String(material.minimum_stock).replace('.', ',') : '0');
   const [active, setActive] = useState(material?.active ?? true);
+  const [traceabilityMode, setTraceabilityMode] = useState<TraceabilityMode>(material?.traceability_mode ?? 'none');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
@@ -39,7 +48,7 @@ function MaterialForm({ material, onClose, onSave }: { material?: Material; onCl
     if (!name.trim() || !unit.trim()) { setError('Nome e unidade são obrigatórios.'); return; }
     setSaving(true);
     try {
-      await onSave({ name: name.trim(), unit_label: unit.trim(), unit_cost: parseDecimal(cost), initial_stock: parseDecimal(initialStock), minimum_stock: parseDecimal(minimumStock), active });
+      await onSave({ name: name.trim(), unit_label: unit.trim(), unit_cost: parseDecimal(cost), initial_stock: parseDecimal(initialStock), minimum_stock: parseDecimal(minimumStock), active, traceability_mode: traceabilityMode });
       onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erro ao salvar material.');
@@ -54,6 +63,16 @@ function MaterialForm({ material, onClose, onSave }: { material?: Material; onCl
       <label className="field-label">Custo unitário *</label><input className="field-input" inputMode="decimal" value={cost} onChange={e => setCost(normalizeMoneyInput(e.target.value))} placeholder="0,00" />
       {!material && <><label className="field-label">Estoque inicial</label><input className="field-input" inputMode="decimal" value={initialStock} onChange={e => setInitialStock(e.target.value.replace(/[^\d.,]/g, ''))} placeholder="0" /></>}
       <label className="field-label">Estoque mínimo</label><input className="field-input" inputMode="decimal" value={minimumStock} onChange={e => setMinimumStock(e.target.value.replace(/[^\d.,]/g, ''))} placeholder="0" />
+
+      <div style={{ marginTop: 18, padding: 14, border: '1px solid var(--border)', borderRadius: 12, background: 'var(--bg-2)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 4 }}><ShieldCheck size={16} style={{ color: 'var(--primary)' }} /><strong style={{ fontSize: 13 }}>Rastreabilidade</strong></div>
+        <p style={{ fontSize: 12, color: 'var(--text-3)', lineHeight: 1.45, marginBottom: 10 }}>Permite registrar lote, validade e foto do produto durante o atendimento.</p>
+        <div style={{ display: 'grid', gap: 7 }}>{TRACEABILITY_OPTIONS.map(option => {
+          const selected = traceabilityMode === option.value;
+          return <button key={option.value} type="button" onClick={() => setTraceabilityMode(option.value)} style={{ textAlign: 'left', padding: '10px 11px', borderRadius: 10, border: `1.5px solid ${selected ? 'var(--primary)' : 'var(--border)'}`, background: selected ? '#fdf2f8' : 'var(--bg)', cursor: 'pointer' }}><div style={{ fontSize: 13, fontWeight: 700, color: selected ? 'var(--primary)' : 'var(--text)' }}>{option.label}</div><div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 2 }}>{option.description}</div></button>;
+        })}</div>
+      </div>
+
       <button type="button" onClick={() => setActive(v => !v)} style={{ display:'flex',alignItems:'center',gap:8,border:0,background:'none',padding:'10px 0',cursor:'pointer',color:active?'var(--primary)':'var(--text-3)' }}>{active?<ToggleRight size={28}/>:<ToggleLeft size={28}/>}<span>{active?'Ativo':'Inativo'}</span></button>
       {error && <p style={{ color:'var(--red)',fontSize:13 }}>{error}</p>}
     </div>
@@ -84,9 +103,9 @@ export function MaterialsSection() {
     <div style={{display:'flex',gap:8,flexWrap:'wrap',marginBottom:14}}><button className="btn-primary" onClick={()=>setDrawer({type:'new'})}><Plus size={17}/> Novo material</button></div>
     <div className="search-wrap"><Search size={18} className="search-icon"/><input className="search-input" placeholder="Buscar material..." value={search} onChange={e=>setSearch(e.target.value)}/></div>
     <div style={{display:'flex',gap:6,flexWrap:'wrap',marginBottom:14}}>{([['all','Todos'],['low','Estoque baixo'],['inactive','Inativos']] as [Filter,string][]).map(([key,label])=><button key={key} onClick={()=>setFilter(key)} style={{padding:'6px 13px',borderRadius:16,border:'1px solid var(--border)',cursor:'pointer',fontSize:12,fontWeight:600,background:filter===key?'var(--primary)':'transparent',color:filter===key?'#fff':'var(--text-2)'}}>{label}</button>)}</div>
-    {error?<div className="empty-state"><p>{error}</p></div>:loading?<div className="empty-state"><p>Carregando materiais...</p></div>:filtered.length===0?<div className="empty-state"><Boxes size={44} strokeWidth={1}/><p>Nenhum material encontrado.</p></div>:<div style={{display:'flex',flexDirection:'column',gap:10}}>{filtered.map(m=>{const low=m.active&&m.stock_quantity<=m.minimum_stock;return <div className="card" key={m.id} style={{opacity:m.active?1:.58}}><div style={{display:'flex',gap:12,alignItems:'flex-start'}}><div style={{flex:1,minWidth:0}}><div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}><strong>{m.name}</strong>{low&&<span style={{fontSize:11,fontWeight:700,color:'#b45309',background:'#fff7ed',padding:'3px 7px',borderRadius:10}}><AlertTriangle size={12} style={{verticalAlign:-2}}/> Estoque baixo</span>}{!m.active&&<span style={{fontSize:11,color:'var(--text-3)'}}>Inativo</span>}</div><div style={{marginTop:7,fontSize:13,color:'var(--text-2)',display:'flex',gap:14,flexWrap:'wrap'}}><span><strong style={{color:'var(--text)'}}>{formatQty(m.stock_quantity)} {m.unit_label}</strong></span><span>Mínimo {formatQty(m.minimum_stock)}</span><span>{formatMoney(m.unit_cost)}/{m.unit_label}</span></div></div><button className="icon-btn" onClick={()=>setDrawer({type:'edit',material:m})}><Pencil size={16}/></button></div><div style={{display:'flex',gap:8,marginTop:12,flexWrap:'wrap'}}><button className="btn-secondary" style={{display:'flex',gap:5,alignItems:'center'}} onClick={()=>setDrawer({type:'entry',material:m})}><Plus size={15}/> Entrada</button><button className="btn-secondary" style={{display:'flex',gap:5,alignItems:'center'}} onClick={()=>setDrawer({type:'adjust',material:m})}><Minus size={15}/> Ajustar</button></div></div>})}</div>}
+    {error?<div className="empty-state"><p>{error}</p></div>:loading?<div className="empty-state"><p>Carregando materiais...</p></div>:filtered.length===0?<div className="empty-state"><Boxes size={44} strokeWidth={1}/><p>Nenhum material encontrado.</p></div>:<div style={{display:'flex',flexDirection:'column',gap:10}}>{filtered.map(m=>{const low=m.active&&m.stock_quantity<=m.minimum_stock;return <div className="card" key={m.id} style={{opacity:m.active?1:.58}}><div style={{display:'flex',gap:12,alignItems:'flex-start'}}><div style={{flex:1,minWidth:0}}><div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}><strong>{m.name}</strong>{low&&<span style={{fontSize:11,fontWeight:700,color:'#b45309',background:'#fff7ed',padding:'3px 7px',borderRadius:10}}><AlertTriangle size={12} style={{verticalAlign:-2}}/> Estoque baixo</span>}{m.traceability_mode!=='none'&&<span style={{fontSize:11,fontWeight:700,color:m.traceability_mode==='recommended'?'#9d174d':'var(--text-2)',background:m.traceability_mode==='recommended'?'#fdf2f8':'var(--bg-2)',padding:'3px 7px',borderRadius:10,border:'1px solid var(--border)'}}><ShieldCheck size={11} style={{verticalAlign:-2}}/> {traceabilityModeLabel(m.traceability_mode)}</span>}{!m.active&&<span style={{fontSize:11,color:'var(--text-3)'}}>Inativo</span>}</div><div style={{marginTop:7,fontSize:13,color:'var(--text-2)',display:'flex',gap:14,flexWrap:'wrap'}}><span><strong style={{color:'var(--text)'}}>{formatQty(m.stock_quantity)} {m.unit_label}</strong></span><span>Mínimo {formatQty(m.minimum_stock)}</span><span>{formatMoney(m.unit_cost)}/{m.unit_label}</span></div></div><button className="icon-btn" onClick={()=>setDrawer({type:'edit',material:m})}><Pencil size={16}/></button></div><div style={{display:'flex',gap:8,marginTop:12,flexWrap:'wrap'}}><button className="btn-secondary" style={{display:'flex',gap:5,alignItems:'center'}} onClick={()=>setDrawer({type:'entry',material:m})}><Plus size={15}/> Entrada</button><button className="btn-secondary" style={{display:'flex',gap:5,alignItems:'center'}} onClick={()=>setDrawer({type:'adjust',material:m})}><Minus size={15}/> Ajustar</button></div></div>})}</div>}
     {drawer?.type==='new'&&<MaterialForm onClose={()=>setDrawer(null)} onSave={async draft=>{await create(draft);toast.success('Material cadastrado.');}}/>}
-    {drawer?.type==='edit'&&<MaterialForm material={drawer.material} onClose={()=>setDrawer(null)} onSave={async draft=>{await update(drawer.material.id,{name:draft.name,unit_label:draft.unit_label,unit_cost:draft.unit_cost,minimum_stock:draft.minimum_stock,active:draft.active});toast.success('Material atualizado.');}}/>}
+    {drawer?.type==='edit'&&<MaterialForm material={drawer.material} onClose={()=>setDrawer(null)} onSave={async draft=>{await update(drawer.material.id,{name:draft.name,unit_label:draft.unit_label,unit_cost:draft.unit_cost,minimum_stock:draft.minimum_stock,active:draft.active,traceability_mode:draft.traceability_mode});toast.success('Material atualizado.');}}/>}
     {drawer?.type==='entry'&&<StockDrawer mode="entry" material={drawer.material} onClose={()=>setDrawer(null)} onSave={async(q,r)=>{await addStock(drawer.material.id,q,r);toast.success('Entrada registrada.');}}/>}
     {drawer?.type==='adjust'&&<StockDrawer mode="adjust" material={drawer.material} onClose={()=>setDrawer(null)} onSave={async(q,r)=>{await adjustStock(drawer.material.id,q,r);toast.success('Ajuste registrado.');}}/>}
   </div>;
