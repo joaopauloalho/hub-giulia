@@ -36,7 +36,7 @@ export function useAtomicAttendance() {
     const materials = input.materials ?? [];
 
     if (hasStructuredDraft) {
-      const { data, error } = await supabase.rpc('create_procedure_with_injectable_draft_v4', {
+      const { data, error } = await supabase.rpc('create_procedure_with_injectable_draft_v5', {
         p_idempotency_key: input.idempotency_key,
         p_patient_id: input.patient_id,
         p_appointment_id: input.appointment_id,
@@ -55,7 +55,7 @@ export function useAtomicAttendance() {
       return data as Procedure;
     }
 
-    const { data, error } = await supabase.rpc('create_procedure_v4', {
+    const { data, error } = await supabase.rpc('create_procedure_v5', {
       p_idempotency_key: input.idempotency_key,
       p_patient_id: input.patient_id,
       p_appointment_id: input.appointment_id,
