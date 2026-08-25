@@ -13,6 +13,7 @@ import {
   WifiOff,
 } from 'lucide-react';
 import { InjetaveisFaceMap, type FaceMapPoint } from '../../components/InjetaveisFaceMap';
+import { InjectableTraceabilityPanel } from './InjectableTraceabilityPanel';
 import { useInjectablesV2 } from '../../hooks/useInjectablesV2';
 import type { InjectablePoint, Service } from '../../types';
 import {
@@ -583,6 +584,7 @@ export function InjetaveisScreen({ patientId, injectableServices, onDone, onCanc
                     {isExpiredDate(activeLot.expires_on) && <em>Lote vencido</em>}
                   </div>
                 )}
+                {draft && activeProduct && <InjectableTraceabilityPanel patientId={patientId} mapId={draft.id} applicationId={activeApplication.id} productName={activeProduct.name} lotNumber={activeLot?.lot_number ?? null} expiresOn={activeLot?.expires_on ?? null} />}
                 <label>Observação de diluição (opcional)</label>
                 <input
                   value={activeApplication.dilution_note}
