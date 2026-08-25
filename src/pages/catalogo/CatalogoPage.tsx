@@ -25,6 +25,23 @@ const TYPE_BADGE_STYLE: Record<ServiceType, React.CSSProperties> = {
   produto: { background: '#dcfce7', color: '#15803d' },
 };
 
+const normalizeMoneyInput = (value: string) => {
+  const clean = value.replace(/[^\d.,]/g, '');
+  if (!clean) return '';
+
+  const separatorIndex = Math.max(clean.lastIndexOf(','), clean.lastIndexOf('.'));
+  if (separatorIndex === -1) return clean;
+
+  const integerPart = clean.slice(0, separatorIndex).replace(/[.,]/g, '');
+  const decimalPart = clean.slice(separatorIndex + 1).replace(/[.,]/g, '').slice(0, 2);
+  return `${integerPart},${decimalPart}`;
+};
+
+const parseMoneyInput = (value: string) => {
+  const parsed = Number(value.replace(',', '.'));
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
 const emptyService = (): Omit<Service, 'id' | 'user_id' | 'created_at'> => ({
   name: '',
   type: 'servico',
@@ -64,6 +81,8 @@ function ServiceDrawer({
         }
       : emptyService()
   );
+  const [priceInput, setPriceInput] = useState(initial ? initial.price.toFixed(2).replace('.', ',') : '');
+  const [costInput, setCostInput] = useState(initial ? initial.cost_per_unit.toFixed(2).replace('.', ',') : '');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
@@ -73,7 +92,11 @@ function ServiceDrawer({
     if (!form.name.trim()) { setError('Nome obrigatório'); return; }
     setSaving(true);
     try {
-      await onSave(form as Omit<Service, 'id' | 'user_id' | 'created_at'>);
+      await onSave({
+        ...form,
+        price: parseMoneyInput(priceInput),
+        cost_per_unit: parseMoneyInput(costInput),
+      } as Omit<Service, 'id' | 'user_id' | 'created_at'>);
       onClose();
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Erro ao salvar');
@@ -103,13 +126,27 @@ function ServiceDrawer({
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px' }}>
             <div>
               <label className="field-label">Preço (R$)</label>
-              <input className="field-input" type="number" min="0" step="0.01" value={form.price}
-                onChange={e => set('price', parseFloat(e.target.value) || 0)} />
+              <input
+                className="field-input"
+                type="text"
+                inputMode="decimal"
+                autoComplete="off"
+                value={priceInput}
+                onChange={e => setPriceInput(normalizeMoneyInput(e.target.value))}
+                placeholder="0,00"
+              />
             </div>
             <div>
               <label className="field-label">Custo (R$)</label>
-              <input className="field-input" type="number" min="0" step="0.01" value={form.cost_per_unit}
-                onChange={e => set('cost_per_unit', parseFloat(e.target.value) || 0)} />
+              <input
+                className="field-input"
+                type="text"
+                inputMode="decimal"
+                autoComplete="off"
+                value={costInput}
+                onChange={e => setCostInput(normalizeMoneyInput(e.target.value))}
+                placeholder="0,00"
+              />
             </div>
           </div>
 
