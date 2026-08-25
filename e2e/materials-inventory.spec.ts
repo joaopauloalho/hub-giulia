@@ -59,6 +59,7 @@ async function createMaterial(client: Client, args: { name: string; cost: number
 
 async function createProcedureV4(client: Client, args: {
   key?: string;
+  performedAt?: string;
   patientId: string;
   serviceId: string;
   materials?: Array<{ material_id: string; quantity: number }>;
@@ -69,7 +70,7 @@ async function createProcedureV4(client: Client, args: {
     p_idempotency_key: args.key ?? randomUUID(),
     p_patient_id: args.patientId,
     p_appointment_id: null,
-    p_performed_at: new Date().toISOString(),
+    p_performed_at: args.performedAt ?? new Date().toISOString(),
     p_items: [{ service_id: args.serviceId, qty: 1, final_price: 100 }],
     p_payment_entries: args.paymentEntries ?? payment(100),
     p_injectable_maps: [],
@@ -146,7 +147,7 @@ test.describe.serial('materials inventory v1', () => {
 
     const procedure = await client.from('procedures').select('total_cost').eq('id', procedureId).single();
     expect(procedure.error).toBeNull();
-    expect(Number(procedure.data!.total_cost)).toBeCloseTo(14.56, 2); // service base 10 + materials 4.56
+    expect(Number(procedure.data!.total_cost)).toBeCloseTo(14.56, 2);
   });
 
   test('material cost change affects only future snapshots', async () => {
@@ -184,7 +185,8 @@ test.describe.serial('materials inventory v1', () => {
   test('same idempotency key never consumes twice and changed materials conflict', async () => {
     const materialId = await createMaterial(client, { name: 'MAT E2E Idempotent', cost: 2, stock: 5 });
     const key = randomUUID();
-    const args = { key, patientId, serviceId, materials: [{ material_id: materialId, quantity: 2 }] };
+    const performedAt = new Date().toISOString();
+    const args = { key, performedAt, patientId, serviceId, materials: [{ material_id: materialId, quantity: 2 }] };
     const first = await createProcedureV4(client, args);
     expect(first.error).toBeNull();
     const firstId = (first.data as { id: string }).id;
