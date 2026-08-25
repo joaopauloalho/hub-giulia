@@ -53,6 +53,7 @@ export function useProcedures(patientId?: string) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const idempotencyKeyRef = useRef<string | null>(null);
+  const performedAtRef = useRef<string | null>(null);
   const inFlightCreateRef = useRef<Promise<Procedure> | null>(null);
   const { createAtomic } = useAtomicAttendance();
 
@@ -99,6 +100,8 @@ export function useProcedures(patientId?: string) {
     consumePendingAttendanceError();
     const idempotencyKey = idempotencyKeyRef.current ?? crypto.randomUUID();
     idempotencyKeyRef.current = idempotencyKey;
+    const performedAt = input.performed_at ?? performedAtRef.current ?? new Date().toISOString();
+    performedAtRef.current = performedAt;
 
     const operation = (async () => {
       try {
@@ -143,7 +146,7 @@ export function useProcedures(patientId?: string) {
           idempotency_key: idempotencyKey,
           patient_id: input.patient_id,
           appointment_id: input.appointment_id ?? null,
-          performed_at: input.performed_at ?? new Date().toISOString(),
+          performed_at: performedAt,
           items,
           payment_entries: paymentEntries,
           coverages: coverageEntries,
@@ -158,6 +161,7 @@ export function useProcedures(patientId?: string) {
         clearAttendanceInjectableDraft();
         clearAttendanceInjectablePoints();
         idempotencyKeyRef.current = null;
+        performedAtRef.current = null;
         await refresh();
         return procedure;
       } catch (err) {
