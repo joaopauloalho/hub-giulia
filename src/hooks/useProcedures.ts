@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 import type { Procedure, PaymentMethod } from '../types';
 import type { PackageCoverageSelection } from '../types/packages';
+import type { ProcedureMaterialInput } from '../types/materials';
 import { useAtomicAttendance } from './useAtomicAttendance';
 import { POSTGREST_SELECT } from '../lib/postgrestRelationshipHints';
 import {
@@ -43,6 +44,7 @@ interface CreateProcedureInput {
   pix_installments_count?: number;
   payment_entries?: PaymentEntryInput[];
   coverage_entries?: PackageCoverageSelection[];
+  material_entries?: ProcedureMaterialInput[];
   item_values?: Array<{ service_id: string; qty?: number; final_price: number }>;
 }
 
@@ -51,6 +53,7 @@ export function useProcedures(patientId?: string) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const idempotencyKeyRef = useRef<string | null>(null);
+  const performedAtRef = useRef<string | null>(null);
   const inFlightCreateRef = useRef<Promise<Procedure> | null>(null);
   const { createAtomic } = useAtomicAttendance();
 
@@ -97,10 +100,13 @@ export function useProcedures(patientId?: string) {
     consumePendingAttendanceError();
     const idempotencyKey = idempotencyKeyRef.current ?? crypto.randomUUID();
     idempotencyKeyRef.current = idempotencyKey;
+    const performedAt = input.performed_at ?? performedAtRef.current ?? new Date().toISOString();
+    performedAtRef.current = performedAt;
 
     const operation = (async () => {
       try {
         const coverageEntries = input.coverage_entries ?? [];
+        const materialEntries = input.material_entries ?? [];
         const paymentInput = input.payment_entries ?? [];
         if (input.total_value > 0.02 && paymentInput.length === 0) throw new Error('ATTENDANCE_PAYMENTS_REQUIRED');
         if (input.total_value <= 0.02 && coverageEntries.length === 0 && paymentInput.length === 0) throw new Error('ATTENDANCE_PAYMENTS_REQUIRED');
@@ -140,10 +146,11 @@ export function useProcedures(patientId?: string) {
           idempotency_key: idempotencyKey,
           patient_id: input.patient_id,
           appointment_id: input.appointment_id ?? null,
-          performed_at: input.performed_at ?? new Date().toISOString(),
+          performed_at: performedAt,
           items,
           payment_entries: paymentEntries,
           coverages: coverageEntries,
+          materials: materialEntries,
           injectable_maps: injectableDraft ? [] : (injectablePoints.length > 0 ? [{ points: injectablePoints }] : []),
           injectable_draft_id: injectableDraft?.mapId ?? null,
           injectable_draft_revision: injectableDraft?.revision ?? null,
@@ -154,6 +161,7 @@ export function useProcedures(patientId?: string) {
         clearAttendanceInjectableDraft();
         clearAttendanceInjectablePoints();
         idempotencyKeyRef.current = null;
+        performedAtRef.current = null;
         await refresh();
         return procedure;
       } catch (err) {
