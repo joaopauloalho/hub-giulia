@@ -141,7 +141,6 @@ function StepPagamento({ services, entries, setEntries, rates, entitlements, cov
   const total = services.reduce((s, x) => s + x.price, 0);
   const covered = selectedCoverageValue(services, coverageByService);
   const amountDue = Math.max(0, +(total - covered).toFixed(2));
-  const computed = entries.map(e => computeEntry(e, rates));
   const sumBase = entries.reduce((s, e) => s + e.baseValue, 0);
   const remaining = +(amountDue - sumBase).toFixed(2);
   const balanced = Math.abs(remaining) < 0.01;
