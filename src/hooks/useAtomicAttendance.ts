@@ -1,6 +1,7 @@
 import { supabase } from '../lib/supabase';
 import type { InjectablePoint, Procedure } from '../types';
 import type { PackageCoverageSelection } from '../types/packages';
+import type { ProcedureMaterialInput } from '../types/materials';
 
 export interface CreateAtomicAttendanceInput {
   idempotency_key: string;
@@ -21,6 +22,7 @@ export interface CreateAtomicAttendanceInput {
     scheduled_date: string | null;
   }>;
   coverages?: PackageCoverageSelection[];
+  materials?: ProcedureMaterialInput[];
   injectable_maps: Array<{ points: InjectablePoint[] }>;
   injectable_draft_id?: string | null;
   injectable_draft_revision?: number | null;
@@ -31,9 +33,10 @@ export function useAtomicAttendance() {
   const createAtomic = async (input: CreateAtomicAttendanceInput): Promise<Procedure> => {
     const hasStructuredDraft = Boolean(input.injectable_draft_id && input.injectable_draft_revision);
     const coverages = input.coverages ?? [];
+    const materials = input.materials ?? [];
 
     if (hasStructuredDraft) {
-      const { data, error } = await supabase.rpc('create_procedure_with_injectable_draft_v3', {
+      const { data, error } = await supabase.rpc('create_procedure_with_injectable_draft_v4', {
         p_idempotency_key: input.idempotency_key,
         p_patient_id: input.patient_id,
         p_appointment_id: input.appointment_id,
@@ -41,9 +44,10 @@ export function useAtomicAttendance() {
         p_items: input.items,
         p_payment_entries: input.payment_entries,
         p_coverages: coverages,
+        p_materials: materials,
         p_notes: input.notes,
-        p_injectable_draft_id: input.injectable_draft_id,
-        p_injectable_draft_revision: input.injectable_draft_revision,
+        p_draft_id: input.injectable_draft_id,
+        p_draft_revision: input.injectable_draft_revision,
       });
 
       if (error) throw error;
@@ -51,7 +55,7 @@ export function useAtomicAttendance() {
       return data as Procedure;
     }
 
-    const { data, error } = await supabase.rpc('create_procedure_v3', {
+    const { data, error } = await supabase.rpc('create_procedure_v4', {
       p_idempotency_key: input.idempotency_key,
       p_patient_id: input.patient_id,
       p_appointment_id: input.appointment_id,
@@ -60,6 +64,7 @@ export function useAtomicAttendance() {
       p_payment_entries: input.payment_entries,
       p_injectable_maps: input.injectable_maps,
       p_coverages: coverages,
+      p_materials: materials,
       p_notes: input.notes,
     });
 
