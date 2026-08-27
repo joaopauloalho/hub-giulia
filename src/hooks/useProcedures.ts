@@ -109,7 +109,6 @@ export function useProcedures(patientId?: string) {
         const materialEntries = input.material_entries ?? [];
         const paymentInput = input.payment_entries ?? [];
         if (input.total_value > 0.02 && paymentInput.length === 0) throw new Error('ATTENDANCE_PAYMENTS_REQUIRED');
-        if (input.total_value <= 0.02 && coverageEntries.length === 0 && paymentInput.length === 0) throw new Error('ATTENDANCE_PAYMENTS_REQUIRED');
 
         const { data: serviceRows, error: servicesError } = await supabase
           .from('services')
