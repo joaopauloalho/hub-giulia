@@ -10,14 +10,14 @@ const falseMap=(keys:string[])=>Object.fromEntries(keys.map(key=>[key,false]));
 
 async function makePatient(){const a=await signedInClient('a');const{data:{user}}=await a.auth.getUser();expect(user).toBeTruthy();const admin=adminClient();const{data,error}=await admin.from('patients').insert({user_id:user!.id,name:`E2E Anamnese v4 ${randomUUID().slice(0,8)}`}).select('id').single();expect(error).toBeNull();return{a,admin,userId:user!.id,patientId:data!.id as string};}
 
-test('v4 finalization accepts partial answers and removes Última LP from new snapshot',async()=>{
+test('schema-4 requests are promoted to v5, accept partial answers and remove Última LP',async()=>{
  const{a,patientId}=await makePatient();
  const partial={conditions:{hipertensao:false},medications:'',medications_status:null,allergies:null,allergies_status:null,surgical_history:{},habits:{},aesthetics:{ultima_limpeza_pele:'há 2 meses',pele_paciente:'Melasma leve'}};
  const saved=await a.rpc('save_anamnesis_draft_v2',{p_patient_id:patientId,p_expected_revision:0,p_answers:partial,p_form_schema_version:4});expect(saved.error).toBeNull();
  const finalized=await a.rpc('finalize_anamnesis_v2',{p_patient_id:patientId,p_expected_revision:1,p_idempotency_key:randomUUID()});expect(finalized.error).toBeNull();const result=Array.isArray(finalized.data)?finalized.data[0]:finalized.data;expect(result?.version_id).toBeTruthy();
- const{data:version,error}=await a.from('anamnesis_versions').select('form_schema_version,answers_snapshot,form_schema_snapshot').eq('id',result!.version_id).single();expect(error).toBeNull();expect(version?.form_schema_version).toBe(4);
+ const{data:version,error}=await a.from('anamnesis_versions').select('form_schema_version,answers_snapshot,form_schema_snapshot').eq('id',result!.version_id).single();expect(error).toBeNull();expect(version?.form_schema_version).toBe(5);
  const answers=version?.answers_snapshot as Record<string,unknown>;expect(answers.conditions).toEqual({hipertensao:false});expect((answers.aesthetics as Record<string,unknown>).ultima_limpeza_pele).toBeUndefined();
- const schema=version?.form_schema_snapshot as {version?:number;sections?:Array<{key?:string;fields?:Array<{key?:string}>}>};expect(schema.version).toBe(4);const skin=schema.sections?.find(section=>section.key==='skin_review');expect(skin?.fields?.some(field=>field.key==='ultima_limpeza_pele')).toBe(false);
+ const schema=version?.form_schema_snapshot as {version?:number;sections?:Array<{key?:string;fields?:Array<{key?:string}>}>};expect(schema.version).toBe(5);const skin=schema.sections?.find(section=>section.key==='skin_review');expect(skin?.fields?.some(field=>field.key==='ultima_limpeza_pele')).toBe(false);
 });
 
 test('remote-signature persistence is RLS-scoped, hash-only, cross-patient-safe and idempotent',async()=>{
