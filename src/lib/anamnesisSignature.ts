@@ -1,10 +1,14 @@
 import { supabase } from './supabase';
 
+export type AnamnesisSignatureDeliveryMode = 'in_person' | 'remote' | 'legacy';
+export type AnamnesisSignatureVerificationMethod = 'birth_date' | 'phone_last4';
+
 export interface AnamnesisSignatureLinkRow {
   id: string;
   user_id: string;
   patient_id: string;
   anamnesis_version_id: string;
+  delivery_mode: AnamnesisSignatureDeliveryMode;
   expires_at: string;
   revoked_at: string | null;
   consumed_at: string | null;
@@ -16,7 +20,9 @@ export interface AnamnesisSignatureRow {
   signed_at: string;
 }
 export interface PublicAnamnesisSignaturePayload {
-  status: 'pending' | 'signed';
+  status: 'verification_required' | 'pending' | 'signed';
+  delivery_mode?: AnamnesisSignatureDeliveryMode;
+  verification_method?: AnamnesisSignatureVerificationMethod;
   patient_name?: string;
   version_number?: number;
   completed_at?: string;
@@ -36,15 +42,30 @@ async function invoke<T>(body: Record<string, unknown>): Promise<T> {
   return payload;
 }
 
-export async function createAnamnesisSignatureLink(versionId: string) {
-  return invoke<{ link_id: string; token: string; expires_at: string; version_number: number }>({ action: 'create', version_id: versionId });
+export function buildAnamnesisSignatureUrl(token: string) {
+  const configuredOrigin = String(import.meta.env.VITE_ANAMNESIS_SIGNATURE_ORIGIN ?? '').trim().replace(/\/$/, '');
+  const origin = configuredOrigin || window.location.origin;
+  return `${origin}/assinar/anamnese/${encodeURIComponent(token)}`;
+}
+
+export async function createAnamnesisSignatureLink(versionId: string, deliveryMode: Exclude<AnamnesisSignatureDeliveryMode, 'legacy'>) {
+  return invoke<{ link_id: string; token: string; expires_at: string; version_number: number; delivery_mode: AnamnesisSignatureDeliveryMode }>({
+    action: 'create',
+    version_id: versionId,
+    delivery_mode: deliveryMode,
+  });
 }
 export async function revokeAnamnesisSignatureLink(linkId: string) {
   return invoke<{ revoked: boolean }>({ action: 'revoke', link_id: linkId });
 }
-export async function viewPublicAnamnesisSignature(token: string) {
-  return invoke<PublicAnamnesisSignaturePayload>({ action: 'view', token });
+export async function viewPublicAnamnesisSignature(token: string, verificationValue?: string) {
+  return invoke<PublicAnamnesisSignaturePayload>({ action: 'view', token, verification_value: verificationValue });
 }
-export async function signPublicAnamnesis(token: string, signatureData: string) {
-  return invoke<{ status: 'signed'; signed_at: string }>({ action: 'sign', token, signature_data: signatureData });
+export async function signPublicAnamnesis(token: string, signatureData: string, verificationValue?: string) {
+  return invoke<{ status: 'signed'; signed_at: string }>({
+    action: 'sign',
+    token,
+    signature_data: signatureData,
+    verification_value: verificationValue,
+  });
 }
