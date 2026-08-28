@@ -156,9 +156,11 @@ Deno.serve(async (req: Request) => {
     if (action === 'create') {
       const { user } = await authenticate(req);
       const versionId = String(body.version_id ?? '');
-      const deliveryMode = String(body.delivery_mode ?? '') as DeliveryMode;
+      const deliveryMode = (body.delivery_mode === undefined ? 'legacy' : String(body.delivery_mode)) as DeliveryMode;
       if (!UUID_RE.test(versionId)) throw new HttpError(400, 'signature_version_invalid', 'Versão inválida.');
-      if (!['in_person', 'remote'].includes(deliveryMode)) throw new HttpError(400, 'signature_delivery_mode_invalid', 'Escolha como a paciente fará a assinatura.');
+      // Rolling deploy safety: pre-v5 clients omit delivery_mode and keep legacy bearer-link behavior.
+      // New clients send in_person or remote explicitly.
+      if (!['legacy', 'in_person', 'remote'].includes(deliveryMode)) throw new HttpError(400, 'signature_delivery_mode_invalid', 'Escolha como a paciente fará a assinatura.');
 
       const { data: version, error: versionError } = await admin
         .from('anamnesis_versions')
