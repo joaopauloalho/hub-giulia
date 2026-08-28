@@ -230,7 +230,7 @@ begin
     v_schema := public.anamnesis_form_schema_snapshot_v5();
   elsif v_row.form_schema_version >= 4 then
     v_schema := public.anamnesis_form_schema_snapshot_v4();
-  else v_row.form_schema_version >= 3 then
+  elsif v_row.form_schema_version >= 3 then
     v_schema := public.anamnesis_form_schema_snapshot_v3();
   else
     v_schema := public.anamnesis_form_schema_snapshot_v2(v_row.form_schema_version);
