@@ -27,6 +27,12 @@ const ALLERGIES = [
   ['outras_alergias', 'Outras alergias?', 'outras_alergias_detalhe', 'Descreva'],
 ] as const;
 
+const INTOLERANCES = [
+  ['intolerancia_lactose', 'Intolerância à lactose?', 'intolerancia_lactose_detalhe', 'Descreva sintomas ou observações'],
+  ['doenca_celiaca_sensibilidade_gluten', 'Doença celíaca ou sensibilidade ao glúten?', 'doenca_celiaca_sensibilidade_gluten_detalhe', 'Descreva'],
+  ['outras_intolerancias_restricoes', 'Alguma outra intolerância/restrição alimentar?', 'outras_intolerancias_restricoes_detalhe', 'Descreva'],
+] as const;
+
 const HISTORY = [
   ['recebeu_anestesia', 'Já recebeu anestesia alguma vez?', 'recebeu_anestesia_detalhe', 'Conte qual anestesia/procedimento e se teve alguma reação.'],
   ['cirurgias_recentes', 'Cirurgias recentes', 'cirurgias_recentes_detalhe', 'Qual / quando?'],
@@ -244,6 +250,8 @@ export function AnamneseEditorPage() {
           <Section id="allergies" title="Alergias">
             <p className="anamnesis-section-help">Alergias ficam centralizadas aqui. Respostas antigas continuam apenas no histórico; não são convertidas automaticamente.</p>
             {ALLERGIES.map(([flag, label, detail, placeholder]) => <DetailQuestion key={flag} area="surgicalHistory" flag={flag} label={label} value={draft.surgicalHistory[flag] as boolean | undefined} detail={draft.surgicalHistory[detail] as string | undefined} setFlag={value => setMap('surgicalHistory', flag, value)} setDetail={value => setMap('surgicalHistory', detail, value)} placeholder={placeholder} />)}
+            <h3>Intolerâncias e restrições</h3>
+            {INTOLERANCES.map(([flag, label, detail, placeholder]) => <DetailQuestion key={flag} area="surgicalHistory" flag={flag} label={label} value={draft.surgicalHistory[flag] as boolean | undefined} detail={draft.surgicalHistory[detail] as string | undefined} setFlag={value => setMap('surgicalHistory', flag, value)} setDetail={value => setMap('surgicalHistory', detail, value)} placeholder={placeholder} />)}
           </Section>
 
           <Section id="history" title="Histórico Médico">
