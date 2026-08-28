@@ -11,7 +11,6 @@ async function makePatient() {
     user_id: user!.id,
     name: `E2E assinatura v5 ${randomUUID().slice(0, 8)}`,
     birth_date: '1994-08-21',
-    phone: '43999991234',
   }).select('id').single();
   expect(error).toBeNull();
   return { client, admin, userId: user!.id, patientId: data!.id as string };
