@@ -97,7 +97,7 @@ function parseDate(value: string | undefined) {
 function parseCompany(value: string | undefined) {
   const raw = (value ?? '').trim();
   if (!raw) return { name: null, cnpj: null };
-  const match = raw.match(/^([\d.\/-]{14,18})\s*-\s*(.+)$/);
+  const match = raw.match(/^([\d./-]{14,18})\s*-\s*(.+)$/);
   if (!match) return { name: raw, cnpj: null };
   return { name: match[2].trim() || raw, cnpj: match[1].trim() || null };
 }
