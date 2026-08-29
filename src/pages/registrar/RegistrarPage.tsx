@@ -1,1 +1,1 @@
-export { TreatmentRegistrarPage as RegistrarPage } from './TreatmentRegistrarPage';
+export { TreatmentRegistrarPageV2 as RegistrarPage } from './TreatmentRegistrarPageV2';
