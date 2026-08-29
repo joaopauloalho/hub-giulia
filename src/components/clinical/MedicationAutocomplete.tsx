@@ -80,21 +80,24 @@ export function MedicationAutocomplete({ id, value, onChange }: MedicationAutoco
     const requestId = ++requestIdRef.current;
     const timer = window.setTimeout(() => {
       setLoading(true);
-      void supabase
-        .rpc('search_medication_catalog_v1', { p_query: term, p_limit: 12 })
-        .then(({ data, error }) => {
-          if (requestId !== requestIdRef.current) return;
-          if (error) {
-            setSuggestions([]);
-            setCatalogAvailable(false);
-            return;
-          }
-          setSuggestions((data ?? []) as MedicationSuggestion[]);
-          setCatalogAvailable(true);
-        })
-        .finally(() => {
-          if (requestId === requestIdRef.current) setLoading(false);
+      void (async () => {
+        const { data, error } = await supabase.rpc('search_medication_catalog_v1', {
+          p_query: term,
+          p_limit: 12,
         });
+
+        if (requestId !== requestIdRef.current) return;
+        if (error) {
+          setSuggestions([]);
+          setCatalogAvailable(false);
+          setLoading(false);
+          return;
+        }
+
+        setSuggestions((data ?? []) as MedicationSuggestion[]);
+        setCatalogAvailable(true);
+        setLoading(false);
+      })();
     }, 180);
 
     return () => window.clearTimeout(timer);
