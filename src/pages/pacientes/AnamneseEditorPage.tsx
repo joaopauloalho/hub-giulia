@@ -4,6 +4,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import { useAnamneseDraftV2 } from '../../hooks/useAnamneseDraftV2';
 import { validateAnamnesisForCompletion, type AnamnesisSaveStatus, type ClinicalAnswerMap } from '../../lib/anamnesisV2';
+import { MedicationAutocomplete } from '../../components/clinical/MedicationAutocomplete';
 import './anamnese.css';
 import './anamnese391.css';
 
@@ -243,7 +244,15 @@ export function AnamneseEditorPage() {
           <Section id="medications" title="Medicamentos">
             <div className="anamnesis-text-status" id="q-medications">
               <BinaryField id="q-medications-choice" label="Faz uso contínuo de algum medicamento?" value={draft.medicationsStatus === 'reported' ? true : draft.medicationsStatus === 'none' ? false : undefined} onChange={value => setDraft(previous => ({ ...previous, medicationsStatus: value ? 'reported' : 'none' }))} />
-              {draft.medicationsStatus === 'reported' && <div className="field"><label className="field-label" htmlFor="detail-medications">Qual(is)?</label><textarea id="detail-medications" data-focus-target className="field-input" rows={3} value={draft.medications} onChange={event => setDraft(previous => ({ ...previous, medications: event.target.value }))} /></div>}
+              {draft.medicationsStatus === 'reported' && (
+      <div className="field">
+        <MedicationAutocomplete
+          id="detail-medications"
+          value={draft.medications}
+          onChange={medications => setDraft(previous => ({ ...previous, medications }))}
+        />
+      </div>
+    )}
             </div>
           </Section>
 
