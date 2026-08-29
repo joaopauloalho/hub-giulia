@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { Check, Loader2, Search } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import './MedicationAutocomplete.css';
@@ -116,7 +116,7 @@ export function MedicationAutocomplete({ id, value, onChange }: MedicationAutoco
     setActiveIndex(-1);
   };
 
-  const handleKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
+  const handleKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
     if (!suggestions.length) return;
     if (event.key === 'ArrowDown') {
       event.preventDefault();

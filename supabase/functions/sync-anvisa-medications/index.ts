@@ -165,7 +165,7 @@ Deno.serve(async (req: Request) => {
 
     for (const row of parsed.slice(1)) {
       const status = get(row, 'SITUACAO_REGISTRO');
-      if (normalize(status) !== 'valido') continue;
+      if (normalize(status) !== 'ativo') continue;
 
       const productName = get(row, 'NOME_PRODUTO');
       if (!productName) continue;
@@ -189,7 +189,7 @@ Deno.serve(async (req: Request) => {
         company_cnpj: company.cnpj || get(row, 'NUMERO_CNPJ_TITULAR') || null,
         category: get(row, 'CATEGORIA_REGULATORIA') || null,
         therapeutic_class: get(row, 'CLASSE_TERAPEUTICA') || null,
-        registration_status: status || 'VÁLIDO',
+        registration_status: status || 'Ativo',
         registration_expiry: parseDate(get(row, 'DATA_VENCIMENTO_REGISTRO')),
         process_number: processNumber || null,
         source_name: 'ANVISA',
@@ -199,7 +199,7 @@ Deno.serve(async (req: Request) => {
     }
 
     const catalogRows = Array.from(unique.values());
-    if (catalogRows.length < 1000) throw new Error('ANVISA_VALID_ROWS_UNEXPECTEDLY_LOW');
+    if (catalogRows.length < 1000) throw new Error('ANVISA_ACTIVE_ROWS_UNEXPECTEDLY_LOW');
 
     const batchSize = 400;
     for (let index = 0; index < catalogRows.length; index += batchSize) {
