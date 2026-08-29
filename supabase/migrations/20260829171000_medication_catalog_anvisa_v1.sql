@@ -14,7 +14,7 @@ as $$
   select pg_catalog.btrim(
     pg_catalog.regexp_replace(
       pg_catalog.translate(
-        pg_catalog.lower(pg_catalog.coalesce(p_value, '')),
+        pg_catalog.lower(coalesce(p_value, '')),
         'áàâãäéèêëíìîïóòôõöúùûüç',
         'aaaaaeeeeiiiiooooouuuuc'
       ),
@@ -45,7 +45,7 @@ create table public.medication_catalog (
   sync_run_id uuid not null,
   search_text text generated always as (
     public.normalize_medication_search_v1(
-      product_name || ' ' || pg_catalog.coalesce(active_ingredient, '') || ' ' || pg_catalog.coalesce(company_name, '')
+      product_name || ' ' || coalesce(active_ingredient, '') || ' ' || coalesce(company_name, '')
     )
   ) stored,
   created_at timestamptz not null default now(),
