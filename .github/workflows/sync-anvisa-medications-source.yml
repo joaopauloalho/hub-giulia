@@ -1,0 +1,68 @@
+name: Sync ANVISA medication source
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 7 * * 1'
+  push:
+    branches:
+      - feat/medication-autocomplete-anvisa
+    paths:
+      - '.github/workflows/sync-anvisa-medications-source.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: anvisa-medication-source
+  cancel-in-progress: false
+
+jobs:
+  mirror:
+    name: Mirror official ANVISA CSV
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Download and validate official dataset
+        shell: bash
+        run: |
+          set -euo pipefail
+          SOURCE_URL='https://dados.anvisa.gov.br/dados/DADOS_ABERTOS_MEDICAMENTOS.csv'
+          curl --fail --location --retry 3 --retry-delay 3 --insecure \
+            --user-agent 'Hub-Giulia/1.0 ANVISA-open-data-mirror' \
+            "$SOURCE_URL" \
+            --output anvisa-medications.csv
+
+          BYTES="$(wc -c < anvisa-medications.csv)"
+          if [ "$BYTES" -lt 1000000 ]; then
+            echo "Dataset unexpectedly small: ${BYTES} bytes" >&2
+            exit 1
+          fi
+
+          HEADER="$(head -n 1 anvisa-medications.csv | tr '[:lower:]' '[:upper:]')"
+          echo "$HEADER" | grep -q 'NOME_PRODUTO'
+          echo "$HEADER" | grep -q 'SITUACAO_REGISTRO'
+
+          gzip -9 -c anvisa-medications.csv > anvisa-medications.csv.gz
+          sha256sum anvisa-medications.csv.gz > anvisa-medications.csv.gz.sha256
+
+      - name: Publish stable mirror release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG='anvisa-data-current'
+          NOTES="Mirror técnico do arquivo público DADOS_ABERTOS_MEDICAMENTOS.csv da ANVISA. Atualizado automaticamente em $(date -u +'%Y-%m-%dT%H:%M:%SZ'). Fonte: https://dados.anvisa.gov.br/dados/DADOS_ABERTOS_MEDICAMENTOS.csv"
+
+          if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
+            gh release upload "$TAG" anvisa-medications.csv.gz anvisa-medications.csv.gz.sha256 --clobber --repo "$REPO"
+            gh release edit "$TAG" --notes "$NOTES" --repo "$REPO"
+          else
+            gh release create "$TAG" anvisa-medications.csv.gz anvisa-medications.csv.gz.sha256 \
+              --title 'ANVISA medication data mirror' \
+              --notes "$NOTES" \
+              --prerelease \
+              --repo "$REPO"
+          fi
