@@ -1,0 +1,57 @@
+name: Finalize medication autocomplete branch
+on:
+  push:
+    branches: [feat/medication-autocomplete-anvisa]
+    paths: ['.github/workflows/finalize-medication-autocomplete.yml']
+permissions:
+  contents: write
+jobs:
+  finalize:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/medication-autocomplete-anvisa
+          fetch-depth: 0
+      - name: Apply final source fixes and remove bootstrap workflows
+        shell: python
+        run: |
+          from pathlib import Path
+
+          sync = Path('supabase/functions/sync-anvisa-medications/index.ts')
+          text = sync.read_text()
+          text = text.replace("normalize(status) !== 'valido'", "normalize(status) !== 'ativo'")
+          text = text.replace("ANVISA_VALID_ROWS_UNEXPECTEDLY_LOW", "ANVISA_ACTIVE_ROWS_UNEXPECTEDLY_LOW")
+          text = text.replace("status || 'VÁLIDO'", "status || 'Ativo'")
+          sync.write_text(text)
+
+          comp = Path('src/components/clinical/MedicationAutocomplete.tsx')
+          text = comp.read_text()
+          text = text.replace("import { useEffect, useMemo, useRef, useState } from 'react';", "import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';")
+          text = text.replace('React.KeyboardEvent<HTMLInputElement>', 'KeyboardEvent<HTMLInputElement>')
+          comp.write_text(text)
+
+          mirror = Path('.github/workflows/sync-anvisa-medications-source.yml')
+          text = mirror.read_text()
+          block = """  push:\n    branches:\n      - feat/medication-autocomplete-anvisa\n    paths:\n      - '.github/workflows/sync-anvisa-medications-source.yml'\n"""
+          if block not in text:
+              raise SystemExit('Expected bootstrap push block missing')
+          mirror.write_text(text.replace(block, ''))
+
+          for name in (
+              '.github/workflows/apply-medication-autocomplete-ui.yml',
+              '.github/workflows/debug-anvisa-source.yml',
+              '.github/workflows/finalize-medication-autocomplete.yml',
+          ):
+              p = Path(name)
+              if p.exists():
+                  p.unlink()
+      - name: Commit final branch state
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'chore(anamnese): finalize ANVISA medication autocomplete'
+          git push origin HEAD:feat/medication-autocomplete-anvisa
