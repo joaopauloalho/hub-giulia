@@ -1,6 +1,9 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.4';
 
-const SOURCE_URL = 'https://dados.anvisa.gov.br/dados/DADOS_ABERTOS_MEDICAMENTOS.csv';
+// The authoritative source remains ANVISA. GitHub Actions mirrors and validates
+// the official CSV because dados.anvisa.gov.br currently presents a TLS chain
+// that Supabase Edge Runtime does not trust. The mirror is owned by this repo.
+const SOURCE_URL = 'https://github.com/joaopauloalho/hub-giulia/releases/download/anvisa-data-current/anvisa-medications.csv';
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -111,8 +114,9 @@ Deno.serve(async (req: Request) => {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 
-  // Normal use requires a real authenticated Hub user. The only unauthenticated
-  // exception is the first bootstrap while the catalog has never synced.
+  // Normal use requires an authenticated Hub user. The no-header path exists
+  // only for the one-time empty-catalog bootstrap; production is deployed with
+  // platform JWT verification enabled after bootstrap.
   const authorization = req.headers.get('Authorization');
   if (authorization) {
     const token = authorization.replace(/^Bearer\s+/i, '').trim();
@@ -136,11 +140,12 @@ Deno.serve(async (req: Request) => {
     const response = await fetch(SOURCE_URL, {
       headers: { 'User-Agent': 'Hub-Giulia/1.0 medication-catalog-sync' },
     });
-    if (!response.ok) throw new Error(`ANVISA_HTTP_${response.status}`);
+    if (!response.ok) throw new Error(`ANVISA_MIRROR_HTTP_${response.status}`);
 
     const sourceLastModified = response.headers.get('last-modified');
     const sourceEtag = response.headers.get('etag');
     const bytes = await response.arrayBuffer();
+    if (bytes.byteLength < 1_000_000) throw new Error('ANVISA_MIRROR_UNEXPECTEDLY_SMALL');
     const text = new TextDecoder('iso-8859-1').decode(bytes);
     const parsed = parseCsv(text);
     if (parsed.length < 2) throw new Error('ANVISA_CSV_EMPTY');
