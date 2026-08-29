@@ -53,7 +53,7 @@ function ProcedureCard({ proc, contracts, treatmentSessions, settlingPaymentId, 
   const payments = [...(proc.payments ?? [])].sort((a, b) => (a.created_at ?? '').localeCompare(b.created_at ?? ''));
   const treatmentByItem = new Map(treatmentSessions.map(session => [session.procedure_item_id_snapshot, session]));
   const isTreatmentOnly = treatmentSessions.length > 0 && finance.venda <= .01 && payments.length === 0;
-  const isCourtesyOnly = !isTreatmentOnly && proc.payment_method === 'cortesia' && finance.venda <= .01;
+  const isCourtesyOnly = !isTreatmentOnly && String(proc.payment_method) === 'cortesia' && finance.venda <= .01;
 
   return <div className="card" style={{ overflow: 'hidden', marginBottom: 8 }}>
     <button type="button" onClick={() => setOpen(value => !value)} style={{ width: '100%', minHeight: 68, display: 'flex', alignItems: 'center', gap: 12, padding: '14px 16px', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left' }}>
