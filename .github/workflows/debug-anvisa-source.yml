@@ -1,0 +1,37 @@
+name: Inspect ANVISA source
+on:
+  push:
+    branches: [feat/medication-autocomplete-anvisa]
+    paths: ['.github/workflows/debug-anvisa-source.yml']
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Inspect current official CSV
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --location --insecure 'https://dados.anvisa.gov.br/dados/DADOS_ABERTOS_MEDICAMENTOS.csv' -o /tmp/anvisa.csv
+          python - <<'PY'
+          import csv
+          from collections import Counter
+          p='/tmp/anvisa.csv'
+          raw=open(p,'rb').read(300)
+          print('HEAD_BYTES', repr(raw[:160]))
+          for enc in ('utf-8-sig','latin1'):
+              try:
+                  with open(p, encoding=enc, newline='') as f:
+                      r=csv.DictReader(f, delimiter=';')
+                      print('ENC',enc,'FIELDS',r.fieldnames)
+                      c=Counter()
+                      samples=[]
+                      for i,row in enumerate(r):
+                          c[row.get('SITUACAO_REGISTRO','')]+=1
+                          if i<3: samples.append({k: row.get(k) for k in ('NOME_PRODUTO','PRINCIPIO_ATIVO','SITUACAO_REGISTRO')})
+                      print('ENC',enc,'STATUS',c.most_common(10))
+                      print('ENC',enc,'SAMPLES',samples)
+              except Exception as e:
+                  print('ENC',enc,'ERROR',repr(e))
+          PY
