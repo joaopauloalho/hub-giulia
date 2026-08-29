@@ -1,0 +1,67 @@
+name: Wire medication autocomplete UI
+
+on:
+  push:
+    branches:
+      - feat/medication-autocomplete-anvisa
+    paths:
+      - '.github/workflows/apply-medication-autocomplete-ui.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  wire:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/medication-autocomplete-anvisa
+          fetch-depth: 0
+
+      - name: Patch anamnesis editor
+        shell: python
+        run: |
+          from pathlib import Path
+
+          path = Path('src/pages/pacientes/AnamneseEditorPage.tsx')
+          text = path.read_text()
+
+          import_anchor = "import { validateAnamnesisForCompletion, type AnamnesisSaveStatus, type ClinicalAnswerMap } from '../../lib/anamnesisV2';\n"
+          import_line = "import { MedicationAutocomplete } from '../../components/clinical/MedicationAutocomplete';\n"
+          if import_line not in text:
+              if import_anchor not in text:
+                  raise SystemExit('Import anchor not found')
+              text = text.replace(import_anchor, import_anchor + import_line, 1)
+
+          old = """              {draft.medicationsStatus === 'reported' && <div className=\"field\"><label className=\"field-label\" htmlFor=\"detail-medications\">Qual(is)?</label><textarea id=\"detail-medications\" data-focus-target className=\"field-input\" rows={3} value={draft.medications} onChange={event => setDraft(previous => ({ ...previous, medications: event.target.value }))} /></div>}"""
+          new = """              {draft.medicationsStatus === 'reported' && (
+                <div className=\"field\">
+                  <MedicationAutocomplete
+                    id=\"detail-medications\"
+                    value={draft.medications}
+                    onChange={medications => setDraft(previous => ({ ...previous, medications }))}
+                  />
+                </div>
+              )}"""
+          if old not in text:
+              if '<MedicationAutocomplete' not in text:
+                  raise SystemExit('Medication textarea anchor not found')
+          else:
+              text = text.replace(old, new, 1)
+
+          path.write_text(text)
+
+      - name: Commit UI wiring
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet; then
+            echo 'No changes required.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/pages/pacientes/AnamneseEditorPage.tsx
+          git commit -m 'feat(anamnese): wire ANVISA medication autocomplete'
+          git push origin HEAD:feat/medication-autocomplete-anvisa
