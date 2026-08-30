@@ -2,7 +2,7 @@
 -- Mantém o valor da hora como configuração da clínica e congela o snapshot no atendimento.
 
 create table if not exists public.clinic_cost_settings (
-  user_id uuid primary key references auth.users(id) on delete cascade,
+  user_id uuid primary key default auth.uid() references auth.users(id) on delete cascade,
   hourly_rate numeric(12,2) not null default 0,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
