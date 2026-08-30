@@ -15,16 +15,16 @@ grant select, insert, update on table public.clinic_cost_settings to authenticat
 
 create policy clinic_cost_settings_select_own
   on public.clinic_cost_settings for select to authenticated
-  using (user_id = auth.uid());
+  using (user_id = (select auth.uid()));
 
 create policy clinic_cost_settings_insert_own
   on public.clinic_cost_settings for insert to authenticated
-  with check (user_id = auth.uid());
+  with check (user_id = (select auth.uid()));
 
 create policy clinic_cost_settings_update_own
   on public.clinic_cost_settings for update to authenticated
-  using (user_id = auth.uid())
-  with check (user_id = auth.uid());
+  using (user_id = (select auth.uid()))
+  with check (user_id = (select auth.uid()));
 
 alter table public.procedures
   add column if not exists clinical_minutes integer not null default 0,
