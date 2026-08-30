@@ -39,6 +39,7 @@ export function useAttendanceDraft(patientId?: string) {
       if (error) throw error;
       const row = (data as AttendanceDraftRow | null) ?? null;
       if (row) setClinicalMinutes(Number(row.payload?.clinicalMinutes ?? 0));
+      else clearClinicalMinutes();
       return row;
     } finally {
       setLoading(false);
