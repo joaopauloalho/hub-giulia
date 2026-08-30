@@ -19,8 +19,9 @@ test('clinical time cost is owner-scoped, snapshotted and idempotent', async () 
   const a = await signedInClient('a');
   const b = await signedInClient('b');
 
-  const config = await a.from('clinic_cost_settings').upsert({ hourly_rate: 120 }).select('hourly_rate').single();
+  const config = await a.from('clinic_cost_settings').upsert({ hourly_rate: 120 }).select('user_id,hourly_rate').single();
   expect(config.error).toBeNull();
+  expect(config.data?.user_id).toBeTruthy();
   expect(Number(config.data?.hourly_rate)).toBe(120);
 
   const hiddenFromOtherTenant = await b.from('clinic_cost_settings').select('hourly_rate');
@@ -52,7 +53,11 @@ test('clinical time cost is owner-scoped, snapshotted and idempotent', async () 
   expect(procedure?.clinical_cost_applied).toBe(true);
   expect(Number(procedure?.total_cost)).toBeGreaterThanOrEqual(60);
 
-  const changedConfig = await a.from('clinic_cost_settings').update({ hourly_rate: 200 }).select('hourly_rate').single();
+  const changedConfig = await a.from('clinic_cost_settings')
+    .update({ hourly_rate: 200 })
+    .eq('user_id', config.data!.user_id)
+    .select('hourly_rate')
+    .single();
   expect(changedConfig.error).toBeNull();
   expect(Number(changedConfig.data?.hourly_rate)).toBe(200);
 
