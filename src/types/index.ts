@@ -393,6 +393,10 @@ export interface Procedure {
   services_ids: string[];
   total_value: number;
   total_cost: number;
+  clinical_minutes: number;
+  clinical_hourly_rate_snapshot: number;
+  clinical_time_cost: number;
+  clinical_cost_applied: boolean;
   payment_method: PaymentMethod;
   card_fee_pct: number | null;
   card_fee_value: number | null;

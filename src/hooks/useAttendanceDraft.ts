@@ -1,5 +1,6 @@
 import { useCallback, useState } from 'react';
 import { supabase } from '../lib/supabase';
+import { clearClinicalMinutes, getClinicalMinutes, setClinicalMinutes } from '../lib/clinicalTimeRuntime';
 
 export type AttendanceDraftPayload = {
   performedDate?: string;
@@ -9,6 +10,7 @@ export type AttendanceDraftPayload = {
   finalPriceByService?: Record<string, number>;
   courtesyByService?: Record<string, boolean>;
   materials?: unknown[];
+  clinicalMinutes?: number;
   paymentTiming?: 'today' | 'later';
   payments?: unknown[];
 };
@@ -35,7 +37,10 @@ export function useAttendanceDraft(patientId?: string) {
         .eq('patient_id', patientId)
         .maybeSingle();
       if (error) throw error;
-      return (data as AttendanceDraftRow | null) ?? null;
+      const row = (data as AttendanceDraftRow | null) ?? null;
+      if (row) setClinicalMinutes(Number(row.payload?.clinicalMinutes ?? 0));
+      else clearClinicalMinutes();
+      return row;
     } finally {
       setLoading(false);
     }
@@ -49,13 +54,18 @@ export function useAttendanceDraft(patientId?: string) {
       if (userError) throw userError;
       if (!user) throw new Error('Sessão expirada. Entre novamente.');
 
+      const enrichedPayload: AttendanceDraftPayload = {
+        ...payload,
+        clinicalMinutes: getClinicalMinutes(),
+      };
+
       const { error } = await supabase
         .from('attendance_drafts')
         .upsert({
           user_id: user.id,
           patient_id: patientId,
           appointment_id: appointmentId ?? null,
-          payload,
+          payload: enrichedPayload,
           updated_at: new Date().toISOString(),
         }, { onConflict: 'user_id,patient_id' });
       if (error) throw error;
@@ -71,6 +81,7 @@ export function useAttendanceDraft(patientId?: string) {
       .delete()
       .eq('patient_id', patientId);
     if (error) throw error;
+    clearClinicalMinutes();
   }, [patientId]);
 
   return { load, save, remove, loading, saving };

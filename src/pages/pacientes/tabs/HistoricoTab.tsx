@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Camera, CheckCircle2, ChevronRight, ClipboardList, FileText, Loader2, MapPin, Plus } from 'lucide-react';
+import { Camera, CheckCircle2, ChevronRight, ClipboardList, Clock3, FileText, Loader2, MapPin, Plus } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { useProcedures } from '../../../hooks/useProcedures';
@@ -37,6 +37,14 @@ function sessionLabel(session: TreatmentSessionRecord) {
   return Math.abs(start - end) < .001 ? `Sessão ${fmt(end)} de ${fmt(total)}` : `Sessões ${fmt(start)}–${fmt(end)} de ${fmt(total)}`;
 }
 
+function clinicalTimeLabel(minutes: number) {
+  const normalized = Math.max(0, Math.round(Number(minutes) || 0));
+  const hours = Math.floor(normalized / 60);
+  const rest = normalized % 60;
+  if (!hours) return `${rest} min`;
+  return rest ? `${hours}h${String(rest).padStart(2, '0')}` : `${hours}h`;
+}
+
 function ProcedureCard({ proc, contracts, treatmentSessions, settlingPaymentId, onReceive, onPhotos, onInjectables, onContract }: {
   proc: Procedure;
   contracts: Contract[];
@@ -54,6 +62,12 @@ function ProcedureCard({ proc, contracts, treatmentSessions, settlingPaymentId, 
   const treatmentByItem = new Map(treatmentSessions.map(session => [session.procedure_item_id_snapshot, session]));
   const isTreatmentOnly = treatmentSessions.length > 0 && finance.venda <= .01 && payments.length === 0;
   const isCourtesyOnly = !isTreatmentOnly && String(proc.payment_method) === 'cortesia' && finance.venda <= .01;
+  const clinicalMinutes = Number(proc.clinical_minutes ?? 0);
+  const clinicalTimeCost = Number(proc.clinical_time_cost ?? 0);
+  const clinicalHourlyRate = Number(proc.clinical_hourly_rate_snapshot ?? 0);
+  const totalCost = Number(proc.total_cost ?? 0);
+  const otherCosts = Math.max(0, totalCost - clinicalTimeCost);
+  const hasClinicalCostSnapshot = Boolean(proc.clinical_cost_applied);
 
   return <div className="card" style={{ overflow: 'hidden', marginBottom: 8 }}>
     <button type="button" onClick={() => setOpen(value => !value)} style={{ width: '100%', minHeight: 68, display: 'flex', alignItems: 'center', gap: 12, padding: '14px 16px', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left' }}>
@@ -64,6 +78,7 @@ function ProcedureCard({ proc, contracts, treatmentSessions, settlingPaymentId, 
         {treatmentSessions.length > 0 && <span className="badge badge--green" style={{ marginTop: 5 }}>{treatmentSessions[0].package_title}</span>}
         {isCourtesyOnly && <span className="badge" style={{ marginTop: 5, background: '#fce7f3', color: '#9d174d' }}>BRINDE / CORTESIA</span>}
         {finance.pendente > 0 && <span className="badge badge--amber" style={{ marginTop: 5 }}>A RECEBER · {currency(finance.pendente)}</span>}
+        {clinicalMinutes > 0 && <span className="badge" style={{ marginTop: 5, background: 'var(--bg-2)', color: 'var(--text-2)' }}><Clock3 size={11}/> {clinicalTimeLabel(clinicalMinutes)} clínicos</span>}
       </div>
       <div style={{ textAlign: 'right', flexShrink: 0 }}>
         {isTreatmentOnly ? <><strong style={{ color: '#166534', fontSize: 13 }}>Já pago</strong><div className="page-sub">sessão do tratamento</div></> : isCourtesyOnly ? <><strong style={{ color: '#9d174d', fontSize: 13 }}>Brinde</strong><div className="page-sub">sem cobrança</div></> : <><strong style={{ color: 'var(--primary)' }}>{currency(finance.venda)}</strong><div className="page-sub">recebido {currency(finance.pago)}</div></>}
@@ -97,6 +112,15 @@ function ProcedureCard({ proc, contracts, treatmentSessions, settlingPaymentId, 
       </section>
 
       {!isTreatmentOnly && !isCourtesyOnly && <section style={{ display: 'grid', gap: 5 }}><div style={{ display: 'flex', justifyContent: 'space-between' }}><span className="page-sub">Valor do atendimento</span><strong>{currency(finance.venda)}</strong></div><div style={{ display: 'flex', justifyContent: 'space-between' }}><span className="page-sub">Recebido</span><strong>{currency(finance.pago)}</strong></div><div style={{ display: 'flex', justifyContent: 'space-between' }}><span className="page-sub">A receber</span><strong style={{ color: finance.pendente > 0 ? '#b45309' : 'inherit' }}>{currency(finance.pendente)}</strong></div></section>}
+
+      {hasClinicalCostSnapshot && <section style={{ padding: 12, border: '1px solid var(--border)', borderRadius: 10, background: 'var(--bg-2)' }}>
+        <strong style={{ fontSize: 12, textTransform: 'uppercase', letterSpacing: '.04em' }}>Custos do atendimento</strong>
+        <div style={{ display: 'grid', gap: 6, marginTop: 9 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}><span className="page-sub">Procedimentos, produtos e materiais</span><strong>{currency(otherCosts)}</strong></div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}><span className="page-sub">Tempo clínico · {clinicalTimeLabel(clinicalMinutes)}{clinicalHourlyRate > 0 ? ` × ${currency(clinicalHourlyRate)}/h` : ''}</span><strong>{currency(clinicalTimeCost)}</strong></div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, paddingTop: 7, borderTop: '1px solid var(--border)' }}><strong>Custo total</strong><strong style={{ color: 'var(--primary)' }}>{currency(totalCost)}</strong></div>
+        </div>
+      </section>}
 
       <section>
         <strong style={{ fontSize: 12, textTransform: 'uppercase', letterSpacing: '.04em' }}>Documentos</strong>
