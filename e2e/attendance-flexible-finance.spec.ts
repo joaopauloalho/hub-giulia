@@ -138,7 +138,7 @@ test('editing the procedure discount after visiting finance recalculates the pay
 
   await expect(page.getByText('Total do atendimento após descontos')).toBeVisible();
   await expect(page.getByText('✓ Valor alocado')).toBeVisible();
-  await expect(page.getByText('R$ 100,00')).toBeVisible();
+  await expect(page.getByText('R$ 100,00', { exact: true })).toBeVisible();
 
   await page.getByRole('button', { name: 'Alterar valor / desconto' }).click();
   const finalPrice = page.locator('input[type="number"]').first();
@@ -153,5 +153,5 @@ test('editing the procedure discount after visiting finance recalculates the pay
   await expect(page.getByText('✓ Valor alocado')).toBeVisible();
   await expect(page.getByText(/Falta R\$/)).toHaveCount(0);
   await expect(page.getByRole('button', { name: /Continuar/ })).toBeEnabled();
-  await expect(page.getByText('R$ 80,00')).toBeVisible();
+  await expect(page.getByText('R$ 80,00', { exact: true })).toBeVisible();
 });
