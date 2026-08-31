@@ -3,12 +3,13 @@ name: CI
 on:
   pull_request:
     branches: [main]
-  push:
-    branches:
-      - 'agent/**'
 
 permissions:
   contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   validate:
@@ -115,6 +116,7 @@ jobs:
           fi
 
   database-rebuild-e2e:
+    needs: [validate, dependency-audit]
     runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:
