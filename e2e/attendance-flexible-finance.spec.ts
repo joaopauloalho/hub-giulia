@@ -1,7 +1,7 @@
 import fs from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { expect, test } from '@playwright/test';
-import { signedInClient } from './helpers';
+import { browserLogin, signedInClient } from './helpers';
 
 type E2EState = { serviceId: string; patientId: string };
 const readState = async () => JSON.parse(await fs.readFile('.e2e-state.json', 'utf8')) as E2EState;
@@ -119,4 +119,39 @@ test('attendance supports server draft, discount, future receivable, receipt and
 
   const deleteDraft = await a.from('attendance_drafts').delete().eq('patient_id', seeded.patientId);
   expect(deleteDraft.error).toBeNull();
+});
+
+test('editing the procedure discount after visiting finance recalculates the payment allocation', async ({ page }) => {
+  const seeded = await readState();
+  await browserLogin(page, 'a');
+  await page.goto(`/registrar?patient_id=${seeded.patientId}&service_id=${seeded.serviceId}`);
+
+  const continueButton = page.getByRole('button', { name: /Continuar/ });
+  await expect(page.getByText('Valor realizado')).toBeVisible();
+  await expect(page.locator('input[type="number"]').first()).toHaveValue('100');
+
+  await continueButton.click();
+  await expect(page.getByRole('dialog', { name: 'Mapa de Injetáveis' })).toBeVisible();
+  await page.getByRole('button', { name: 'Pular mapa' }).click();
+  await expect(page.getByText('Materiais utilizados')).toBeVisible();
+  await continueButton.click();
+
+  await expect(page.getByText('Total do atendimento após descontos')).toBeVisible();
+  await expect(page.getByText('✓ Valor alocado')).toBeVisible();
+  await expect(page.getByText('R$ 100,00', { exact: true })).toBeVisible();
+
+  await page.getByRole('button', { name: 'Alterar valor / desconto' }).click();
+  const finalPrice = page.locator('input[type="number"]').first();
+  await finalPrice.fill('80');
+  await expect(page.getByText(/desconto R\$\s*20,00/)).toBeVisible();
+
+  await continueButton.click();
+  await expect(page.getByText('Materiais utilizados')).toBeVisible();
+  await continueButton.click();
+
+  await expect(page.getByText('Total do atendimento após descontos')).toBeVisible();
+  await expect(page.getByText('✓ Valor alocado')).toBeVisible();
+  await expect(page.getByText(/Falta R\$/)).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /Continuar/ })).toBeEnabled();
+  await expect(page.getByText('R$ 80,00', { exact: true })).toBeVisible();
 });
