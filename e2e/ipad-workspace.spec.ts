@@ -61,12 +61,18 @@ test('Patient 360 becomes master-detail on iPad landscape and reacts to rotation
   await expect.poll(async () => page.locator('.patient-360-tabs').evaluate(element => getComputedStyle(element).flexDirection)).toBe('column');
   await expectNoRootOverflow(page, 'patient landscape');
 
+  await expect.poll(async () => {
+    const navBox = await page.locator('.patient-360-tabs').boundingBox();
+    const bodyBox = await page.locator('.patient-360-drawer .drawer-body').boundingBox();
+    if (!navBox || !bodyBox) return Number.POSITIVE_INFINITY;
+    return Math.abs(navBox.y - bodyBox.y);
+  }, { message: 'Patient 360 master-detail columns should settle on the same top edge' }).toBeLessThan(3);
+
   const nav = await page.locator('.patient-360-tabs').boundingBox();
   const body = await page.locator('.patient-360-drawer .drawer-body').boundingBox();
   expect(nav).not.toBeNull();
   expect(body).not.toBeNull();
   expect(nav!.x).toBeLessThan(body!.x);
-  expect(Math.abs(nav!.y - body!.y)).toBeLessThan(3);
 
   await expect(page.locator('.patient-data-card')).toHaveCount(6);
   const cards = await page.locator('.patient-data-card').evaluateAll(elements => elements.slice(0, 2).map(element => {
