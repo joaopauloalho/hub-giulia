@@ -121,6 +121,45 @@ test('Anamnese keeps two-pane navigation and touch-friendly binary choices on iP
   await expectNoRootOverflow(page, 'anamnese landscape');
 });
 
+test('Dashboard, Financeiro and CRM preserve productive landscape density', async ({ page }) => {
+  await browserLogin(page, 'a');
+  await page.setViewportSize({ width: 1180, height: 820 });
+
+  await page.goto('/dashboard');
+  const dashboardPaddingBottom = await page.locator('.dashboard-page').evaluate(element => parseFloat(getComputedStyle(element).paddingBottom));
+  expect(dashboardPaddingBottom).toBeLessThanOrEqual(48);
+  const attentionColumns = await page.locator('.dashboard-attention__grid').evaluate(element => getComputedStyle(element).gridTemplateColumns.split(' ').filter(Boolean).length);
+  expect(attentionColumns).toBe(5);
+  await expectNoRootOverflow(page, 'dashboard productive density');
+
+  await page.goto('/financeiro');
+  await page.getByRole('tab', { name: 'Por serviço' }).click();
+  const financialSummary = page.locator('.sf-summary-grid');
+  await expect(financialSummary).toBeVisible();
+  const financialColumns = await financialSummary.evaluate(element => getComputedStyle(element).gridTemplateColumns.split(' ').filter(Boolean).length);
+  expect(financialColumns).toBe(5);
+  const financialHeader = page.locator('.sf-list-header');
+  if (await financialHeader.count()) await expect(financialHeader).toBeVisible();
+  await expectNoRootOverflow(page, 'financeiro productive density');
+
+  await page.goto('/crm');
+  const board = page.locator('.crm-board');
+  await expect(board).toBeVisible();
+  await expect(page.locator('.crm-mobile-list')).toBeHidden();
+  const boardBehavior = await board.evaluate(element => {
+    const style = getComputedStyle(element);
+    return { overflowX: style.overflowX, overscrollX: style.overscrollBehaviorX };
+  });
+  expect(boardBehavior.overflowX).toBe('auto');
+  expect(boardBehavior.overscrollX).toBe('contain');
+  const crmCards = page.locator('.crm-card');
+  if (await crmCards.count()) {
+    const minCardHeight = Math.min(...await crmCards.evaluateAll(elements => elements.slice(0, 12).map(element => element.getBoundingClientRect().height)));
+    expect(minCardHeight).toBeGreaterThanOrEqual(44);
+  }
+  await expectNoRootOverflow(page, 'crm productive density');
+});
+
 test('critical iPad routes keep primary content inside the viewport', async ({ page }) => {
   const seeded = await readState();
   await browserLogin(page, 'a');
@@ -164,4 +203,13 @@ test('capture responsive workspace evidence', async ({ page }) => {
   await page.goto(`/pacientes/${seeded.patientId}/anamnese`);
   await expect(page.locator('.anamnesis-editor-layout')).toBeVisible();
   await page.screenshot({ path: path.join(outputDir, 'anamnese-1180x820.png'), fullPage: true, animations: 'disabled' });
+
+  await page.goto('/financeiro');
+  await page.getByRole('tab', { name: 'Por serviço' }).click();
+  await expect(page.locator('.sf-summary-grid')).toBeVisible();
+  await page.screenshot({ path: path.join(outputDir, 'financeiro-servicos-1180x820.png'), fullPage: true, animations: 'disabled' });
+
+  await page.goto('/crm');
+  await expect(page.locator('.crm-board')).toBeVisible();
+  await page.screenshot({ path: path.join(outputDir, 'crm-1180x820.png'), fullPage: true, animations: 'disabled' });
 });
