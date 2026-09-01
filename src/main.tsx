@@ -6,6 +6,7 @@ import { registerHubPwa } from './lib/pwa';
 import './index.css';
 import './operational.css';
 import './workspace.css';
+import './accessibility.css';
 
 const queryClient = new QueryClient({
   defaultOptions: {
