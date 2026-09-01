@@ -1,0 +1,21 @@
+/* Shared interaction contracts: keep visual density while preserving touch area. */
+.modal-close,
+.drawer-back,
+.btn--sm,
+.hub-global-search-trigger,
+.patient-360-tabs .sub-tab,
+.dashboard-period,
+.sf-presets button {
+  min-height: 44px;
+}
+
+.modal-close,
+.drawer-back {
+  min-width: 44px;
+}
+
+@media (pointer: coarse) {
+  .hub-runtime-action {
+    min-height: 44px;
+  }
+}
