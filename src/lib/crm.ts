@@ -6,7 +6,9 @@ import { ACQUISITION_SOURCE_KEYS, ACQUISITION_SOURCE_LABEL, type AcquisitionSour
 export const CRM_STAGE_KEYS = ['new', 'contacted', 'assessment_scheduled', 'proposal_sent', 'negotiation', 'won', 'lost'] as const;
 export type CrmStage = typeof CRM_STAGE_KEYS[number];
 export const CRM_VISIBLE_STAGE_KEYS: CrmStage[] = ['contacted', 'assessment_scheduled', 'proposal_sent', 'negotiation', 'won', 'lost'];
-export const CRM_OPEN_STAGES: CrmStage[] = ['contacted', 'assessment_scheduled', 'proposal_sent', 'negotiation'];
+export const CRM_VISIBLE_OPEN_STAGES: CrmStage[] = ['contacted', 'assessment_scheduled', 'proposal_sent', 'negotiation'];
+// Stable persisted-data contract. New data no longer enters `new`, but old rows remain a valid open state.
+export const CRM_OPEN_STAGES: CrmStage[] = ['new', ...CRM_VISIBLE_OPEN_STAGES];
 
 export const CRM_STAGE_LABEL: Record<CrmStage, string> = {
   new: 'Novo lead',
