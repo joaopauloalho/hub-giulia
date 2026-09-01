@@ -64,8 +64,9 @@ test('CRM stays clean while proposal is a simple patient budget and can be delet
 
   await browserLogin(page, 'a');
   await page.goto('/crm');
-  await expect(page.getByText('Em contato', { exact: true }).first()).toBeVisible();
-  await expect(page.getByText('Proposta enviada', { exact: true }).first()).toBeVisible();
+  const stageNav = page.locator('.crm-stage-segments').first();
+  await expect(stageNav.getByRole('button', { name: 'Em contato', exact: true })).toBeVisible();
+  await expect(stageNav.getByRole('button', { name: 'Proposta enviada', exact: true })).toBeVisible();
   await expect(page.getByText('Novo', { exact: true })).toHaveCount(0);
   await expect(page.getByRole('button', { name: /Novo contato/ })).toBeVisible();
   await expect(page.getByLabel('Filtrar tipo de paciente')).toBeVisible();
