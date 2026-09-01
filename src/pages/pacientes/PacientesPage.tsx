@@ -11,7 +11,7 @@ import type { Patient } from '../../types';
 
 type PatientViewMode = 'active' | 'journey' | 'archived';
 
-const PATIENT_TABS: TabKey[] = ['overview', 'timeline', 'procedures', 'anamnesis', 'photos', 'injectables', 'finance', 'contracts', 'notes', 'data'];
+const PATIENT_TABS: TabKey[] = ['overview', 'timeline', 'procedures', 'anamnesis', 'photos', 'injectables', 'finance', 'proposals', 'contracts', 'notes', 'data'];
 
 export function PacientesPage() {
   const navigate = useNavigate();
