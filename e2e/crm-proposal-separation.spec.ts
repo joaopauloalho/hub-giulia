@@ -47,12 +47,15 @@ test('CRM stays clean while proposals live in the patient profile and finance st
 
   await browserLogin(page, 'a');
   await page.goto('/crm');
-  const card = page.locator('.crm-card').filter({ hasText: 'E2E TEST Contact' }).first();
+  const card = page.locator('.crm-card').filter({ hasText: 'E2E TEST Seed Patient' }).first();
   await expect(card).toBeVisible();
-  await expect(card.getByText('E2E TEST Deal')).not.toBeVisible();
-  await expect(card.getByText('E2E TEST Service')).not.toBeVisible();
-  const proposalInCard = card.getByText('E2E TEST HIDDEN PROPOSAL');
-  if (await proposalInCard.count()) await expect(proposalInCard).not.toBeVisible();
+  await expect(card.getByText('E2E TEST Deal')).toHaveCount(0);
+  await expect(card.getByText('E2E TEST Service')).toHaveCount(0);
+  await expect(card.getByText('E2E TEST HIDDEN PROPOSAL')).toHaveCount(0);
+  await expect(card.getByText('R$ 100,00')).toHaveCount(0);
+
+  await card.getByRole('button').first().click();
+  await expect(page.getByRole('button', { name: /Abrir paciente/ })).toBeVisible();
 
   await page.goto(`/pacientes/${seeded.patientId}?tab=proposals`);
   await expect(page.getByText('Propostas da paciente')).toBeVisible();
@@ -62,4 +65,5 @@ test('CRM stays clean while proposals live in the patient profile and finance st
   await page.goto(`/pacientes/${seeded.patientId}?tab=finance`);
   await expect(page.getByText('Financeiro da paciente')).toBeVisible();
   await expect(page.getByText('Histórico comercial')).toHaveCount(0);
+  await expect(page.getByText('E2E TEST HIDDEN PROPOSAL')).toHaveCount(0);
 });
