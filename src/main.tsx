@@ -5,6 +5,7 @@ import App from './App.tsx';
 import { registerHubPwa } from './lib/pwa';
 import './index.css';
 import './operational.css';
+import './workspace.css';
 
 const queryClient = new QueryClient({
   defaultOptions: {
