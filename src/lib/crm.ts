@@ -2,13 +2,14 @@ import { addIsoDays, clinicDateIso } from './agendaTime';
 import { normalizePhone } from './patientInput';
 import { ACQUISITION_SOURCE_KEYS, ACQUISITION_SOURCE_LABEL, type AcquisitionSource } from './acquisition';
 
-export const CRM_STAGE_KEYS = ['contacted', 'assessment_scheduled', 'proposal_sent', 'negotiation', 'won', 'lost'] as const;
-export type CrmStage = 'new' | typeof CRM_STAGE_KEYS[number];
-
+// Keep persisted keys stable for historical rows/analytics. `new` is legacy and no longer shown in the operational funnel.
+export const CRM_STAGE_KEYS = ['new', 'contacted', 'assessment_scheduled', 'proposal_sent', 'negotiation', 'won', 'lost'] as const;
+export type CrmStage = typeof CRM_STAGE_KEYS[number];
+export const CRM_VISIBLE_STAGE_KEYS: CrmStage[] = ['contacted', 'assessment_scheduled', 'proposal_sent', 'negotiation', 'won', 'lost'];
 export const CRM_OPEN_STAGES: CrmStage[] = ['contacted', 'assessment_scheduled', 'proposal_sent', 'negotiation'];
 
 export const CRM_STAGE_LABEL: Record<CrmStage, string> = {
-  new: 'Em contato',
+  new: 'Novo lead',
   contacted: 'Em contato',
   assessment_scheduled: 'Avaliação',
   proposal_sent: 'Proposta enviada',
