@@ -21,11 +21,12 @@ test('CRM stays clean while proposal is a simple patient budget and can be delet
   expect(created.error).toBeNull();
   const createdRow = Array.isArray(created.data) ? created.data[0] : created.data;
   expect(createdRow?.proposal_id).toBeTruthy();
+  const proposalTitle = `E2E TEST SIMPLE PROPOSAL ${createdRow!.proposal_id}`;
 
   const saved = await a.rpc('save_treatment_proposal_draft_v2', {
     p_version_id: createdRow!.version_id,
     p_expected_revision: 0,
-    p_title: 'E2E TEST SIMPLE PROPOSAL',
+    p_title: proposalTitle,
     p_valid_until: '2030-12-31',
     p_payment_terms: null,
     p_internal_note: null,
@@ -75,19 +76,21 @@ test('CRM stays clean while proposal is a simple patient budget and can be delet
   await expect(card).toBeVisible();
   await expect(card.getByText('E2E TEST Deal')).toHaveCount(0);
   await expect(card.getByText('E2E TEST Service')).toHaveCount(0);
-  await expect(card.getByText('E2E TEST SIMPLE PROPOSAL')).toHaveCount(0);
+  await expect(card.getByText(proposalTitle)).toHaveCount(0);
   await expect(card.getByText('R$ 100,00')).toHaveCount(0);
 
   await card.getByRole('button').first().click();
   await expect(page.getByRole('button', { name: /Abrir paciente/ })).toBeVisible();
-  await expect(page.getByText('E2E TEST SIMPLE PROPOSAL')).toHaveCount(0);
+  await expect(page.getByText(proposalTitle)).toHaveCount(0);
 
   await page.goto(`/pacientes/${seeded.patientId}?tab=proposals`);
   await expect(page.getByText('Propostas da paciente')).toBeVisible();
-  await expect(page.getByText('E2E TEST SIMPLE PROPOSAL')).toBeVisible();
+  const proposalButton = page.getByRole('button', { name: new RegExp(proposalTitle) });
+  await expect(proposalButton).toBeVisible();
   await expect(page.getByRole('button', { name: /Nova proposta/ })).toBeVisible();
 
-  await page.getByText('E2E TEST SIMPLE PROPOSAL').click();
+  await proposalButton.click();
+  await expect(page).toHaveURL(new RegExp(`/crm/deals/${seeded.dealId}/proposals/${createdRow!.proposal_id}`));
   await expect(page.getByLabel('Valor proposto')).toHaveValue('321');
   await expect(page.getByLabel('Condição de pagamento')).toHaveValue('PIX à vista ou 6x sem juros');
   await expect(page.getByText('Marcar como proposta enviada no CRM')).toBeVisible();
@@ -98,7 +101,7 @@ test('CRM stays clean while proposal is a simple patient budget and can be delet
   await page.goto(`/pacientes/${seeded.patientId}?tab=finance`);
   await expect(page.getByText('Financeiro da paciente')).toBeVisible();
   await expect(page.getByText('Histórico comercial')).toHaveCount(0);
-  await expect(page.getByText('E2E TEST SIMPLE PROPOSAL')).toHaveCount(0);
+  await expect(page.getByText(proposalTitle)).toHaveCount(0);
 
   const deleted = await a.rpc('delete_treatment_proposal_v2', { p_proposal_id: createdRow!.proposal_id });
   expect(deleted.error).toBeNull();
