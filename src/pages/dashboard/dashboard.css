@@ -420,6 +420,26 @@ button.dashboard-action-card:active {
   }
 }
 
+@media (min-width: 768px) {
+  .dashboard-page {
+    padding-bottom: max(40px, var(--hub-safe-bottom));
+  }
+}
+
+@media (min-width: 1024px) and (orientation: landscape) {
+  .dashboard-header {
+    margin-bottom: 16px;
+  }
+
+  .dashboard-section {
+    margin-top: 22px;
+  }
+
+  .dashboard-period-bar {
+    padding: 10px 12px;
+  }
+}
+
 @media (max-width: 820px) {
   .dashboard-page {
     padding-left: 16px;
