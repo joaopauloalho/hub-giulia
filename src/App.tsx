@@ -3,6 +3,7 @@ import AppRoutesV2 from './AppRoutesV2';
 import { AnamnesisTabletExitGuard } from './components/clinical/AnamnesisTabletExitGuard';
 import { safeLogError } from './lib/safeLogger';
 import './pages/pacientes/anamnesis-tablet-guard.css';
+import './pages/crm/crm-simplified.css';
 
 class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
   state: { error: Error | null } = { error: null };
