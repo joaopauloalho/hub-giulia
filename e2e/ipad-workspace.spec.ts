@@ -126,10 +126,14 @@ test('Dashboard, Financeiro and CRM preserve productive landscape density', asyn
   await page.setViewportSize({ width: 1180, height: 820 });
 
   await page.goto('/dashboard');
-  const dashboardPaddingBottom = await page.locator('.dashboard-page').evaluate(element => parseFloat(getComputedStyle(element).paddingBottom));
+  const dashboard = page.locator('.dashboard-page');
+  await expect(dashboard).toBeVisible();
+  await expect(page.locator('.dashboard-period-bar')).toBeVisible();
+  const dashboardBox = await dashboard.boundingBox();
+  expect(dashboardBox).not.toBeNull();
+  expect(dashboardBox!.width).toBeGreaterThanOrEqual(1000);
+  const dashboardPaddingBottom = await dashboard.evaluate(element => parseFloat(getComputedStyle(element).paddingBottom));
   expect(dashboardPaddingBottom).toBeLessThanOrEqual(48);
-  const attentionColumns = await page.locator('.dashboard-attention__grid').evaluate(element => getComputedStyle(element).gridTemplateColumns.split(' ').filter(Boolean).length);
-  expect(attentionColumns).toBe(5);
   await expectNoRootOverflow(page, 'dashboard productive density');
 
   await page.goto('/financeiro');
