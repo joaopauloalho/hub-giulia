@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom';
-import { BookOpen, CalendarDays, FileText, HeartHandshake, LayoutDashboard, LogOut, MessageCircle, RotateCcw, ShieldCheck, TrendingUp, Users, Wallet } from 'lucide-react';
+import { BookOpen, CalendarDays, HeartHandshake, LayoutDashboard, LogOut, MessageCircle, RotateCcw, ShieldCheck, TrendingUp, Users, Wallet } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import './sideRail391.css';
 
@@ -10,7 +10,6 @@ const tabs = [
   { to: '/relacionamento', icon: HeartHandshake, label: 'Relacionamento', end: false },
   { to: '/pacientes', icon: Users, label: 'Pacientes', end: false },
   { to: '/crm', icon: TrendingUp, label: 'CRM', end: true },
-  { to: '/crm/propostas-em-aberto', icon: FileText, label: 'Propostas', end: true },
   { to: '/retornos', icon: RotateCcw, label: 'Retornos', end: false },
   { to: '/financeiro', icon: Wallet, label: 'Financeiro', end: false },
   { to: '/saude', icon: ShieldCheck, label: 'Saúde', end: false },
