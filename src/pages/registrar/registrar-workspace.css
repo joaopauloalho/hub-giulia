@@ -1,0 +1,23 @@
+/* Registrar — tablet workspace posture. Business state remains in TreatmentRegistrarPageV2. */
+
+@media (min-width: 1024px) and (orientation: landscape) {
+  .registrar-route [aria-label="Etapas do atendimento"] {
+    position: sticky;
+    top: calc(54px + var(--hub-safe-top));
+    z-index: 12;
+    padding: 8px 8px 6px;
+    border-bottom: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
+    background: color-mix(in srgb, var(--bg) 94%, transparent);
+    backdrop-filter: blur(10px);
+  }
+
+  .registrar-route .page-header {
+    margin-bottom: 14px;
+  }
+
+  .registrar-route .field-input,
+  .registrar-route textarea,
+  .registrar-route select {
+    scroll-margin-top: calc(112px + var(--hub-safe-top));
+  }
+}

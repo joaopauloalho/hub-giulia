@@ -27,6 +27,7 @@
 .sf-service-list { display: flex; flex-direction: column; gap: 8px; }
 .sf-service-row { width: 100%; display: grid; grid-template-columns: minmax(180px, 1.55fr) repeat(8, minmax(78px, .75fr)) 22px; gap: 10px; align-items: center; padding: 13px 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--bg-2); color: var(--text); text-align: left; cursor: pointer; font: inherit; transition: border-color .15s ease, transform .15s ease; }
 .sf-service-row:hover { border-color: color-mix(in srgb, var(--primary) 45%, var(--border)); transform: translateY(-1px); }
+.sf-service-row:active { transform: none; }
 .sf-service-main { min-width: 0; }
 .sf-service-title { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
 .sf-service-title > strong { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
@@ -70,6 +71,28 @@
   .sf-service-main { grid-column: 1 / -1; }
   .sf-metric > span:first-child { display: block; }
   .sf-chevron { display: none; }
+}
+
+/* iPad landscape has enough usable width to keep the financial comparison tabular. */
+@media (min-width: 1120px) and (max-width: 1260px) and (orientation: landscape) {
+  .sf-page { gap: 14px; }
+  .sf-summary-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+  .sf-summary-card { padding: 12px; }
+  .sf-list-header { display: grid; grid-template-columns: minmax(168px, 1.5fr) repeat(8, minmax(68px, .72fr)) 18px; gap: 8px; padding-inline: 10px; }
+  .sf-service-row { grid-template-columns: minmax(168px, 1.5fr) repeat(8, minmax(68px, .72fr)) 18px; gap: 8px; align-items: center; padding: 11px 10px; min-height: 58px; }
+  .sf-service-main { grid-column: auto; }
+  .sf-metric > span:first-child { display: none; }
+  .sf-chevron { display: block; }
+}
+
+@media (min-width: 768px) {
+  .sf-drawer-overlay { left: calc(var(--rail-w) + var(--hub-safe-left)); }
+  .sf-drawer { padding-bottom: max(20px, var(--hub-safe-bottom)); }
+  .sf-service-row { -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+}
+
+@media (min-width: 1024px) and (orientation: landscape) {
+  .sf-drawer { width: min(760px, calc(100vw - var(--rail-w) - var(--hub-safe-left) - 32px)); }
 }
 
 @media (max-width: 760px) {

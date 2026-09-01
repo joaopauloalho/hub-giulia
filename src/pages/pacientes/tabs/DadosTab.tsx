@@ -1,34 +1,35 @@
-import { useState } from 'react';
-import { Pencil, Check, X } from 'lucide-react';
+import { useState, type ReactNode } from 'react';
+import { Check, Pencil, X } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import type { Patient } from '../../../types';
 import { ageLabel, birthDateIsoToInput, formatBirthDateInput, parseBirthDateInput } from '../../../lib/dateUtils';
 import { AcquisitionFields } from '../../../components/patients/AcquisitionFields';
-import { normalizeAcquisitionDraft } from '../../../lib/acquisition';
+import { formatAcquisitionLabel, normalizeAcquisitionDraft } from '../../../lib/acquisition';
 
 interface Props {
   patient: Patient;
   onUpdate: (data: Partial<Patient>) => Promise<void>;
 }
 
-function Row({ label, value }: { label: string; value?: string | null }) {
-  if (!value) return null;
-  return (
-    <div className="info-row">
-      <span className="info-label">{label}</span>
-      <span className="info-value">{value}</span>
-    </div>
-  );
+function Info({ label, value }: { label: string; value?: string | null }) {
+  return <div className="patient-data-field">
+    <span className="patient-data-field__label">{label}</span>
+    <span className={value ? 'patient-data-field__value' : 'patient-data-empty'}>{value || 'Não informado'}</span>
+  </div>;
 }
 
-function SectionTitle({ children }: { children: React.ReactNode }) {
-  return <div className="section-title" style={{ marginTop: 20, marginBottom: 4 }}>{children}</div>;
+function Card({ title, hint, wide = false, compact = false, children }: { title: string; hint?: string; wide?: boolean; compact?: boolean; children: ReactNode }) {
+  const classes = ['patient-data-card', wide ? 'patient-data-card--wide' : '', compact ? 'patient-data-card--compact' : ''].filter(Boolean).join(' ');
+  return <section className={classes}>
+    <div className="patient-data-card__heading"><h3>{title}</h3>{hint && <span className="patient-data-card__hint">{hint}</span>}</div>
+    {children}
+  </section>;
 }
 
 const fmtDate = (iso: string | null) => {
   if (!iso) return null;
-  try { return format(new Date(iso + 'T12:00:00'), 'dd/MM/yyyy', { locale: ptBR }); }
+  try { return format(new Date(`${iso}T12:00:00`), 'dd/MM/yyyy', { locale: ptBR }); }
   catch { return iso; }
 };
 
@@ -36,6 +37,8 @@ export function DadosTab({ patient, onUpdate }: Props) {
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState<Partial<Patient>>({});
   const [birthInput, setBirthInput] = useState('');
+  const [birthError, setBirthError] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
   const startEdit = () => {
@@ -60,139 +63,197 @@ export function DadosTab({ patient, onUpdate }: Props) {
       referrer_name: patient.referrer_name,
     });
     setBirthInput(birthDateIsoToInput(patient.birth_date));
+    setBirthError(null);
+    setSaveError(null);
     setEditing(true);
+  };
+
+  const cancelEdit = () => {
+    setEditing(false);
+    setBirthError(null);
+    setSaveError(null);
   };
 
   const handleSave = async () => {
     setSaving(true);
+    setSaveError(null);
     try {
       const birthDate = birthInput ? parseBirthDateInput(birthInput) : null;
-      if (birthInput && !birthDate) return;
-      const acquisition = normalizeAcquisitionDraft({ source: form.acquisition_source ?? null, sourceDetail: form.acquisition_source_detail ?? null, referredByPatientId: form.referred_by_patient_id ?? null, referrerName: form.referrer_name ?? null });
-      await onUpdate({ ...form, birth_date: birthDate, acquisition_source: acquisition.source, acquisition_source_detail: acquisition.sourceDetail, referred_by_patient_id: acquisition.referredByPatientId, referrer_name: acquisition.referrerName });
+      if (birthInput && !birthDate) {
+        setBirthError('Informe uma data válida no formato dd/mm/aaaa.');
+        return;
+      }
+      setBirthError(null);
+      const acquisition = normalizeAcquisitionDraft({
+        source: form.acquisition_source ?? null,
+        sourceDetail: form.acquisition_source_detail ?? null,
+        referredByPatientId: form.referred_by_patient_id ?? null,
+        referrerName: form.referrer_name ?? null,
+      });
+      await onUpdate({
+        ...form,
+        birth_date: birthDate,
+        acquisition_source: acquisition.source,
+        acquisition_source_detail: acquisition.sourceDetail,
+        referred_by_patient_id: acquisition.referredByPatientId,
+        referrer_name: acquisition.referrerName,
+      });
       setEditing(false);
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : 'Não foi possível salvar os dados da paciente.');
     } finally {
       setSaving(false);
     }
   };
 
-  const set = (key: keyof Patient, v: string) =>
-    setForm(p => ({ ...p, [key]: v || null }));
+  const set = (key: keyof Patient, value: string) => setForm(previous => ({ ...previous, [key]: value || null }));
 
   if (editing) {
-    return (
-      <div style={{ padding: 20 }}>
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginBottom: 16 }}>
-          <button className="btn btn--ghost btn--sm" onClick={() => setEditing(false)}>
-            <X size={14} /> Cancelar
-          </button>
-          <button className="btn btn--primary btn--sm" onClick={handleSave} disabled={saving}>
-            <Check size={14} /> {saving ? 'Salvando...' : 'Salvar'}
-          </button>
-        </div>
-        <div className="form-grid">
-          <div className="form-section-title">Dados Pessoais</div>
-          <div className="field field--full">
-            <label className="field-label">Nome *</label>
-            <input className="field-input" value={form.name ?? ''} onChange={e => set('name', e.target.value)} />
-          </div>
-          <div className="field">
-            <label className="field-label">Data de nascimento</label>
-            <input
-              className="field-input"
-              type="text"
-              inputMode="numeric"
-              autoComplete="bday"
-              placeholder="dd/mm/aaaa"
-              value={birthInput}
-              onChange={e => setBirthInput(formatBirthDateInput(e.target.value))}
-            />
-            {ageLabel(parseBirthDateInput(birthInput)) && (
-              <span style={{ fontSize: '0.78rem', color: 'var(--text-3)' }}>
-                Idade atual: {ageLabel(parseBirthDateInput(birthInput))}
-              </span>
-            )}
-          </div>
-          {([
-            ['civil_status', 'Estado civil', 'text'],
-            ['phone', 'Celular', 'tel'],
-            ['email', 'Email', 'email'],
-            ['cpf', 'CPF', 'text'],
-            ['profession', 'Profissão', 'text'],
-            ['instagram', 'Instagram', 'text'],
-            ['weight', 'Peso', 'text'],
-            ['height', 'Altura', 'text'],
-            ['convenio', 'Convênio', 'text'],
-          ] as [keyof Patient, string, string][]).map(([key, label, type]) => (
-            <div key={key} className="field">
-              <label className="field-label">{label}</label>
-              <input className="field-input" type={type}
-                value={(form[key] as string) ?? ''}
-                onChange={e => set(key, e.target.value)} />
-            </div>
-          ))}
-          <div className="form-section-title">Origem</div>
-          <div className="field field--full"><AcquisitionFields idPrefix="edit-patient-acquisition" excludePatientId={patient.id} value={{ source: form.acquisition_source ?? null, sourceDetail: form.acquisition_source_detail ?? null, referredByPatientId: form.referred_by_patient_id ?? null, referrerName: form.referrer_name ?? null }} onChange={next=>setForm(current=>({ ...current, acquisition_source: next.source, acquisition_source_detail: next.sourceDetail, referred_by_patient_id: next.referredByPatientId, referrer_name: next.referrerName }))}/></div>
-          <div className="form-section-title">Emergência</div>
-          <div className="field">
-            <label className="field-label">Nome</label>
-            <input className="field-input" value={form.emergency_name ?? ''}
-              onChange={e => set('emergency_name', e.target.value)} />
-          </div>
-          <div className="field">
-            <label className="field-label">Celular</label>
-            <input className="field-input" type="tel" value={form.emergency_phone ?? ''}
-              onChange={e => set('emergency_phone', e.target.value)} />
-          </div>
-          <div className="form-section-title">Observações</div>
-          <div className="field field--full">
-            <label className="field-label">Notas</label>
-            <textarea className="field-input" rows={3} value={form.notes ?? ''}
-              onChange={e => set('notes', e.target.value)} />
-          </div>
-        </div>
+    return <div className="patient-data-tab">
+      <div className="patient-data-toolbar">
+        <button className="btn btn--ghost btn--sm" type="button" onClick={cancelEdit} disabled={saving}><X size={14} /> Cancelar</button>
+        <button className="btn btn--primary btn--sm" type="button" onClick={() => void handleSave()} disabled={saving}><Check size={14} /> {saving ? 'Salvando...' : 'Salvar alterações'}</button>
       </div>
-    );
+
+      {saveError && <div className="empty-state" role="alert" style={{ marginBottom: 12, color: 'var(--red)' }}>{saveError}</div>}
+
+      <div className="patient-data-grid">
+        <Card title="Dados pessoais" hint="Identificação">
+          <div className="patient-data-edit-fields">
+            <div className="field field--full">
+              <label className="field-label" htmlFor="patient-name">Nome *</label>
+              <input id="patient-name" className="field-input" autoComplete="name" value={form.name ?? ''} onChange={event => set('name', event.target.value)} />
+            </div>
+            <div className="field">
+              <label className="field-label" htmlFor="patient-birth">Data de nascimento</label>
+              <input id="patient-birth" className="field-input" type="text" inputMode="numeric" autoComplete="bday" placeholder="dd/mm/aaaa" value={birthInput} aria-invalid={Boolean(birthError)} aria-describedby={birthError ? 'patient-birth-error' : undefined} onChange={event => { setBirthInput(formatBirthDateInput(event.target.value)); setBirthError(null); }} />
+              {birthError ? <span id="patient-birth-error" style={{ fontSize: '.76rem', color: 'var(--red)' }}>{birthError}</span> : ageLabel(parseBirthDateInput(birthInput)) && <span style={{ fontSize: '.76rem', color: 'var(--text-3)' }}>Idade atual: {ageLabel(parseBirthDateInput(birthInput))}</span>}
+            </div>
+            <div className="field">
+              <label className="field-label" htmlFor="patient-civil-status">Estado civil</label>
+              <input id="patient-civil-status" className="field-input" value={form.civil_status ?? ''} onChange={event => set('civil_status', event.target.value)} />
+            </div>
+            <div className="field">
+              <label className="field-label" htmlFor="patient-cpf">CPF</label>
+              <input id="patient-cpf" className="field-input" inputMode="numeric" autoComplete="off" value={form.cpf ?? ''} onChange={event => set('cpf', event.target.value)} />
+            </div>
+            <div className="field">
+              <label className="field-label" htmlFor="patient-profession">Profissão</label>
+              <input id="patient-profession" className="field-input" autoComplete="organization-title" value={form.profession ?? ''} onChange={event => set('profession', event.target.value)} />
+            </div>
+          </div>
+        </Card>
+
+        <Card title="Contato" hint="Canais principais">
+          <div className="patient-data-edit-fields">
+            <div className="field">
+              <label className="field-label" htmlFor="patient-phone">Celular</label>
+              <input id="patient-phone" className="field-input" type="tel" inputMode="tel" autoComplete="tel" value={form.phone ?? ''} onChange={event => set('phone', event.target.value)} />
+            </div>
+            <div className="field">
+              <label className="field-label" htmlFor="patient-email">E-mail</label>
+              <input id="patient-email" className="field-input" type="email" inputMode="email" autoComplete="email" value={form.email ?? ''} onChange={event => set('email', event.target.value)} />
+            </div>
+            <div className="field field--full">
+              <label className="field-label" htmlFor="patient-instagram">Instagram</label>
+              <input id="patient-instagram" className="field-input" autoCapitalize="none" autoCorrect="off" value={form.instagram ?? ''} onChange={event => set('instagram', event.target.value)} />
+            </div>
+          </div>
+        </Card>
+
+        <Card title="Perfil clínico" hint="Dados rápidos" compact>
+          <div className="patient-data-edit-fields">
+            <div className="field">
+              <label className="field-label" htmlFor="patient-weight">Peso</label>
+              <input id="patient-weight" className="field-input" inputMode="decimal" value={form.weight ?? ''} onChange={event => set('weight', event.target.value)} />
+            </div>
+            <div className="field">
+              <label className="field-label" htmlFor="patient-height">Altura</label>
+              <input id="patient-height" className="field-input" inputMode="decimal" value={form.height ?? ''} onChange={event => set('height', event.target.value)} />
+            </div>
+            <div className="field field--full">
+              <label className="field-label" htmlFor="patient-convenio">Convênio</label>
+              <input id="patient-convenio" className="field-input" value={form.convenio ?? ''} onChange={event => set('convenio', event.target.value)} />
+            </div>
+          </div>
+        </Card>
+
+        <Card title="Origem" hint="Como chegou à clínica" compact>
+          <AcquisitionFields idPrefix="edit-patient-acquisition" excludePatientId={patient.id} value={{ source: form.acquisition_source ?? null, sourceDetail: form.acquisition_source_detail ?? null, referredByPatientId: form.referred_by_patient_id ?? null, referrerName: form.referrer_name ?? null }} onChange={next => setForm(current => ({ ...current, acquisition_source: next.source, acquisition_source_detail: next.sourceDetail, referred_by_patient_id: next.referredByPatientId, referrer_name: next.referrerName }))} />
+        </Card>
+
+        <Card title="Emergência" hint="Contato de apoio" compact>
+          <div className="patient-data-edit-fields">
+            <div className="field">
+              <label className="field-label" htmlFor="patient-emergency-name">Nome</label>
+              <input id="patient-emergency-name" className="field-input" autoComplete="off" value={form.emergency_name ?? ''} onChange={event => set('emergency_name', event.target.value)} />
+            </div>
+            <div className="field">
+              <label className="field-label" htmlFor="patient-emergency-phone">Celular</label>
+              <input id="patient-emergency-phone" className="field-input" type="tel" inputMode="tel" value={form.emergency_phone ?? ''} onChange={event => set('emergency_phone', event.target.value)} />
+            </div>
+          </div>
+        </Card>
+
+        <Card title="Observações" hint="Contexto geral" wide>
+          <div className="field">
+            <label className="field-label" htmlFor="patient-notes">Notas</label>
+            <textarea id="patient-notes" className="field-input" rows={4} value={form.notes ?? ''} onChange={event => set('notes', event.target.value)} />
+          </div>
+        </Card>
+      </div>
+    </div>;
   }
 
-  return (
-    <div style={{ padding: 20 }}>
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
-        <button className="btn btn--ghost btn--sm" onClick={startEdit}>
-          <Pencil size={14} /> Editar
-        </button>
-      </div>
+  const origin = formatAcquisitionLabel(patient.acquisition_source, patient.acquisition_source_detail, patient.referrer_name);
 
-      <SectionTitle>Dados Pessoais</SectionTitle>
-      <Row label="Data de nascimento" value={fmtDate(patient.birth_date)} />
-      <Row label="Idade atual" value={ageLabel(patient.birth_date)} />
-      <Row label="Estado civil" value={patient.civil_status} />
-      <Row label="Celular" value={patient.phone} />
-      <Row label="Email" value={patient.email} />
-      <Row label="CPF" value={patient.cpf} />
-      <Row label="Profissão" value={patient.profession} />
-      <Row label="Instagram" value={patient.instagram} />
-      <Row label="Peso" value={patient.weight} />
-      <Row label="Altura" value={patient.height} />
-      <Row label="Convênio" value={patient.convenio} />
-      <Row label="Cadastrada em" value={fmtDate(patient.created_at)} />
-
-      {(patient.emergency_name || patient.emergency_phone) && (
-        <>
-          <SectionTitle>Emergência</SectionTitle>
-          <Row label="Nome" value={patient.emergency_name} />
-          <Row label="Celular" value={patient.emergency_phone} />
-        </>
-      )}
-
-      {patient.notes && (
-        <>
-          <SectionTitle>Observações</SectionTitle>
-          <div style={{ fontSize: '0.9rem', color: 'var(--text-2)', lineHeight: 1.6, marginTop: 8 }}>
-            {patient.notes}
-          </div>
-        </>
-      )}
+  return <div className="patient-data-tab">
+    <div className="patient-data-toolbar">
+      <button className="btn btn--secondary btn--sm" type="button" onClick={startEdit}><Pencil size={14} /> Editar dados</button>
     </div>
-  );
+
+    <div className="patient-data-grid">
+      <Card title="Dados pessoais" hint="Identificação">
+        <div className="patient-data-fields">
+          <Info label="Nascimento" value={fmtDate(patient.birth_date)} />
+          <Info label="Idade" value={ageLabel(patient.birth_date)} />
+          <Info label="Estado civil" value={patient.civil_status} />
+          <Info label="CPF" value={patient.cpf} />
+          <Info label="Profissão" value={patient.profession} />
+          <Info label="Cadastrada em" value={fmtDate(patient.created_at)} />
+        </div>
+      </Card>
+
+      <Card title="Contato" hint="Canais principais">
+        <div className="patient-data-fields">
+          <Info label="Celular" value={patient.phone} />
+          <Info label="E-mail" value={patient.email} />
+          <Info label="Instagram" value={patient.instagram} />
+        </div>
+      </Card>
+
+      <Card title="Perfil clínico" hint="Dados rápidos" compact>
+        <div className="patient-data-fields">
+          <Info label="Peso" value={patient.weight} />
+          <Info label="Altura" value={patient.height} />
+          <Info label="Convênio" value={patient.convenio} />
+        </div>
+      </Card>
+
+      <Card title="Origem" hint="Aquisição" compact>
+        <Info label="Como conheceu a clínica" value={origin} />
+      </Card>
+
+      <Card title="Emergência" hint="Contato de apoio" compact>
+        <div className="patient-data-fields">
+          <Info label="Nome" value={patient.emergency_name} />
+          <Info label="Celular" value={patient.emergency_phone} />
+        </div>
+      </Card>
+
+      <Card title="Observações" hint="Contexto geral" wide>
+        {patient.notes ? <p className="patient-data-notes">{patient.notes}</p> : <span className="patient-data-empty">Nenhuma observação registrada.</span>}
+      </Card>
+    </div>
+  </div>;
 }

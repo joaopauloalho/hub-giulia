@@ -1,0 +1,372 @@
+/* Hub Giulia — adaptive clinical workspace
+   iPad landscape is the primary operational posture. The rules here are
+   intentionally additive: they preserve the existing Rose & Quente design
+   system and only change layout posture, density and interaction surfaces. */
+
+:root {
+  --workspace-max: 1320px;
+  --workspace-gap: 14px;
+  --workspace-card-pad: 16px;
+}
+
+.app-main,
+.drawer-body,
+.patient-360-content-shell,
+.patient-360-content-shell > * {
+  min-width: 0;
+}
+
+/* Shared contextual cards ------------------------------------------------- */
+.workspace-card-grid,
+.patient-data-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--workspace-gap);
+}
+
+.workspace-card,
+.patient-data-card {
+  min-width: 0;
+  padding: var(--workspace-card-pad);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg);
+}
+
+.workspace-card__heading,
+.patient-data-card__heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.workspace-card__heading h2,
+.patient-data-card__heading h3 {
+  margin: 0;
+  color: var(--text);
+  font-size: .92rem;
+  font-weight: 750;
+}
+
+.workspace-card__hint,
+.patient-data-card__hint {
+  color: var(--text-3);
+  font-size: .72rem;
+}
+
+/* Patient data ------------------------------------------------------------ */
+.patient-data-tab {
+  padding: 14px;
+}
+
+.patient-data-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.patient-data-fields,
+.patient-data-edit-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 14px;
+}
+
+.patient-data-field {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.patient-data-field__label {
+  color: var(--text-3);
+  font-size: .7rem;
+  font-weight: 700;
+  letter-spacing: .01em;
+}
+
+.patient-data-field__value {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--text);
+  font-size: .9rem;
+  line-height: 1.35;
+}
+
+.patient-data-empty {
+  color: var(--text-3);
+  font-size: .84rem;
+}
+
+.patient-data-notes {
+  margin: 0;
+  white-space: pre-wrap;
+  color: var(--text-2);
+  font-size: .9rem;
+  line-height: 1.55;
+}
+
+.patient-data-card--wide {
+  grid-column: 1 / -1;
+}
+
+.patient-data-edit-fields > .field--full {
+  grid-column: 1 / -1;
+}
+
+/* Patient 360 ------------------------------------------------------------- */
+.patient-360-content-shell {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.patient-quick-actions {
+  scrollbar-width: none;
+}
+
+.patient-quick-actions::-webkit-scrollbar {
+  display: none;
+}
+
+.patient-quick-actions .btn {
+  min-height: 44px;
+}
+
+.patient-quick-action--low {
+  color: var(--text-2);
+}
+
+/* Registrar --------------------------------------------------------------- */
+.registrar-route {
+  min-width: 0;
+}
+
+.registrar-route > .page {
+  width: 100%;
+}
+
+/* Tablet posture ---------------------------------------------------------- */
+@media (min-width: 768px) {
+  .page {
+    width: 100%;
+    max-width: min(var(--workspace-max), 100%);
+  }
+
+  /* Keep persistent navigation visually separate from temporary work surfaces. */
+  .drawer-overlay,
+  .modal-overlay {
+    left: calc(var(--rail-w) + var(--hub-safe-left));
+  }
+
+  /* Large forms should stop behaving like a phone bottom sheet. */
+  .modal-overlay {
+    align-items: center;
+    padding: max(18px, var(--hub-safe-top)) max(18px, var(--hub-safe-right)) max(18px, var(--hub-safe-bottom)) 18px;
+  }
+
+  .modal {
+    width: min(760px, 100%);
+    max-height: calc(100dvh - 36px - var(--hub-safe-top) - var(--hub-safe-bottom));
+    border-radius: 20px;
+  }
+
+  .patient-data-grid,
+  .patient-data-fields {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .side-rail .rail-item span {
+    font-size: .66rem;
+    line-height: 1.08;
+  }
+
+  /* Registrar still owns one clinical state machine. On tablet we improve the
+     viewport posture without duplicating that state in a second summary model. */
+  .registrar-route .btn-primary[style*="position: fixed"] {
+    left: calc(50% + var(--rail-w) / 2) !important;
+    bottom: max(16px, var(--hub-safe-bottom)) !important;
+    width: min(640px, calc(100vw - var(--rail-w) - 48px)) !important;
+  }
+}
+
+/* iPad landscape / regular-width workspace ------------------------------- */
+@media (min-width: 1024px) and (orientation: landscape) {
+  :root {
+    --workspace-gap: 12px;
+    --workspace-card-pad: 15px;
+  }
+
+  .page {
+    max-width: var(--workspace-max);
+    padding: 24px 28px 34px;
+  }
+
+  .hub-topbar {
+    min-height: calc(54px + var(--hub-safe-top));
+    padding-top: calc(6px + var(--hub-safe-top));
+    padding-bottom: 6px;
+  }
+
+  .hub-global-search-trigger {
+    max-width: 620px;
+  }
+
+  /* Patient 360 becomes a master-detail workspace without changing its route. */
+  .patient-360-drawer {
+    width: min(1120px, calc(100vw - var(--rail-w) - var(--hub-safe-left) - 20px)) !important;
+    height: calc(100dvh - 20px);
+    max-height: calc(100dvh - 20px);
+    margin: 10px 10px 10px 0;
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    box-shadow: -12px 0 42px rgba(31, 41, 55, .12);
+    overflow: hidden;
+  }
+
+  .patient-360-drawer .drawer-header {
+    padding: 13px 16px;
+  }
+
+  .patient-360-drawer .patient-quick-actions {
+    padding: 9px 14px 10px;
+    gap: 6px;
+    overflow-x: auto;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .patient-360-content-shell {
+    display: grid;
+    grid-template-columns: 176px minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
+  }
+
+  .patient-360-tabs {
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 3px;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: 10px 8px;
+    border-right: 1px solid var(--border);
+    border-bottom: 0;
+    background: color-mix(in srgb, var(--bg-2) 58%, #fff);
+  }
+
+  .patient-360-tabs .sub-tab {
+    flex: 0 0 auto;
+    width: 100%;
+    min-height: 42px;
+    justify-content: flex-start;
+    padding: 8px 10px;
+    border-bottom: 0;
+    border-radius: 10px;
+    text-align: left;
+    white-space: normal;
+  }
+
+  .patient-360-tabs .sub-tab--active {
+    background: #fff;
+    box-shadow: inset 3px 0 0 var(--primary);
+  }
+
+  .patient-360-drawer .drawer-body {
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 12px 14px 24px;
+  }
+
+  .patient-data-tab {
+    padding: 2px;
+  }
+
+  .patient-data-grid,
+  .patient-data-edit-fields {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .patient-data-card--compact {
+    align-self: start;
+  }
+
+  /* Registrar gets the full content width and a CTA centered on the actual
+     workspace (not on the viewport behind the 80px rail). */
+  .registrar-route > .page {
+    max-width: 1120px;
+  }
+
+  /* Generic drawers are side-panels on landscape instead of phone-sized sheets. */
+  .drawer:not(.patient-360-drawer) {
+    width: min(720px, calc(100vw - var(--rail-w) - 32px));
+    max-height: 100dvh;
+  }
+
+  .drawer:not(.patient-360-drawer) .drawer-body {
+    padding-left: 20px;
+    padding-right: 20px;
+  }
+
+  /* The anamnese already has a good two-pane architecture. Landscape simply
+     gives it the same workspace ceiling and slightly denser horizontal rhythm. */
+  .anamnesis-editor-layout {
+    max-width: var(--workspace-max);
+    gap: 14px;
+  }
+
+  .anamnesis-section-nav button,
+  .anamnesis-choice-group button {
+    min-height: 44px;
+  }
+
+  /* Data-heavy views need room more than decorative outer gutters. */
+  .dashboard-page {
+    max-width: var(--workspace-max);
+  }
+}
+
+/* Target posture: 1180×820 and neighboring iPad landscape widths. */
+@media (min-width: 1120px) and (max-width: 1260px) and (orientation: landscape) {
+  .dashboard-page .dashboard-attention__grid {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+
+  .dashboard-page .dashboard-grid-4,
+  .dashboard-page .dashboard-skeleton-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .patient-data-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* Large tablet / desktop can use a third small card without forcing it. */
+@media (min-width: 1366px) {
+  .patient-data-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .patient-data-card--wide {
+    grid-column: 1 / -1;
+  }
+}
+
+/* Mobile remains intentionally compact and single-column. */
+@media (max-width: 767px) {
+  .patient-data-fields,
+  .patient-data-edit-fields {
+    grid-template-columns: 1fr;
+  }
+
+  .patient-data-card--wide,
+  .patient-data-edit-fields > .field--full {
+    grid-column: auto;
+  }
+}
