@@ -250,17 +250,21 @@ export function ProposalEditorPage() {
         </div>}
 
         <div className="proposal-items">
-          {editor.items.length === 0 ? <div className="proposal-empty"><FileText size={28}/><strong>Adicione os procedimentos deste orçamento</strong><span>A paciente pode fechar apenas parte deles depois.</span></div> : editor.items.map((item, index) => <article className="proposal-item-card" key={item.key}>
-            <div className="proposal-item-head">
-              <strong>{item.service_name_snapshot}</strong>
-              {editable && <div className="proposal-item-actions"><button className="icon-btn" disabled={index===0} onClick={() => moveItem(item.key,-1)} aria-label="Mover para cima"><ArrowUp size={15}/></button><button className="icon-btn" disabled={index===editor.items.length-1} onClick={() => moveItem(item.key,1)} aria-label="Mover para baixo"><ArrowDown size={15}/></button><button className="icon-btn" onClick={() => removeItem(item.key)} aria-label="Remover procedimento"><Trash2 size={15}/></button></div>}
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(150px,0.65fr) minmax(180px,1fr)', gap: 10 }}>
-              <div><label className="field-label">Valor proposto</label><input className="field-input" disabled={!editable} inputMode="decimal" value={item.offered_unit_price} onChange={event => updateItem(item.key,{offered_unit_price:event.target.value,quantity:'1',discount_type:'none',discount_value:'0'})}/></div>
-              <div><label className="field-label">Condição de pagamento</label><input className="field-input" disabled={!editable} value={item.payment_condition} onChange={event => updateItem(item.key,{payment_condition:event.target.value})} placeholder="Ex.: PIX à vista ou até 6x sem juros" /></div>
-            </div>
-            <div style={{ marginTop: 10 }}><label className="field-label">Observação</label><textarea className="field-input" rows={2} disabled={!editable} value={item.interval_note} onChange={event => updateItem(item.key,{interval_note:event.target.value})} placeholder="Ex.: 5 sessões · intervalo de 30 dias" /></div>
-          </article>)}
+          {editor.items.length === 0 ? <div className="proposal-empty"><FileText size={28}/><strong>Adicione os procedimentos deste orçamento</strong><span>A paciente pode fechar apenas parte deles depois.</span></div> : editor.items.map((item, index) => {
+            const valueInputId = `proposal-value-${item.key}`;
+            const paymentInputId = `proposal-payment-${item.key}`;
+            return <article className="proposal-item-card" key={item.key}>
+              <div className="proposal-item-head">
+                <strong>{item.service_name_snapshot}</strong>
+                {editable && <div className="proposal-item-actions"><button className="icon-btn" disabled={index===0} onClick={() => moveItem(item.key,-1)} aria-label="Mover para cima"><ArrowUp size={15}/></button><button className="icon-btn" disabled={index===editor.items.length-1} onClick={() => moveItem(item.key,1)} aria-label="Mover para baixo"><ArrowDown size={15}/></button><button className="icon-btn" onClick={() => removeItem(item.key)} aria-label="Remover procedimento"><Trash2 size={15}/></button></div>}
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'minmax(150px,0.65fr) minmax(180px,1fr)', gap: 10 }}>
+                <div><label className="field-label" htmlFor={valueInputId}>Valor proposto</label><input id={valueInputId} className="field-input" disabled={!editable} inputMode="decimal" value={item.offered_unit_price} onChange={event => updateItem(item.key,{offered_unit_price:event.target.value,quantity:'1',discount_type:'none',discount_value:'0'})}/></div>
+                <div><label className="field-label" htmlFor={paymentInputId}>Condição de pagamento</label><input id={paymentInputId} className="field-input" disabled={!editable} value={item.payment_condition} onChange={event => updateItem(item.key,{payment_condition:event.target.value})} placeholder="Ex.: PIX à vista ou até 6x sem juros" /></div>
+              </div>
+              <div style={{ marginTop: 10 }}><label className="field-label">Observação</label><textarea className="field-input" rows={2} disabled={!editable} value={item.interval_note} onChange={event => updateItem(item.key,{interval_note:event.target.value})} placeholder="Ex.: 5 sessões · intervalo de 30 dias" /></div>
+            </article>;
+          })}
         </div>
 
         <div className="proposal-card"><label className="field-label">Observação geral (opcional)</label><textarea className="field-input" rows={3} disabled={!editable} value={editor.customerNote} onChange={event => updateEditor(current => ({...current,customerNote:event.target.value}))} placeholder="Informação geral que deve aparecer na proposta" /></div>
