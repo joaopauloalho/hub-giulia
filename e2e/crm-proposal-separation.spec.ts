@@ -85,7 +85,7 @@ test('CRM stays clean while proposal is a simple patient budget and can be delet
 
   await page.goto(`/pacientes/${seeded.patientId}?tab=proposals`);
   await expect(page.getByText('Propostas da paciente')).toBeVisible();
-  const proposalButton = page.getByRole('button', { name: new RegExp(proposalTitle) });
+  const proposalButton = page.getByRole('button', { name: new RegExp(proposalTitle) }).first();
   await expect(proposalButton).toBeVisible();
   await expect(page.getByRole('button', { name: /Nova proposta/ })).toBeVisible();
 
