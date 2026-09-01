@@ -156,9 +156,9 @@ test('Dashboard, Financeiro and CRM preserve productive landscape density', asyn
   });
   expect(boardBehavior.overflowX).toBe('auto');
   expect(boardBehavior.overscrollX).toBe('contain');
-  const crmCards = page.locator('.crm-card');
-  if (await crmCards.count()) {
-    const minCardHeight = Math.min(...await crmCards.evaluateAll(elements => elements.slice(0, 12).map(element => element.getBoundingClientRect().height)));
+  const visibleBoardCards = board.locator('.crm-card');
+  if (await visibleBoardCards.count()) {
+    const minCardHeight = Math.min(...await visibleBoardCards.evaluateAll(elements => elements.slice(0, 12).map(element => element.getBoundingClientRect().height)));
     expect(minCardHeight).toBeGreaterThanOrEqual(44);
   }
   await expectNoRootOverflow(page, 'crm productive density');
