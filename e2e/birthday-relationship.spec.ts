@@ -47,7 +47,7 @@ test('birthdays appear for the right tenant and disappear after contact is recor
   const personCard = page.locator('.relationship-person-card').filter({ hasText: name }).first();
   await personCard.getByRole('button', { name: 'WhatsApp' }).click();
   await expect(page.getByRole('dialog', { name: 'Mensagem de relacionamento' })).toBeVisible();
-  await expect(page.getByLabel('Mensagem')).toContainText('feliz aniversário');
+  await expect(page.getByRole('textbox', { name: 'Mensagem', exact: true })).toHaveValue(/feliz aniversário/i);
   await page.getByRole('button', { name: 'Fechar' }).click();
 
   const recorded = await a.rpc('record_relationship_birthday_contact_v1', {
