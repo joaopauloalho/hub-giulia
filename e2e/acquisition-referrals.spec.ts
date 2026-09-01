@@ -4,6 +4,23 @@ import { browserLogin, signedInClient, anonClient } from './helpers';
 
 const suffix = () => randomUUID().slice(0, 8);
 
+function saoPauloMonthBounds() {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Sao_Paulo',
+    year: 'numeric',
+    month: '2-digit',
+  }).formatToParts(new Date());
+  const values = Object.fromEntries(parts.map(part => [part.type, part.value]));
+  const year = Number(values.year);
+  const month = Number(values.month);
+  const nextYear = month === 12 ? year + 1 : year;
+  const nextMonth = month === 12 ? 1 : month + 1;
+  return {
+    start: `${year}-${String(month).padStart(2, '0')}-01`,
+    end: `${nextYear}-${String(nextMonth).padStart(2, '0')}-01`,
+  };
+}
+
 type PatientRow = {
   id: string;
   acquisition_source: string | null;
@@ -75,10 +92,7 @@ test.describe.serial('Hub Giulia 4.2 acquisition and referrals', () => {
       const { error: itemError } = await a.from('procedure_items').insert({ procedure_id: procedure.id, service_id: service.id, name: 'E2E Acquisition Service', qty: 1, list_price: 100, final_price: 100, discount: 0, cost_snapshot: 10, coverage_value_snapshot: 0, amount_due_snapshot: 100 });
       if (itemError) throw itemError;
     }
-    const today = new Date();
-    const start = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-01`;
-    const nextMonth = new Date(today.getFullYear(), today.getMonth()+1, 1);
-    const end = `${nextMonth.getFullYear()}-${String(nextMonth.getMonth()+1).padStart(2,'0')}-01`;
+    const { start, end } = saoPauloMonthBounds();
     const { data: reportData, error: reportError } = await a.rpc('get_acquisition_summary_v1', { p_start_date: start, p_end_date_exclusive: end });
     if (reportError) throw reportError;
     const report = reportData as AcquisitionReport;
