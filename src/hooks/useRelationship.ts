@@ -5,169 +5,41 @@ import { DEFAULT_COMMUNICATION_PREFERENCES, type CommunicationPreferences, type 
 import { DEFAULT_RELATIONSHIP_PREFERENCES, EMPTY_RELATIONSHIP_COUNTS, normalizeRelationshipPerson, relationshipPersonStateKey, type RelationshipCounts, type RelationshipOpportunity, type RelationshipPerson, type RelationshipPersonType, type RelationshipPreferences } from '../lib/relationship';
 
 export type RelationshipTemplateOverride = { template_key: CommunicationTemplateKey; body: string; enabled: boolean };
-
 function counts(value: unknown): RelationshipCounts {
-  const item = (value ?? {}) as Partial<Record<keyof RelationshipCounts, unknown>>;
-  return {
-    total: Number(item.total ?? 0), return: Number(item.return ?? 0), proposal: Number(item.proposal ?? 0),
-    credit: Number(item.credit ?? 0), reactivation: Number(item.reactivation ?? 0), reschedule: Number(item.reschedule ?? 0), snoozed: Number(item.snoozed ?? 0),
-  };
+  const item=(value??{}) as Partial<Record<keyof RelationshipCounts,unknown>>;
+  return { total:Number(item.total??0),return:Number(item.return??0),proposal:Number(item.proposal??0),credit:Number(item.credit??0),reactivation:Number(item.reactivation??0),reschedule:Number(item.reschedule??0),birthday:Number(item.birthday??0),birthday_today:Number(item.birthday_today??0),snoozed:Number(item.snoozed??0) };
 }
 
-export function useRelationshipCenter(options: { category?: string | null; search?: string; includeSnoozed?: boolean; page?: number } = {}) {
-  const { user } = useAuth();
-  const [items, setItems] = useState<RelationshipPerson[]>([]);
-  const [summary, setSummary] = useState<RelationshipCounts>(EMPTY_RELATIONSHIP_COUNTS);
-  const [preferences, setPreferences] = useState<RelationshipPreferences>(DEFAULT_RELATIONSHIP_PREFERENCES);
-  const [communicationPreferences, setCommunicationPreferences] = useState<CommunicationPreferences>(DEFAULT_COMMUNICATION_PREFERENCES);
-  const [templates, setTemplates] = useState<RelationshipTemplateOverride[]>([]);
-  const [clinicName, setClinicName] = useState('');
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const category = options.category || null;
-  const search = (options.search ?? '').trim().slice(0, 80);
-  const includeSnoozed = Boolean(options.includeSnoozed);
-  const page = Math.max(0, options.page ?? 0);
-
-  const refresh = useCallback(async () => {
-    if (!user) { setItems([]); setSummary(EMPTY_RELATIONSHIP_COUNTS); setLoading(false); return; }
-    setLoading(true); setError(null);
-    try {
-      const [listResult, countsResult, prefResult, communicationPrefResult, templatesResult, profileResult] = await Promise.all([
-        supabase.rpc('list_relationship_opportunities_v2', { p_category: category, p_search: search || null, p_include_snoozed: includeSnoozed, p_limit: 50, p_offset: page * 50 }),
-        supabase.rpc('get_relationship_opportunity_counts_v2'),
-        supabase.from('relationship_preferences').select('returns_enabled,proposals_enabled,credits_enabled,reactivation_enabled,reactivation_after_days,recent_contact_cooldown_days').maybeSingle(),
-        supabase.from('communication_preferences').select('confirmation_lead_hours,proposal_followup_days,package_expiry_days').maybeSingle(),
-        supabase.from('communication_templates').select('template_key,body,enabled'),
-        supabase.from('professional_profiles').select('display_name').maybeSingle(),
-      ]);
-      if (listResult.error) throw listResult.error;
-      if (countsResult.error) throw countsResult.error;
-      if (prefResult.error) throw prefResult.error;
-      if (communicationPrefResult.error) throw communicationPrefResult.error;
-      if (templatesResult.error) throw templatesResult.error;
-      if (profileResult.error) throw profileResult.error;
-      setItems(((listResult.data ?? []) as RelationshipPerson[]).map(normalizeRelationshipPerson));
-      setSummary(counts(countsResult.data));
-      setPreferences(prefResult.data ? {
-        returns_enabled: Boolean(prefResult.data.returns_enabled),
-        proposals_enabled: Boolean(prefResult.data.proposals_enabled),
-        credits_enabled: Boolean(prefResult.data.credits_enabled),
-        reactivation_enabled: Boolean(prefResult.data.reactivation_enabled),
-        reactivation_after_days: Number(prefResult.data.reactivation_after_days),
-        recent_contact_cooldown_days: Number(prefResult.data.recent_contact_cooldown_days),
-      } : DEFAULT_RELATIONSHIP_PREFERENCES);
-      setCommunicationPreferences(communicationPrefResult.data ? {
-        confirmation_lead_hours: Number(communicationPrefResult.data.confirmation_lead_hours),
-        proposal_followup_days: Number(communicationPrefResult.data.proposal_followup_days),
-        package_expiry_days: Number(communicationPrefResult.data.package_expiry_days),
-      } : DEFAULT_COMMUNICATION_PREFERENCES);
-      setTemplates((templatesResult.data ?? []) as RelationshipTemplateOverride[]);
-      setClinicName(String(profileResult.data?.display_name ?? ''));
-    } catch (err) {
-      console.error('[relationship] load failed', err);
-      setError(err instanceof Error ? err.message : 'Não foi possível carregar Relacionamento.');
-    } finally { setLoading(false); }
-  }, [category, includeSnoozed, page, search, user]);
-
-  useEffect(() => { void refresh(); }, [refresh]);
-  const templateMap = useMemo(() => new Map(templates.map(item => [item.template_key, item])), [templates]);
-
-  const savePreferences = useCallback(async (next: RelationshipPreferences, nextCommunication: Pick<CommunicationPreferences, 'proposal_followup_days' | 'package_expiry_days'>) => {
-    if (!user) throw new Error('Sessão necessária.');
-    const [relationshipResult, communicationResult] = await Promise.all([
-      supabase.from('relationship_preferences').upsert({ user_id: user.id, ...next, updated_at: new Date().toISOString() }, { onConflict: 'user_id' }),
-      supabase.from('communication_preferences').upsert({ user_id: user.id, proposal_followup_days: nextCommunication.proposal_followup_days, package_expiry_days: nextCommunication.package_expiry_days }, { onConflict: 'user_id' }),
-    ]);
-    if (relationshipResult.error) throw relationshipResult.error;
-    if (communicationResult.error) throw communicationResult.error;
-    await refresh();
-  }, [refresh, user]);
-
-  const snoozePerson = useCallback(async (person: RelationshipPerson, until: Date) => {
-    if (!user) throw new Error('Sessão necessária.');
-    const { error: snoozeError } = await supabase.from('communication_attention_state').upsert({ user_id: user.id, item_key: relationshipPersonStateKey(person.person_type, person.person_id), snoozed_until: until.toISOString() }, { onConflict: 'user_id,item_key' });
-    if (snoozeError) throw snoozeError;
-    await refresh();
-  }, [refresh, user]);
-
-  const recordManualContact = useCallback(async (person: RelationshipPerson, opportunity: RelationshipOpportunity, recipientPhone: string, body: string) => {
-    const idempotencyKey = crypto.randomUUID();
-    if (opportunity.type === 'reschedule') {
-      const { error: recordError } = await supabase.rpc('record_appointment_recovery_contact_v1', {
-        p_appointment_id: opportunity.source_id,
-        p_recipient_phone: recipientPhone,
-        p_message_body: body,
-        p_idempotency_key: idempotencyKey,
-      });
-      if (recordError) throw recordError;
-    } else if (opportunity.type === 'reactivation') {
-      if (!person.patient_id) throw new Error('Reativação exige paciente vinculada.');
-      const { error: recordError } = await supabase.rpc('record_relationship_manual_contact_v1', { p_patient_id: person.patient_id, p_recipient_phone: recipientPhone, p_message_body: body, p_idempotency_key: idempotencyKey });
-      if (recordError) throw recordError;
-    } else {
-      const { error: recordError } = await supabase.rpc('record_manual_communication_v1', {
-        p_source_type: opportunity.source_type,
-        p_source_id: opportunity.source_id,
-        p_item_key: opportunity.communication_item_key,
-        p_context: opportunity.template_key,
-        p_recipient_phone: recipientPhone,
-        p_message_body: body,
-        p_template_key: opportunity.template_key,
-        p_idempotency_key: idempotencyKey,
-      });
-      if (recordError) throw recordError;
-      if (opportunity.type === 'return') {
-        const { error: returnError } = await supabase.rpc('mark_procedure_return_contacted_v2', { p_return_id: opportunity.source_id, p_method: 'whatsapp' });
-        if (returnError) throw returnError;
-      }
-    }
-    await refresh();
-  }, [refresh]);
-
-  const dismissOpportunity = useCallback(async (opportunity: RelationshipOpportunity) => {
-    if (opportunity.type !== 'reschedule') throw new Error('Somente oportunidades de reagendamento podem ser dispensadas aqui.');
-    const { error: dismissError } = await supabase.rpc('dismiss_appointment_recovery_v1', { p_appointment_id: opportunity.source_id });
-    if (dismissError) throw dismissError;
-    await refresh();
-  }, [refresh]);
-
-  return { items, summary, preferences, communicationPreferences, templateMap, clinicName, loading, error, pageSize: 50, refresh, savePreferences, snoozePerson, recordManualContact, dismissOpportunity };
+export function useRelationshipCenter(options:{category?:string|null;search?:string;includeSnoozed?:boolean;page?:number}={}){
+  const{user}=useAuth();const[items,setItems]=useState<RelationshipPerson[]>([]);const[summary,setSummary]=useState<RelationshipCounts>(EMPTY_RELATIONSHIP_COUNTS);const[preferences,setPreferences]=useState<RelationshipPreferences>(DEFAULT_RELATIONSHIP_PREFERENCES);const[communicationPreferences,setCommunicationPreferences]=useState<CommunicationPreferences>(DEFAULT_COMMUNICATION_PREFERENCES);const[templates,setTemplates]=useState<RelationshipTemplateOverride[]>([]);const[clinicName,setClinicName]=useState('');const[loading,setLoading]=useState(true);const[error,setError]=useState<string|null>(null);
+  const category=options.category||null;const search=(options.search??'').trim().slice(0,80);const includeSnoozed=Boolean(options.includeSnoozed);const page=Math.max(0,options.page??0);
+  const refresh=useCallback(async()=>{if(!user){setItems([]);setSummary(EMPTY_RELATIONSHIP_COUNTS);setLoading(false);return;}setLoading(true);setError(null);try{
+    const[listResult,countsResult,prefResult,communicationPrefResult,templatesResult,profileResult]=await Promise.all([
+      supabase.rpc('list_relationship_opportunities_v2',{p_category:category,p_search:search||null,p_include_snoozed:includeSnoozed,p_limit:50,p_offset:page*50}),
+      supabase.rpc('get_relationship_opportunity_counts_v2'),
+      supabase.from('relationship_preferences').select('returns_enabled,proposals_enabled,credits_enabled,reactivation_enabled,reactivation_after_days,recent_contact_cooldown_days').maybeSingle(),
+      supabase.from('communication_preferences').select('confirmation_lead_hours,proposal_followup_days,package_expiry_days').maybeSingle(),
+      supabase.from('communication_templates').select('template_key,body,enabled'),
+      supabase.from('professional_profiles').select('display_name').maybeSingle(),
+    ]);if(listResult.error)throw listResult.error;if(countsResult.error)throw countsResult.error;if(prefResult.error)throw prefResult.error;if(communicationPrefResult.error)throw communicationPrefResult.error;if(templatesResult.error)throw templatesResult.error;if(profileResult.error)throw profileResult.error;
+    setItems(((listResult.data??[]) as RelationshipPerson[]).map(normalizeRelationshipPerson));setSummary(counts(countsResult.data));
+    setPreferences(prefResult.data?{returns_enabled:Boolean(prefResult.data.returns_enabled),proposals_enabled:Boolean(prefResult.data.proposals_enabled),credits_enabled:Boolean(prefResult.data.credits_enabled),reactivation_enabled:Boolean(prefResult.data.reactivation_enabled),reactivation_after_days:Number(prefResult.data.reactivation_after_days),recent_contact_cooldown_days:Number(prefResult.data.recent_contact_cooldown_days)}:DEFAULT_RELATIONSHIP_PREFERENCES);
+    setCommunicationPreferences(communicationPrefResult.data?{confirmation_lead_hours:Number(communicationPrefResult.data.confirmation_lead_hours),proposal_followup_days:Number(communicationPrefResult.data.proposal_followup_days),package_expiry_days:Number(communicationPrefResult.data.package_expiry_days)}:DEFAULT_COMMUNICATION_PREFERENCES);
+    setTemplates((templatesResult.data??[]) as RelationshipTemplateOverride[]);setClinicName(String(profileResult.data?.display_name??''));
+  }catch(err){console.error('[relationship] load failed',err);setError(err instanceof Error?err.message:'Não foi possível carregar Relacionamento.');}finally{setLoading(false);}},[category,includeSnoozed,page,search,user]);
+  useEffect(()=>{void refresh();},[refresh]);const templateMap=useMemo(()=>new Map(templates.map(item=>[item.template_key,item])),[templates]);
+  const savePreferences=useCallback(async(next:RelationshipPreferences,nextCommunication:Pick<CommunicationPreferences,'proposal_followup_days'|'package_expiry_days'>)=>{if(!user)throw new Error('Sessão necessária.');const[relationshipResult,communicationResult]=await Promise.all([supabase.from('relationship_preferences').upsert({user_id:user.id,...next,updated_at:new Date().toISOString()},{onConflict:'user_id'}),supabase.from('communication_preferences').upsert({user_id:user.id,proposal_followup_days:nextCommunication.proposal_followup_days,package_expiry_days:nextCommunication.package_expiry_days},{onConflict:'user_id'})]);if(relationshipResult.error)throw relationshipResult.error;if(communicationResult.error)throw communicationResult.error;await refresh();},[refresh,user]);
+  const snoozePerson=useCallback(async(person:RelationshipPerson,until:Date)=>{if(!user)throw new Error('Sessão necessária.');const{error:snoozeError}=await supabase.from('communication_attention_state').upsert({user_id:user.id,item_key:relationshipPersonStateKey(person.person_type,person.person_id),snoozed_until:until.toISOString()},{onConflict:'user_id,item_key'});if(snoozeError)throw snoozeError;await refresh();},[refresh,user]);
+  const recordManualContact=useCallback(async(person:RelationshipPerson,opportunity:RelationshipOpportunity,recipientPhone:string,body:string)=>{const idempotencyKey=crypto.randomUUID();
+    if(opportunity.type==='reschedule'){const{error}=await supabase.rpc('record_appointment_recovery_contact_v1',{p_appointment_id:opportunity.source_id,p_recipient_phone:recipientPhone,p_message_body:body,p_idempotency_key:idempotencyKey});if(error)throw error;}
+    else if(opportunity.type==='birthday'){if(!person.patient_id)throw new Error('Aniversário exige paciente vinculada.');const{error}=await supabase.rpc('record_relationship_birthday_contact_v1',{p_patient_id:person.patient_id,p_recipient_phone:recipientPhone,p_message_body:body,p_idempotency_key:idempotencyKey});if(error)throw error;}
+    else if(opportunity.type==='reactivation'){if(!person.patient_id)throw new Error('Reativação exige paciente vinculada.');const{error}=await supabase.rpc('record_relationship_manual_contact_v1',{p_patient_id:person.patient_id,p_recipient_phone:recipientPhone,p_message_body:body,p_idempotency_key:idempotencyKey});if(error)throw error;}
+    else{const{error}=await supabase.rpc('record_manual_communication_v1',{p_source_type:opportunity.source_type,p_source_id:opportunity.source_id,p_item_key:opportunity.communication_item_key,p_context:opportunity.template_key,p_recipient_phone:recipientPhone,p_message_body:body,p_template_key:opportunity.template_key,p_idempotency_key:idempotencyKey});if(error)throw error;if(opportunity.type==='return'){const{error:returnError}=await supabase.rpc('mark_procedure_return_contacted_v2',{p_return_id:opportunity.source_id,p_method:'whatsapp'});if(returnError)throw returnError;}}
+    await refresh();},[refresh]);
+  const dismissOpportunity=useCallback(async(opportunity:RelationshipOpportunity)=>{if(opportunity.type!=='reschedule')throw new Error('Somente oportunidades de reagendamento podem ser dispensadas aqui.');const{error}=await supabase.rpc('dismiss_appointment_recovery_v1',{p_appointment_id:opportunity.source_id});if(error)throw error;await refresh();},[refresh]);
+  return{items,summary,preferences,communicationPreferences,templateMap,clinicName,loading,error,pageSize:50,refresh,savePreferences,snoozePerson,recordManualContact,dismissOpportunity};
 }
 
-export function useRelationshipCounts() {
-  const { user } = useAuth();
-  const [summary, setSummary] = useState<RelationshipCounts>(EMPTY_RELATIONSHIP_COUNTS);
-  const [loading, setLoading] = useState(true);
-  const refresh = useCallback(async () => {
-    if (!user) { setSummary(EMPTY_RELATIONSHIP_COUNTS); setLoading(false); return; }
-    setLoading(true);
-    const { data, error } = await supabase.rpc('get_relationship_opportunity_counts_v2');
-    if (!error) setSummary(counts(data));
-    setLoading(false);
-  }, [user]);
-  useEffect(() => { void refresh(); }, [refresh]);
-  return { summary, loading, refresh };
-}
+export function useRelationshipCounts(){const{user}=useAuth();const[summary,setSummary]=useState<RelationshipCounts>(EMPTY_RELATIONSHIP_COUNTS);const[loading,setLoading]=useState(true);const refresh=useCallback(async()=>{if(!user){setSummary(EMPTY_RELATIONSHIP_COUNTS);setLoading(false);return;}setLoading(true);const{data,error}=await supabase.rpc('get_relationship_opportunity_counts_v2');if(!error)setSummary(counts(data));setLoading(false);},[user]);useEffect(()=>{void refresh();},[refresh]);return{summary,loading,refresh};}
 
-export function useRelationshipPersonDetail(personType: RelationshipPersonType, personId: string | null | undefined) {
-  const [person, setPerson] = useState<RelationshipPerson | null>(null);
-  const [loading, setLoading] = useState(Boolean(personId));
-  const [error, setError] = useState<string | null>(null);
-  useEffect(() => {
-    let alive = true;
-    if (!personId) { setPerson(null); setLoading(false); return () => { alive = false; }; }
-    setLoading(true); setError(null);
-    void supabase.rpc('get_relationship_person_v2', { p_person_type: personType, p_person_id: personId }).then(({ data, error: rpcError }) => {
-      if (!alive) return;
-      if (rpcError) { setError(rpcError.message); setPerson(null); }
-      else {
-        const row = ((data ?? []) as RelationshipPerson[])[0] ?? null;
-        setPerson(row ? normalizeRelationshipPerson({ ...row, opportunity_count: row.opportunities?.length ?? 0, highest_priority_type: row.opportunities?.[0]?.type ?? 'reactivation' }) : null);
-      }
-      setLoading(false);
-    });
-    return () => { alive = false; };
-  }, [personId, personType]);
-  return { person, loading, error };
-}
+export function useRelationshipPersonDetail(personType:RelationshipPersonType,personId:string|null|undefined){const[person,setPerson]=useState<RelationshipPerson|null>(null);const[loading,setLoading]=useState(Boolean(personId));const[error,setError]=useState<string|null>(null);useEffect(()=>{let alive=true;if(!personId){setPerson(null);setLoading(false);return()=>{alive=false;};}setLoading(true);setError(null);void supabase.rpc('get_relationship_person_v2',{p_person_type:personType,p_person_id:personId}).then(({data,error:rpcError})=>{if(!alive)return;if(rpcError){setError(rpcError.message);setPerson(null);}else{const row=((data??[]) as RelationshipPerson[])[0]??null;setPerson(row?normalizeRelationshipPerson({...row,opportunity_count:row.opportunities?.length??0,highest_priority_type:row.opportunities?.[0]?.type??'reactivation'}):null);}setLoading(false);});return()=>{alive=false;};},[personId,personType]);return{person,loading,error};}

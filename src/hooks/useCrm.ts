@@ -1,408 +1,62 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase } from '../lib/supabase';
-import {
-  CRM_OPEN_STAGES,
-  createCrmIdempotencyKey,
-  normalizeCrmEmail,
-  normalizeCrmPhone,
-  safeCrmSearchTerm,
-  type CrmChannel,
-  type CrmLossReason,
-  type CrmSource,
-  type CrmStage,
-  type FollowupBucket,
-} from '../lib/crm';
+import { CRM_OPEN_STAGES, createCrmIdempotencyKey, normalizeCrmEmail, normalizeCrmPhone, safeCrmSearchTerm, type CrmChannel, type CrmLossReason, type CrmSource, type CrmStage, type FollowupBucket } from '../lib/crm';
 import { clinicDateIso } from '../lib/agendaTime';
 
-export type CrmInterest = {
-  id?: string;
-  service_id: string | null;
-  label: string;
-};
-
+export type CrmInterest = { id?: string; service_id: string | null; label: string };
 export type CrmPipelineCard = {
-  deal_id: string;
-  user_id: string;
-  contact_id: string;
-  title: string;
-  estimated_value: number | null;
-  stage: CrmStage;
-  expected_close: string | null;
-  lost_reason: CrmLossReason | null;
-  lost_reason_detail: string | null;
-  won_at: string | null;
-  lost_at: string | null;
-  closed_at: string | null;
-  deal_created_at: string;
-  deal_updated_at: string;
-  patient_id: string | null;
-  contact_name: string;
-  phone: string | null;
-  email: string | null;
-  instagram: string | null;
-  source: CrmSource | null;
-  source_detail: string | null;
-  referred_by_patient_id: string | null;
-  referrer_name: string | null;
-  referrer_patient_name: string | null;
-  contact_archived_at: string | null;
-  patient_name: string | null;
-  interests: CrmInterest[];
-  next_followup_on: string | null;
-  last_activity_at: string | null;
+  deal_id: string; user_id: string; contact_id: string; title: string; estimated_value: number | null; stage: CrmStage; expected_close: string | null;
+  lost_reason: CrmLossReason | null; lost_reason_detail: string | null; won_at: string | null; lost_at: string | null; closed_at: string | null; deal_created_at: string; deal_updated_at: string;
+  patient_id: string | null; contact_name: string; phone: string | null; email: string | null; instagram: string | null; source: CrmSource | null; source_detail: string | null;
+  referred_by_patient_id: string | null; referrer_name: string | null; referrer_patient_name: string | null; contact_archived_at: string | null; patient_name: string | null;
+  interests: CrmInterest[]; next_followup_on: string | null; last_activity_at: string | null; is_recurring: boolean; last_visit_at: string | null;
 };
+export type CrmActivity = { id: string; activity_type: 'note'|'contact'|'whatsapp_opened'|'call'|'stage_changed'|'followup_created'|'followup_completed'|'followup_cancelled'|'patient_linked'; channel: CrmChannel | null; note: string | null; from_stage: CrmStage | null; to_stage: CrmStage | null; metadata: Record<string, unknown>; occurred_at: string };
+export type CrmFollowup = { id: string; deal_id: string; due_on: string; status: 'open'|'completed'|'cancelled'; channel: CrmChannel | null; note: string | null; completed_at: string | null; cancelled_at: string | null; created_at: string };
+export type CrmPatientCandidate = { patient_id: string; name: string; phone: string | null; email: string | null; archived_at: string | null; matched_by: string[] };
+export type CrmContactCandidate = { id: string; name: string; phone: string | null; email: string | null; patient_id: string | null };
+export type CrmPatientKind = 'all' | 'new' | 'recurring';
+export type CrmFilters = { search?: string; stage?: CrmStage|'all'; source?: CrmSource|'all'; attention?: FollowupBucket|'all'; serviceId?: string|null; patientKind?: CrmPatientKind };
+export type NewCrmOpportunityInput = { title: string; value?: number|null; expectedClose?: string|null; interests?: CrmInterest[]; note?: string|null; idempotencyKey?: string };
+export type NewCrmLeadInput = NewCrmOpportunityInput & { name: string; phone?: string|null; email?: string|null; instagram?: string|null; source: CrmSource|null; sourceDetail?: string|null; referredByPatientId?: string|null; referrerName?: string|null };
 
-export type CrmActivity = {
-  id: string;
-  activity_type: 'note' | 'contact' | 'whatsapp_opened' | 'call' | 'stage_changed' | 'followup_created' | 'followup_completed' | 'followup_cancelled' | 'patient_linked';
-  channel: CrmChannel | null;
-  note: string | null;
-  from_stage: CrmStage | null;
-  to_stage: CrmStage | null;
-  metadata: Record<string, unknown>;
-  occurred_at: string;
-};
-
-export type CrmFollowup = {
-  id: string;
-  deal_id: string;
-  due_on: string;
-  status: 'open' | 'completed' | 'cancelled';
-  channel: CrmChannel | null;
-  note: string | null;
-  completed_at: string | null;
-  cancelled_at: string | null;
-  created_at: string;
-};
-
-export type CrmPatientCandidate = {
-  patient_id: string;
-  name: string;
-  phone: string | null;
-  email: string | null;
-  archived_at: string | null;
-  matched_by: string[];
-};
-
-export type CrmContactCandidate = {
-  id: string;
-  name: string;
-  phone: string | null;
-  email: string | null;
-  patient_id: string | null;
-};
-
-export type CrmFilters = {
-  search?: string;
-  stage?: CrmStage | 'all';
-  source?: CrmSource | 'all';
-  attention?: FollowupBucket | 'all';
-  serviceId?: string | null;
-};
-
-export type NewCrmOpportunityInput = {
-  title: string;
-  value?: number | null;
-  expectedClose?: string | null;
-  interests?: CrmInterest[];
-  note?: string | null;
-  idempotencyKey?: string;
-};
-
-export type NewCrmLeadInput = NewCrmOpportunityInput & {
-  name: string;
-  phone?: string | null;
-  email?: string | null;
-  instagram?: string | null;
-  source: CrmSource | null;
-  sourceDetail?: string | null;
-  referredByPatientId?: string | null;
-  referrerName?: string | null;
-};
-
-const interestsPayload = (items: CrmInterest[] = []) => items.map(item => ({
-  service_id: item.service_id,
-  label: item.label.trim(),
-})).filter(item => item.label || item.service_id);
+const interestsPayload = (items: CrmInterest[] = []) => items.map(item => ({ service_id:item.service_id,label:item.label.trim() })).filter(item => item.label || item.service_id);
+const isProposalActivity = (value: unknown) => String(value ?? '').startsWith('proposal_');
 
 export function useCrm(filters: CrmFilters = {}) {
-  const [cards, setCards] = useState<CrmPipelineCard[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const today = clinicDateIso();
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
+  const [cards,setCards]=useState<CrmPipelineCard[]>([]); const [loading,setLoading]=useState(true); const [error,setError]=useState<string|null>(null); const today=clinicDateIso();
+  const load=useCallback(async()=>{
+    setLoading(true); setError(null);
     try {
-      let dealIds: string[] | null = null;
-      if (filters.serviceId) {
-        const { data: interestRows, error: interestError } = await supabase
-          .from('crm_deal_interests')
-          .select('deal_id')
-          .eq('service_id', filters.serviceId)
-          .limit(1000);
-        if (interestError) throw interestError;
-        dealIds = [...new Set((interestRows ?? []).map(row => row.deal_id as string))];
-        if (!dealIds.length) {
-          setCards([]);
-          return;
-        }
-      }
+      let dealIds:string[]|null=null;
+      if(filters.serviceId){ const {data,error:interestError}=await supabase.from('crm_deal_interests').select('deal_id').eq('service_id',filters.serviceId).limit(1000); if(interestError)throw interestError; dealIds=[...new Set((data??[]).map(row=>row.deal_id as string))]; if(!dealIds.length){setCards([]);return;} }
+      let query=supabase.from('crm_pipeline_v').select('*').is('contact_archived_at',null).order('deal_created_at',{ascending:false}).limit(500);
+      if(filters.stage&&filters.stage!=='all')query=query.eq('stage',filters.stage); if(filters.source&&filters.source!=='all')query=query.eq('source',filters.source); if(dealIds)query=query.in('deal_id',dealIds);
+      if(filters.patientKind==='recurring')query=query.eq('is_recurring',true); if(filters.patientKind==='new')query=query.eq('is_recurring',false);
+      if(filters.attention==='overdue')query=query.lt('next_followup_on',today); if(filters.attention==='today')query=query.eq('next_followup_on',today); if(filters.attention==='upcoming')query=query.gt('next_followup_on',today);
+      const search=safeCrmSearchTerm(filters.search??''); if(search.length>=2)query=query.or(`contact_name.ilike.%${search}%,phone.ilike.%${search}%,email.ilike.%${search}%`);
+      const {data,error:queryError}=await query; if(queryError)throw queryError; setCards((data??[]) as CrmPipelineCard[]);
+    } catch(err){console.error('[crm:load]',err);setCards([]);setError('Não foi possível carregar o CRM.');} finally{setLoading(false);}
+  },[filters.attention,filters.patientKind,filters.search,filters.serviceId,filters.source,filters.stage,today]);
+  useEffect(()=>{void load();},[load]);
+  const metrics=useMemo(()=>{const open=cards.filter(card=>CRM_OPEN_STAGES.includes(card.stage));const won=cards.filter(card=>card.stage==='won').length;const lost=cards.filter(card=>card.stage==='lost').length;const overdue=cards.filter(card=>card.next_followup_on&&card.next_followup_on<today).length;const openValue=open.reduce((sum,card)=>sum+(Number(card.estimated_value)||0),0);const conversion=won+lost>0?won/(won+lost):null;return{open:open.length,won,lost,overdue,openValue,conversion};},[cards,today]);
 
-      let query = supabase
-        .from('crm_pipeline_v')
-        .select('*')
-        .is('contact_archived_at', null)
-        .order('deal_created_at', { ascending: false })
-        .limit(500);
-
-      if (filters.stage && filters.stage !== 'all') query = query.eq('stage', filters.stage);
-      if (filters.source && filters.source !== 'all') query = query.eq('source', filters.source);
-      if (dealIds) query = query.in('deal_id', dealIds);
-
-      if (filters.attention === 'overdue') query = query.lt('next_followup_on', today);
-      if (filters.attention === 'today') query = query.eq('next_followup_on', today);
-      if (filters.attention === 'upcoming') query = query.gt('next_followup_on', today);
-
-      const search = safeCrmSearchTerm(filters.search ?? '');
-      if (search.length >= 2) {
-        query = query.or(`contact_name.ilike.%${search}%,phone.ilike.%${search}%,email.ilike.%${search}%`);
-      }
-
-      const { data, error: queryError } = await query;
-      if (queryError) throw queryError;
-      setCards((data ?? []) as CrmPipelineCard[]);
-    } catch (err) {
-      console.error('[crm:load]', err);
-      setCards([]);
-      setError('Não foi possível carregar o CRM.');
-    } finally {
-      setLoading(false);
-    }
-  }, [filters.attention, filters.search, filters.serviceId, filters.source, filters.stage, today]);
-
-  useEffect(() => { void load(); }, [load]);
-
-  const metrics = useMemo(() => {
-    const open = cards.filter(card => CRM_OPEN_STAGES.includes(card.stage));
-    const won = cards.filter(card => card.stage === 'won').length;
-    const lost = cards.filter(card => card.stage === 'lost').length;
-    const overdue = cards.filter(card => card.next_followup_on && card.next_followup_on < today).length;
-    const openValue = open.reduce((sum, card) => sum + (Number(card.estimated_value) || 0), 0);
-    const conversion = won + lost > 0 ? won / (won + lost) : null;
-    return { open: open.length, won, lost, overdue, openValue, conversion };
-  }, [cards, today]);
-
-  const createLead = async (input: NewCrmLeadInput) => {
-    const key = input.idempotencyKey ?? createCrmIdempotencyKey();
-    const { data, error: rpcError } = await supabase.rpc('create_crm_lead_v2', {
-      p_name: input.name.trim(),
-      p_phone: normalizeCrmPhone(input.phone ?? null),
-      p_email: normalizeCrmEmail(input.email ?? null),
-      p_instagram: input.instagram?.trim() || null,
-      p_source: input.source,
-      p_source_detail: input.sourceDetail?.trim() || null,
-      p_referred_by_patient_id: input.referredByPatientId ?? null,
-      p_referrer_name: input.referrerName?.trim() || null,
-      p_title: input.title.trim() || null,
-      p_value: input.value ?? null,
-      p_expected_close: input.expectedClose || null,
-      p_interests: interestsPayload(input.interests),
-      p_note: input.note?.trim() || null,
-      p_idempotency_key: key,
-    });
-    if (rpcError) throw rpcError;
-    await load();
-    return data as { contact_id: string; deal_id: string; reused: boolean };
-  };
-
-  const createDeal = async (contactId: string, input: NewCrmOpportunityInput) => {
-    const key = input.idempotencyKey ?? createCrmIdempotencyKey();
-    const { data, error: rpcError } = await supabase.rpc('create_crm_deal_v1', {
-      p_contact_id: contactId,
-      p_title: input.title.trim(),
-      p_value: input.value ?? null,
-      p_expected_close: input.expectedClose || null,
-      p_interests: interestsPayload(input.interests),
-      p_note: input.note?.trim() || null,
-      p_idempotency_key: key,
-    });
-    if (rpcError) throw rpcError;
-    await load();
-    return data as { contact_id: string; deal_id: string; reused: boolean };
-  };
-
-  const createOpportunityForPatient = async (patientId: string, input: NewCrmOpportunityInput) => {
-    const key = input.idempotencyKey ?? createCrmIdempotencyKey();
-    const { data, error: rpcError } = await supabase.rpc('create_crm_opportunity_for_patient_v1', {
-      p_patient_id: patientId,
-      p_title: input.title.trim(),
-      p_value: input.value ?? null,
-      p_expected_close: input.expectedClose || null,
-      p_interests: interestsPayload(input.interests),
-      p_note: input.note?.trim() || null,
-      p_idempotency_key: key,
-    });
-    if (rpcError) throw rpcError;
-    await load();
-    return data as { contact_id: string; deal_id: string; reused: boolean };
-  };
-
-  const findContactCandidates = async (phone?: string | null, email?: string | null): Promise<CrmContactCandidate[]> => {
-    const normalizedPhone = normalizeCrmPhone(phone ?? null);
-    const normalizedEmail = normalizeCrmEmail(email ?? null);
-    const found = new Map<string, CrmContactCandidate>();
-
-    if (normalizedPhone) {
-      const { data, error: phoneError } = await supabase.from('contacts').select('id,name,phone,email,patient_id').eq('phone', normalizedPhone).limit(10);
-      if (phoneError) throw phoneError;
-      (data ?? []).forEach(row => found.set(row.id as string, row as CrmContactCandidate));
-    }
-    if (normalizedEmail) {
-      const { data, error: emailError } = await supabase.from('contacts').select('id,name,phone,email,patient_id').eq('email', normalizedEmail).limit(10);
-      if (emailError) throw emailError;
-      (data ?? []).forEach(row => found.set(row.id as string, row as CrmContactCandidate));
-    }
-    return [...found.values()];
-  };
-
-  const moveStage = async (dealId: string, stage: CrmStage, loss?: { reason: CrmLossReason; detail?: string | null }) => {
-    const payload: { stage: CrmStage; lost_reason?: CrmLossReason; lost_reason_detail?: string | null } = { stage };
-    if (stage === 'lost' && loss) {
-      payload.lost_reason = loss.reason;
-      payload.lost_reason_detail = loss.detail?.trim() || null;
-    }
-    const { error: updateError } = await supabase.from('deals').update(payload).eq('id', dealId);
-    if (updateError) throw updateError;
-    await load();
-  };
-
-  const addFollowup = async (dealId: string, dueOn: string, channel: CrmChannel | null, note?: string | null) => {
-    const { error: insertError } = await supabase.from('crm_followups').insert({
-      deal_id: dealId,
-      due_on: dueOn,
-      channel,
-      note: note?.trim() || null,
-    });
-    if (insertError) throw insertError;
-    await load();
-  };
-
-  const completeFollowup = async (followupId: string) => {
-    const { error: updateError } = await supabase.from('crm_followups').update({ status: 'completed' }).eq('id', followupId);
-    if (updateError) throw updateError;
-    await load();
-  };
-
-  const cancelFollowup = async (followupId: string) => {
-    const { error: updateError } = await supabase.from('crm_followups').update({ status: 'cancelled' }).eq('id', followupId);
-    if (updateError) throw updateError;
-    await load();
-  };
-
-  const recordContact = async (card: CrmPipelineCard, channel: CrmChannel, note?: string | null) => {
-    const { error: insertError } = await supabase.from('crm_activities').insert({
-      contact_id: card.contact_id,
-      deal_id: card.deal_id,
-      activity_type: 'contact',
-      channel,
-      note: note?.trim() || null,
-    });
-    if (insertError) throw insertError;
-    await load();
-  };
-
-  const logWhatsappOpened = async (card: CrmPipelineCard) => {
-    const { error: insertError } = await supabase.from('crm_activities').insert({
-      contact_id: card.contact_id,
-      deal_id: card.deal_id,
-      activity_type: 'whatsapp_opened',
-      channel: 'whatsapp',
-      note: 'Conversa aberta manualmente no WhatsApp.',
-    });
-    if (insertError) console.warn('[crm:whatsapp-opened]', insertError);
-  };
-
-  const addNote = async (card: CrmPipelineCard, note: string) => {
-    const { error: insertError } = await supabase.from('crm_activities').insert({
-      contact_id: card.contact_id,
-      deal_id: card.deal_id,
-      activity_type: 'note',
-      note: note.trim(),
-    });
-    if (insertError) throw insertError;
-    await load();
-  };
-
-  const loadDetail = async (dealId: string) => {
-    const [activityResult, followupResult] = await Promise.all([
-      supabase.from('crm_activities').select('id,activity_type,channel,note,from_stage,to_stage,metadata,occurred_at').eq('deal_id', dealId).order('occurred_at', { ascending: false }).limit(100),
-      supabase.from('crm_followups').select('id,deal_id,due_on,status,channel,note,completed_at,cancelled_at,created_at').eq('deal_id', dealId).order('created_at', { ascending: false }).limit(100),
-    ]);
-    if (activityResult.error) throw activityResult.error;
-    if (followupResult.error) throw followupResult.error;
-    return {
-      activities: (activityResult.data ?? []) as CrmActivity[],
-      followups: (followupResult.data ?? []) as CrmFollowup[],
-    };
-  };
-
-  const findPatientCandidates = async (contactId: string): Promise<CrmPatientCandidate[]> => {
-    const { data, error: rpcError } = await supabase.rpc('find_crm_patient_candidates_v1', { p_contact_id: contactId });
-    if (rpcError) throw rpcError;
-    return (data ?? []) as CrmPatientCandidate[];
-  };
-
-  const convertContact = async (contactId: string, existingPatientId?: string | null): Promise<string> => {
-    const { data, error: rpcError } = await supabase.rpc('convert_crm_contact_to_patient_v1', {
-      p_contact_id: contactId,
-      p_existing_patient_id: existingPatientId ?? null,
-    });
-    if (rpcError) throw rpcError;
-    await load();
-    return data as string;
-  };
-
-  const archiveContact = async (contactId: string) => {
-    const { error: updateError } = await supabase.from('contacts').update({ archived_at: new Date().toISOString() }).eq('id', contactId);
-    if (updateError) throw updateError;
-    await load();
-  };
-
-  return {
-    cards,
-    loading,
-    error,
-    metrics,
-    refresh: load,
-    createLead,
-    createDeal,
-    createOpportunityForPatient,
-    findContactCandidates,
-    moveStage,
-    addFollowup,
-    completeFollowup,
-    cancelFollowup,
-    recordContact,
-    logWhatsappOpened,
-    addNote,
-    loadDetail,
-    findPatientCandidates,
-    convertContact,
-    archiveContact,
-  };
+  const createLead=async(input:NewCrmLeadInput)=>{const key=input.idempotencyKey??createCrmIdempotencyKey();const{data,error:rpcError}=await supabase.rpc('create_crm_lead_v2',{p_name:input.name.trim(),p_phone:normalizeCrmPhone(input.phone??null),p_email:normalizeCrmEmail(input.email??null),p_instagram:input.instagram?.trim()||null,p_source:input.source,p_source_detail:input.sourceDetail?.trim()||null,p_referred_by_patient_id:input.referredByPatientId??null,p_referrer_name:input.referrerName?.trim()||null,p_title:input.title.trim()||null,p_value:input.value??null,p_expected_close:input.expectedClose||null,p_interests:interestsPayload(input.interests),p_note:input.note?.trim()||null,p_idempotency_key:key});if(rpcError)throw rpcError;await load();return data as{contact_id:string;deal_id:string;reused:boolean};};
+  const createDeal=async(contactId:string,input:NewCrmOpportunityInput)=>{const key=input.idempotencyKey??createCrmIdempotencyKey();const{data,error:rpcError}=await supabase.rpc('create_crm_deal_v1',{p_contact_id:contactId,p_title:input.title.trim(),p_value:input.value??null,p_expected_close:input.expectedClose||null,p_interests:interestsPayload(input.interests),p_note:input.note?.trim()||null,p_idempotency_key:key});if(rpcError)throw rpcError;await load();return data as{contact_id:string;deal_id:string;reused:boolean};};
+  const createOpportunityForPatient=async(patientId:string,input:NewCrmOpportunityInput)=>{const key=input.idempotencyKey??createCrmIdempotencyKey();const{data,error:rpcError}=await supabase.rpc('create_crm_opportunity_for_patient_v1',{p_patient_id:patientId,p_title:input.title.trim(),p_value:input.value??null,p_expected_close:input.expectedClose||null,p_interests:interestsPayload(input.interests),p_note:input.note?.trim()||null,p_idempotency_key:key});if(rpcError)throw rpcError;await load();return data as{contact_id:string;deal_id:string;reused:boolean};};
+  const findContactCandidates=async(phone?:string|null,email?:string|null):Promise<CrmContactCandidate[]>=>{const normalizedPhone=normalizeCrmPhone(phone??null);const normalizedEmail=normalizeCrmEmail(email??null);const found=new Map<string,CrmContactCandidate>();if(normalizedPhone){const{data,error}=await supabase.from('contacts').select('id,name,phone,email,patient_id').eq('phone',normalizedPhone).limit(10);if(error)throw error;(data??[]).forEach(row=>found.set(row.id as string,row as CrmContactCandidate));}if(normalizedEmail){const{data,error}=await supabase.from('contacts').select('id,name,phone,email,patient_id').eq('email',normalizedEmail).limit(10);if(error)throw error;(data??[]).forEach(row=>found.set(row.id as string,row as CrmContactCandidate));}return[...found.values()];};
+  const moveStage=async(dealId:string,stage:CrmStage,loss?:{reason:CrmLossReason;detail?:string|null})=>{const payload:{stage:CrmStage;lost_reason?:CrmLossReason;lost_reason_detail?:string|null}={stage};if(stage==='lost'&&loss){payload.lost_reason=loss.reason;payload.lost_reason_detail=loss.detail?.trim()||null;}const{error}=await supabase.from('deals').update(payload).eq('id',dealId);if(error)throw error;await load();};
+  const addFollowup=async(dealId:string,dueOn:string,channel:CrmChannel|null,note?:string|null)=>{const{error}=await supabase.from('crm_followups').insert({deal_id:dealId,due_on:dueOn,channel,note:note?.trim()||null});if(error)throw error;await load();};
+  const completeFollowup=async(followupId:string)=>{const{error}=await supabase.from('crm_followups').update({status:'completed'}).eq('id',followupId);if(error)throw error;await load();};
+  const cancelFollowup=async(followupId:string)=>{const{error}=await supabase.from('crm_followups').update({status:'cancelled'}).eq('id',followupId);if(error)throw error;await load();};
+  const recordContact=async(card:CrmPipelineCard,channel:CrmChannel,note?:string|null)=>{const{error}=await supabase.from('crm_activities').insert({contact_id:card.contact_id,deal_id:card.deal_id,activity_type:'contact',channel,note:note?.trim()||null});if(error)throw error;await load();};
+  const logWhatsappOpened=async(card:CrmPipelineCard)=>{const{error}=await supabase.from('crm_activities').insert({contact_id:card.contact_id,deal_id:card.deal_id,activity_type:'whatsapp_opened',channel:'whatsapp',note:'Conversa aberta manualmente no WhatsApp.'});if(error)console.warn('[crm:whatsapp-opened]',error);};
+  const addNote=async(card:CrmPipelineCard,note:string)=>{const{error}=await supabase.from('crm_activities').insert({contact_id:card.contact_id,deal_id:card.deal_id,activity_type:'note',note:note.trim()});if(error)throw error;await load();};
+  const loadDetail=async(dealId:string)=>{const[activityResult,followupResult]=await Promise.all([supabase.from('crm_activities').select('id,activity_type,channel,note,from_stage,to_stage,metadata,occurred_at').eq('deal_id',dealId).order('occurred_at',{ascending:false}).limit(100),supabase.from('crm_followups').select('id,deal_id,due_on,status,channel,note,completed_at,cancelled_at,created_at').eq('deal_id',dealId).order('created_at',{ascending:false}).limit(100)]);if(activityResult.error)throw activityResult.error;if(followupResult.error)throw followupResult.error;return{activities:(activityResult.data??[]).filter(row=>!isProposalActivity(row.activity_type)) as CrmActivity[],followups:(followupResult.data??[]) as CrmFollowup[]};};
+  const findPatientCandidates=async(contactId:string):Promise<CrmPatientCandidate[]>=>{const{data,error}=await supabase.rpc('find_crm_patient_candidates_v1',{p_contact_id:contactId});if(error)throw error;return(data??[]) as CrmPatientCandidate[];};
+  const convertContact=async(contactId:string,existingPatientId?:string|null):Promise<string>=>{const{data,error}=await supabase.rpc('convert_crm_contact_to_patient_v1',{p_contact_id:contactId,p_existing_patient_id:existingPatientId??null});if(error)throw error;await load();return data as string;};
+  const archiveContact=async(contactId:string)=>{const{error}=await supabase.from('contacts').update({archived_at:new Date().toISOString()}).eq('id',contactId);if(error)throw error;await load();};
+  return{cards,loading,error,metrics,refresh:load,createLead,createDeal,createOpportunityForPatient,findContactCandidates,moveStage,addFollowup,completeFollowup,cancelFollowup,recordContact,logWhatsappOpened,addNote,loadDetail,findPatientCandidates,convertContact,archiveContact};
 }
 
-export async function getCrmPatientSummary(patientId: string): Promise<CrmPipelineCard | null> {
-  const { data, error } = await supabase
-    .from('crm_pipeline_v')
-    .select('*')
-    .eq('patient_id', patientId)
-    .in('stage', CRM_OPEN_STAGES)
-    .order('deal_updated_at', { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  if (error) throw error;
-  return data as CrmPipelineCard | null;
-}
+export async function getCrmPatientSummary(patientId:string):Promise<CrmPipelineCard|null>{const{data,error}=await supabase.from('crm_pipeline_v').select('*').eq('patient_id',patientId).in('stage',CRM_OPEN_STAGES).order('deal_updated_at',{ascending:false}).limit(1).maybeSingle();if(error)throw error;return data as CrmPipelineCard|null;}
