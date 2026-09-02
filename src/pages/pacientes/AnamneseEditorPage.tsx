@@ -239,6 +239,11 @@ export function AnamneseEditorPage() {
           <Section id="conditions" title="Condições de Saúde">
             <p className="anamnesis-section-help">No rascunho uma pergunta pode ficar em branco. Ao concluir, cada item obrigatório precisa de Sim ou Não.</p>
             <div className="anamnesis-grid">{CONDITIONS.map(([key, label]) => <BinaryField key={key} id={`q-conditions-${key}`} label={label} value={draft.conditions[key] as boolean | undefined} onChange={value => setMap('conditions', key, value)} />)}</div>
+            <div className="field field--full" style={{ marginTop: 16 }}>
+              <label className="field-label" htmlFor="conditions-observations">Observações adicionais <span className="page-sub">· opcional</span></label>
+              <textarea id="conditions-observations" className="field-input anamnesis-large-text" rows={4} value={String(draft.conditions.observacoes_adicionais ?? '')} onChange={event => setMap('conditions', 'observacoes_adicionais', event.target.value)} placeholder="Registre aqui contexto importante sobre doenças, condições ou histórico de saúde…" />
+              <small className="page-sub">Quando preenchida, esta observação também aparece no resumo da anamnese.</small>
+            </div>
           </Section>
 
           <Section id="medications" title="Medicamentos">

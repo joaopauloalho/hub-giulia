@@ -43,6 +43,7 @@ export default function ClinicalPhotoCapture({ context, existingSession, referen
   const [session, setSession] = useState<PatientPhotoSession | null>(existingSession ?? null);
   const [sessionType, setSessionType] = useState<PhotoSessionType>(existingSession?.session_type ?? 'other');
   const [captureSet, setCaptureSet] = useState<PhotoCaptureSet>(existingSession?.capture_set ?? 'face_standard');
+  const [sessionNotes, setSessionNotes] = useState(existingSession?.notes ?? '');
   const [region, setRegion] = useState<string>('Face');
   const [pose, setPose] = useState<PhotoPose>('rest');
   const [starting, setStarting] = useState(false);
@@ -57,6 +58,7 @@ export default function ClinicalPhotoCapture({ context, existingSession, referen
   const [changed, setChanged] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const setupFileRef = useRef<HTMLInputElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const lanesRef = useRef<[Promise<void>, Promise<void>]>([Promise.resolve(), Promise.resolve()]);
   const nextLaneRef = useRef(0);
@@ -82,7 +84,7 @@ export default function ClinicalPhotoCapture({ context, existingSession, referen
       return;
     }
     if (!navigator.mediaDevices?.getUserMedia) {
-      setCameraError('Câmera direta indisponível neste navegador. Use “Escolher arquivo”.');
+      setCameraError('Câmera direta indisponível neste navegador. Use “Escolher da galeria”.');
       return;
     }
     try {
@@ -98,8 +100,8 @@ export default function ClinicalPhotoCapture({ context, existingSession, referen
       setStreamReady(true);
     } catch (cause) {
       const message = cause instanceof DOMException && cause.name === 'NotAllowedError'
-        ? 'Permissão da câmera negada. Você pode escolher uma foto do aparelho.'
-        : 'Não foi possível abrir a câmera. Você pode escolher uma foto do aparelho.';
+        ? 'Permissão da câmera negada. Você pode escolher uma foto da galeria.'
+        : 'Não foi possível abrir a câmera. Você pode escolher uma foto da galeria.';
       setCameraError(message);
     }
   }, [facing, stopCamera]);
@@ -118,22 +120,32 @@ export default function ClinicalPhotoCapture({ context, existingSession, referen
     if (review) URL.revokeObjectURL(review.url);
   }, [review]);
 
-  const begin = async () => {
+  const ensureSession = async () => {
+    if (session) return session;
     if (!navigator.onLine) {
       setCameraError('Conecte-se à internet para registrar fotos com segurança.');
-      return;
+      return null;
     }
+    const created = await onCreateSession({
+      appointmentId: context?.appointmentId ?? null,
+      procedureId: context?.procedureId ?? null,
+      serviceId: context?.serviceId ?? null,
+      sessionType,
+      captureSet,
+      notes: sessionNotes.trim() || null,
+    });
+    setSession(created);
+    return created;
+  };
+
+  const begin = async () => {
     setStarting(true);
+    setCameraError(null);
     try {
-      const created = session ?? await onCreateSession({
-        appointmentId: context?.appointmentId ?? null,
-        procedureId: context?.procedureId ?? null,
-        serviceId: context?.serviceId ?? null,
-        sessionType,
-        captureSet,
-      });
-      setSession(created);
-      await startCamera(facing);
+      const created = await ensureSession();
+      if (created) await startCamera(facing);
+    } catch (cause) {
+      setCameraError(cause instanceof Error ? cause.message : 'Não foi possível criar a sessão fotográfica.');
     } finally {
       setStarting(false);
     }
@@ -153,28 +165,46 @@ export default function ClinicalPhotoCapture({ context, existingSession, referen
     }
   };
 
-  const chooseFile = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    event.target.value = '';
-    if (file) setReviewFile(file, 'library');
-  };
-
   const updateItem = (id: string, patch: Partial<UploadItem>) => setQueue(current => current.map(item => item.id === id ? { ...item, ...patch } : item));
 
-  const runUpload = (item: UploadItem) => {
-    if (!session) return;
+  const runUpload = (item: UploadItem, targetSession: PatientPhotoSession | null = session) => {
+    if (!targetSession) return;
     const lane = nextLaneRef.current % 2;
     nextLaneRef.current += 1;
     lanesRef.current[lane] = lanesRef.current[lane].then(async () => {
       updateItem(item.id, { status: 'sending', error: undefined });
       try {
-        await onUpload(session, item.file, item.angle, item.source, item.id, region === 'Outro' ? 'Outro' : region, pose);
+        await onUpload(targetSession, item.file, item.angle, item.source, item.id, region === 'Outro' ? 'Outro' : region, pose);
         updateItem(item.id, { status: 'saved' });
         setChanged(true);
       } catch (cause) {
         updateItem(item.id, { status: 'error', error: cause instanceof Error ? cause.message : 'Upload falhou.' });
       }
     });
+  };
+
+  const chooseFiles = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files ?? []);
+    event.target.value = '';
+    if (!files.length) return;
+    setStarting(true);
+    setCameraError(null);
+    try {
+      const targetSession = await ensureSession();
+      if (!targetSession) return;
+      stopCamera();
+      if (files.length === 1) {
+        setReviewFile(files[0], 'library');
+        return;
+      }
+      const items: UploadItem[] = files.map(file => ({ id: crypto.randomUUID(), file, angle: null, source: 'library', status: 'preparing' }));
+      setQueue(current => [...current, ...items]);
+      items.forEach(item => runUpload(item, targetSession));
+    } catch (cause) {
+      setCameraError(cause instanceof Error ? cause.message : 'Não foi possível adicionar as fotos da galeria.');
+    } finally {
+      setStarting(false);
+    }
   };
 
   const usePhoto = () => {
@@ -209,10 +239,10 @@ export default function ClinicalPhotoCapture({ context, existingSession, referen
   };
 
   return (
-    <div className="clinical-capture" role="dialog" aria-modal="true" aria-label="Captura de fotos clínicas">
+    <div className="clinical-capture" role="dialog" aria-modal="true" aria-label="Adicionar fotos clínicas">
       <header className="clinical-capture__header">
         <div>
-          <strong>Fotos de hoje</strong>
+          <strong>Adicionar fotos</strong>
           <span>{context?.serviceName || (context?.appointmentId ? 'Atendimento vinculado' : 'Sessão fotográfica')}</span>
         </div>
         <button className="icon-button" onClick={close} aria-label="Fechar captura"><X size={22} /></button>
@@ -246,8 +276,17 @@ export default function ClinicalPhotoCapture({ context, existingSession, referen
                 <option value="custom">Livre</option>
               </select>
             </label>
+            <label>Resumo / evolução da sessão <span className="page-sub">· opcional</span>
+              <textarea rows={3} maxLength={1500} value={sessionNotes} onChange={event => setSessionNotes(event.target.value)} placeholder="Ex.: retorno de 30 dias, melhora das manchas em região malar…" />
+            </label>
             <p className="privacy-note">A imagem é documentação clínica. O Hub não aplica filtro de beleza, análise facial nem IA. Fotos da biblioteca são normalizadas uma vez para remover EXIF/GPS desnecessário.</p>
-            <button className="primary-action" disabled={starting} onClick={() => void begin()}>{starting ? <RefreshCw className="spin" size={18} /> : <Camera size={18} />} Começar captura</button>
+            {cameraError && <div className="capture-error"><WifiOff size={18} /> {cameraError}</div>}
+            <input ref={setupFileRef} type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif" multiple onChange={event => void chooseFiles(event)} hidden />
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(180px,1fr))', gap: 8 }}>
+              <button className="primary-action" disabled={starting} onClick={() => void begin()}>{starting ? <RefreshCw className="spin" size={18} /> : <Camera size={18} />} Tirar foto</button>
+              <button className="secondary-action" disabled={starting} onClick={() => setupFileRef.current?.click()}><Upload size={18} /> Escolher da galeria</button>
+            </div>
+            <small className="page-sub">Na galeria você pode selecionar várias fotos de uma vez. O Hub não inventa ângulos para imagens importadas.</small>
           </div>
         </div>
       ) : (
@@ -268,7 +307,7 @@ export default function ClinicalPhotoCapture({ context, existingSession, referen
               <div className="camera-guide" aria-hidden="true"><div className="camera-guide__oval" /><div className="camera-guide__v" /><div className="camera-guide__h" /></div>
               {ghostEnabled && ghostUrl && <img className="ghost-reference" src={ghostUrl} alt="" style={{ opacity: ghostOpacity / 100 }} />}
               {review && <img className="capture-review" src={review.url} alt="Revisão da foto capturada" />}
-              {!streamReady && !review && <div className="camera-empty"><Camera size={42} /><span>A câmera aparecerá aqui.</span></div>}
+              {!streamReady && !review && <div className="camera-empty"><Camera size={42} /><span>Abra a câmera ou escolha fotos da galeria.</span></div>}
             </div>
 
             {ghostUrl && !review && (
@@ -288,8 +327,8 @@ export default function ClinicalPhotoCapture({ context, existingSession, referen
                 </>
               ) : (
                 <>
-                  <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif" capture={facing} onChange={chooseFile} hidden />
-                  <button className="secondary-action" onClick={() => fileRef.current?.click()}><Upload size={18} /> Escolher arquivo</button>
+                  <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif" multiple onChange={event => void chooseFiles(event)} hidden />
+                  <button className="secondary-action" onClick={() => fileRef.current?.click()}><Upload size={18} /> Escolher da galeria</button>
                   <button className="capture-shutter" onClick={() => void capture()} disabled={!streamReady} aria-label="Capturar foto"><span /></button>
                   <button className="secondary-action" onClick={() => void startCamera()}><Camera size={18} /> Abrir câmera</button>
                 </>
@@ -299,6 +338,7 @@ export default function ClinicalPhotoCapture({ context, existingSession, referen
 
           <aside className="upload-queue" aria-live="polite">
             <div className="upload-queue__title"><strong>Sessão</strong><span>{session.photos.length + queue.filter(item => item.status === 'saved').length} foto(s) salva(s)</span></div>
+            {session.notes && <div style={{ padding: 10, borderRadius: 10, background: 'var(--bg-2)', fontSize: 13, whiteSpace: 'pre-wrap' }}><strong style={{ display: 'block', marginBottom: 3 }}>Resumo / evolução</strong>{session.notes}</div>}
             {captureSet === 'face_standard' && <div className="capture-progress">{Math.min(5, existingAngles.size + queuedAngles.size)} de 5 ângulos organizados</div>}
             {queue.length === 0 ? <p>Nenhuma foto nova nesta abertura.</p> : queue.map(item => (
               <div className={`upload-item is-${item.status}`} key={item.id}>
