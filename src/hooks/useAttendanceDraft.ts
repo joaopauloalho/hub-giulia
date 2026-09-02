@@ -11,7 +11,7 @@ export type AttendanceDraftPayload = {
   courtesyByService?: Record<string, boolean>;
   materials?: unknown[];
   clinicalMinutes?: number;
-  paymentTiming?: 'today' | 'later';
+  paymentTiming?: 'today' | 'past' | 'later';
   payments?: unknown[];
 };
 
