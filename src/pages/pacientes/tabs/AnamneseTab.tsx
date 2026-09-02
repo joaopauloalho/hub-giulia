@@ -21,6 +21,20 @@ type SchemaSection = { key?: string; title?: string; fields?: SchemaField[] };
 type GeneratedLink = { url: string; mode: Exclude<AnamnesisSignatureDeliveryMode, 'legacy'>; expiresAt: string };
 
 const dateTime = (value: string | null | undefined) => value ? new Date(value).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : '—';
+const LONG_SUMMARY_FIELDS = new Set(['observacoes_adicionais', 'cuidados_diarios', 'produtos_em_uso', 'produto_com_acido_detalhe', 'alteracoes_recentes_detalhe', 'pele_paciente', 'observacoes_gerais', 'minhas_recomendacoes']);
+const CONDITIONS_SUMMARY_SUPPLEMENTS: SchemaField[] = [
+  { key: 'observacoes_adicionais', label: 'Observações adicionais', type: 'text' },
+];
+const SKIN_SUMMARY_SUPPLEMENTS: SchemaField[] = [
+  { key: 'cuidados_diarios', label: 'Cuidados diários em casa', type: 'text' },
+  { key: 'produtos_em_uso', label: 'Produtos em uso no rosto', type: 'text' },
+  { key: 'produto_com_acido_detalhe', label: 'Qual ácido / concentração?', type: 'text' },
+  { key: 'alteracoes_recentes_detalhe', label: 'Detalhes das alterações recentes', type: 'text' },
+  { key: 'ultima_limpeza_pele', label: 'Última LP / última limpeza de pele', type: 'text' },
+  { key: 'pele_paciente', label: 'Pele da paciente', type: 'text' },
+  { key: 'observacoes_gerais', label: 'Observações gerais', type: 'text' },
+  { key: 'minhas_recomendacoes', label: 'Minhas recomendações', type: 'text' },
+];
 
 function sectionAnswers(snapshot: Record<string, unknown>, sectionKey: string) {
   if (sectionKey === 'conditions') return (snapshot.conditions ?? {}) as Record<string, unknown>;
@@ -28,6 +42,31 @@ function sectionAnswers(snapshot: Record<string, unknown>, sectionKey: string) {
   if (['habits', 'food', 'routine'].includes(sectionKey)) return (snapshot.habits ?? {}) as Record<string, unknown>;
   if (['aesthetics', 'procedures', 'skin_review'].includes(sectionKey)) return (snapshot.aesthetics ?? {}) as Record<string, unknown>;
   return snapshot;
+}
+
+function isFilled(value: unknown) {
+  if (value === null || value === undefined) return false;
+  if (typeof value === 'string') return value.trim().length > 0;
+  return true;
+}
+
+function withClinicalSummarySupplements(snapshot: Record<string, unknown>, sections: SchemaSection[]) {
+  return sections.map(section => {
+    const sectionKey = section.key ?? '';
+    const title = (section.title ?? '').toLocaleLowerCase('pt-BR');
+    const supplements = sectionKey === 'conditions'
+      ? CONDITIONS_SUMMARY_SUPPLEMENTS
+      : sectionKey === 'skin_review' || sectionKey === 'aesthetics' || title.includes('pele')
+        ? SKIN_SUMMARY_SUPPLEMENTS
+        : [];
+    if (!supplements.length) return section;
+
+    const fields = section.fields ?? [];
+    const represented = new Set(fields.flatMap(field => [field.key, field.detail_key].filter((key): key is string => Boolean(key))));
+    const source = sectionAnswers(snapshot, sectionKey);
+    const extras = supplements.filter(field => Boolean(field.key) && !represented.has(field.key!) && isFilled(source[field.key!]));
+    return extras.length ? { ...section, fields: [...fields, ...extras] } : section;
+  });
 }
 
 function displayValue(snapshot: Record<string, unknown>, sectionKey: string, field: SchemaField) {
@@ -64,10 +103,14 @@ function displayValue(snapshot: Record<string, unknown>, sectionKey: string, fie
 }
 
 function HistoricalVersion({ version }: { version: AnamnesisVersion }) {
-  const sections = ((version.form_schema_snapshot.sections ?? []) as SchemaSection[]).filter(section => Array.isArray(section.fields));
+  const schemaSections = ((version.form_schema_snapshot.sections ?? []) as SchemaSection[]).filter(section => Array.isArray(section.fields));
+  const sections = withClinicalSummarySupplements(version.answers_snapshot, schemaSections);
   return <div style={{ display: 'grid', gap: 12, marginTop: 12 }}>
     <div className="page-sub">Documento somente leitura · schema {version.form_schema_version}{version.migration_source === 'legacy' ? ' · migrado do modelo anterior' : ''}</div>
-    {sections.map((section, index) => <div className="card" key={`${section.key ?? index}`} style={{ padding: 12 }}><strong style={{ display: 'block', marginBottom: 8 }}>{section.title ?? 'Seção'}</strong><div style={{ display: 'grid', gap: 6 }}>{(section.fields ?? []).map((field, i) => <div key={`${field.key ?? i}`} style={{ display: 'grid', gridTemplateColumns: 'minmax(150px,.8fr) minmax(0,1.2fr)', gap: 10, borderBottom: '1px solid var(--border)', paddingBottom: 6 }}><span className="page-sub">{field.label ?? field.key}</span><span style={{ fontSize: 13, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{displayValue(version.answers_snapshot, section.key ?? '', field)}</span></div>)}</div></div>)}
+    {sections.map((section, index) => <div className="card" key={`${section.key ?? index}`} style={{ padding: 12 }}><strong style={{ display: 'block', marginBottom: 8 }}>{section.title ?? 'Seção'}</strong><div style={{ display: 'grid', gap: 6 }}>{(section.fields ?? []).map((field, i) => {
+      const stacked = LONG_SUMMARY_FIELDS.has(field.key ?? '');
+      return <div key={`${field.key ?? i}`} style={{ display: 'grid', gridTemplateColumns: stacked ? '1fr' : 'minmax(150px,.8fr) minmax(0,1.2fr)', gap: stacked ? 4 : 10, borderBottom: '1px solid var(--border)', paddingBottom: 6 }}><span className="page-sub">{field.label ?? field.key}</span><span style={{ fontSize: 13, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{displayValue(version.answers_snapshot, section.key ?? '', field)}</span></div>;
+    })}</div></div>)}
   </div>;
 }
 
