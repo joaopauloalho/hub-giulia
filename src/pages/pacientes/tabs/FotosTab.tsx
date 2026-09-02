@@ -124,10 +124,10 @@ export function FotosTab({ patientId }: FotosTabProps) {
         <div>
           <span className="eyebrow"><Images size={15} /> Documentação clínica</span>
           <h2>Fotos & evolução</h2>
-          <p>Sessões organizadas por contexto, com original clínico imutável e comparação sem retoque.</p>
+          <p>Sessões organizadas por contexto, com original clínico imutável, resumo escrito e comparação sem retoque.</p>
           {attendanceContext && <div className="attendance-photo-context"><Clock3 size={16} /><span>Atendimento aberto · <strong>{attendanceContext.serviceName || 'Serviço vinculado'}</strong></span></div>}
         </div>
-        <button className="primary-action capture-cta" onClick={() => startCapture()}><Camera size={19} /> Capturar fotos de hoje</button>
+        <button className="primary-action capture-cta" onClick={() => startCapture()}><Camera size={19} /> Adicionar fotos</button>
       </div>
 
       {(localError || photos.error) && <div className="photos-error">{localError || photos.error}</div>}
@@ -141,7 +141,7 @@ export function FotosTab({ patientId }: FotosTabProps) {
       </div>
 
       {photos.loading && photos.sessions.length === 0 ? <div className="session-skeletons"><div /><div /></div> : photos.sessions.length === 0 && photos.legacyPhotos.length === 0 ? (
-        <div className="photos-empty"><Camera size={36} /><h3>Nenhuma sessão fotográfica</h3><p>Registre as fotos do atendimento em poucos toques.</p><button className="primary-action" onClick={() => startCapture()}>Capturar fotos</button></div>
+        <div className="photos-empty"><Camera size={36} /><h3>Nenhuma sessão fotográfica</h3><p>Adicione fotos da câmera ou da galeria e registre a evolução clínica.</p><button className="primary-action" onClick={() => startCapture()}>Adicionar fotos</button></div>
       ) : (
         <div className="photo-timeline">
           {photos.sessions.map((session, index) => {
@@ -150,9 +150,10 @@ export function FotosTab({ patientId }: FotosTabProps) {
               <div className="timeline-marker"><span>{index + 1}</span></div>
               <div className="photo-session-card__content">
                 <header><div><time>{formatDate(session.captured_at)}</time><h3>{PHOTO_SESSION_LABELS[session.session_type]}</h3><p>{session.service_name || session.title || 'Sessão fotográfica'}</p></div><div className="session-count"><strong>{session.photo_count}</strong><span>foto{session.photo_count === 1 ? '' : 's'}</span></div></header>
+                {session.notes && <div style={{ margin: '10px 0', padding: 11, borderRadius: 10, background: 'var(--bg-2)', border: '1px solid var(--border)' }}><strong style={{ display: 'block', fontSize: 12, marginBottom: 4 }}>Resumo / evolução da sessão</strong><p style={{ margin: 0, fontSize: 13, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{session.notes}</p></div>}
                 {session.capture_set === 'face_standard' && <div className="session-progress"><span style={{ width: `${Math.min(100, standardCount * 20)}%` }} /><small>{standardCount} de 5 ângulos organizados</small></div>}
                 <div className="session-thumbs">{session.photos.slice(0, 5).map(photo => photo.thumbnail_url ? <button key={photo.id} onClick={() => setViewerPhoto(photo)} aria-label={`Abrir ${photo.angle ? PHOTO_ANGLE_LABELS[photo.angle] : 'foto clínica'}`}><img loading="lazy" src={photo.thumbnail_url} alt={photo.angle ? PHOTO_ANGLE_LABELS[photo.angle] : 'Foto clínica'} /></button> : <div className="photo-skeleton" key={photo.id} />)}{session.photos.length === 0 && <span className="empty-session-copy">Sessão criada, ainda sem fotos. Pode continuar depois.</span>}</div>
-                <footer><button className="secondary-action" onClick={() => startCapture(session)}><Camera size={16} /> Continuar</button><button className="secondary-action" disabled={photos.sessions.length < 2} onClick={() => suggestComparison(session)}><ArrowLeftRight size={16} /> Comparar</button></footer>
+                <footer><button className="secondary-action" onClick={() => startCapture(session)}><Camera size={16} /> Adicionar fotos</button><button className="secondary-action" disabled={photos.sessions.length < 2} onClick={() => suggestComparison(session)}><ArrowLeftRight size={16} /> Comparar</button></footer>
               </div>
             </article>;
           })}
