@@ -27,6 +27,7 @@ import {
   type InjectableSaveStatus,
   type InjectableSide,
 } from '../../lib/injectablesV2';
+import { brazilianDateToIso, normalizeBrazilianDateInput } from '../../lib/dateInput';
 import {
   clearAttendanceInjectableDraft,
   clearAttendanceInjectablePoints,
@@ -368,10 +369,20 @@ export function InjetaveisScreen({ patientId, injectableServices, onDone, onCanc
 
   const createCatalogLot = async () => {
     if (!newProductId || !lotNumber.trim()) return;
+    const expiresOn = lotExpiry.trim() ? brazilianDateToIso(lotExpiry) : null;
+    if (lotExpiry.trim() && !expiresOn) {
+      setSaveMessage('Informe uma validade válida no formato DD/MM/AAAA.');
+      return;
+    }
+
     setCatalogSaving(true);
     setSaveMessage(null);
     try {
-      const lot = await createLot({ product_id: newProductId, lot_number: lotNumber, expires_on: lotExpiry });
+      const lot = await createLot({
+        product_id: newProductId,
+        lot_number: lotNumber,
+        expires_on: expiresOn ?? undefined,
+      });
       setNewLotId(lot.id);
       setLotNumber('');
       setLotExpiry('');
@@ -558,7 +569,16 @@ export function InjetaveisScreen({ patientId, injectableServices, onDone, onCanc
               {showLotForm && newProductId && (
                 <div className="injectables-subform">
                   <input value={lotNumber} onChange={event => setLotNumber(event.target.value)} placeholder="Número do lote" />
-                  <input type="date" value={lotExpiry} onChange={event => setLotExpiry(event.target.value)} />
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    autoComplete="off"
+                    value={lotExpiry}
+                    onChange={event => setLotExpiry(normalizeBrazilianDateInput(event.target.value))}
+                    placeholder="Validade (DD/MM/AAAA)"
+                    maxLength={10}
+                    aria-label="Validade do lote no formato dia, mês e ano"
+                  />
                   <button className="btn btn--primary btn--sm" onClick={() => void createCatalogLot()} disabled={catalogSaving || !lotNumber.trim()}>
                     Criar lote
                   </button>
