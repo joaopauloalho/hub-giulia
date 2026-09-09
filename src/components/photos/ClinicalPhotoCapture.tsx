@@ -36,13 +36,13 @@ export default function ClinicalPhotoCapture({ context, existingSession, onCreat
         procedureId: context?.procedureId ?? null,
         serviceId: context?.serviceId ?? null,
         sessionType: 'other',
-        captureSet: 'custom',
+        captureSet: 'free',
         title: context?.serviceName || 'Fotos clínicas',
       });
       const selected = Array.from(files);
       for (let index = 0; index < selected.length; index += 1) {
         setProgress(`Salvando ${index + 1} de ${selected.length}…`);
-        await onUpload(session, selected[index], null, 'gallery', crypto.randomUUID(), null, null);
+        await onUpload(session, selected[index], null, 'library', crypto.randomUUID(), null, null);
         setChanged(true);
       }
       onClose(true);
