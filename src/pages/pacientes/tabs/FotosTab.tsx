@@ -73,7 +73,6 @@ export function FotosTab({ patientId }: FotosTabProps) {
   const [attendanceContext, setAttendanceContext] = useState<AttendancePhotoContext | null>(null);
   const [adding, setAdding] = useState(false);
   const [viewerPhoto, setViewerPhoto] = useState<PatientPhoto | null>(null);
-  const [localError, setLocalError] = useState<string | null>(null);
 
   useEffect(() => { void photos.load(); }, [photos.load]);
   useEffect(() => {
@@ -113,7 +112,7 @@ export function FotosTab({ patientId }: FotosTabProps) {
         <button type="button" className="photo-primary-button" onClick={() => setAdding(true)}><Images size={19} /> Adicionar fotos</button>
       </section>
 
-      {(photos.error || localError) && <div className="photo-error">{photos.error || localError}</div>}
+      {photos.error && <div className="photo-error">{photos.error}</div>}
 
       {!photos.loading && allPhotos.length === 0 && (
         <section style={{ padding: '44px 24px', textAlign: 'center', border: '1px solid #f3d7e2', borderRadius: 18, background: '#fff' }}>
