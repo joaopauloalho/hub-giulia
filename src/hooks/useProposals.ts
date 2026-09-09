@@ -6,6 +6,9 @@ export type ProposalDealContext = {
   deal_id: string; contact_id: string; contact_name: string; patient_id: string | null; title: string; stage: string;
   interests: Array<{ id?: string; service_id: string | null; label: string }>;
 };
+export type ProposalAttachment = {
+  id: string; proposal_id: string; user_id: string; storage_path: string; original_name: string | null; mime_type: string; size_bytes: number | null; sort_order: number; created_at: string; updated_at: string; signed_url?: string | null;
+};
 export type ProposalDetail = { proposal: TreatmentProposal; versions: TreatmentProposalVersion[]; version: TreatmentProposalVersion; items: TreatmentProposalItem[] };
 
 export async function loadProposalDealContext(dealId: string): Promise<ProposalDealContext> {
@@ -60,38 +63,42 @@ export async function deleteProposal(proposalId: string) {
   const { data, error } = await supabase.rpc('delete_treatment_proposal_v2', { p_proposal_id: proposalId }); if (error) throw error; return Boolean(data);
 }
 
-export async function issueProposal(versionId: string, expectedRevision: number, idempotencyKey: string) {
-  const { data, error } = await supabase.rpc('issue_treatment_proposal_v1', { p_version_id: versionId, p_expected_revision: expectedRevision, p_idempotency_key: idempotencyKey }); if (error) throw error; return (data as unknown[] | null)?.[0];
-}
-export async function createProposalRevision(sourceVersionId: string, idempotencyKey = crypto.randomUUID()) {
-  const { data, error } = await supabase.rpc('create_treatment_proposal_revision_v1', { p_source_version_id: sourceVersionId, p_idempotency_key: idempotencyKey }); if (error) throw error;
-  const row = (data as Array<{ proposal_id: string; version_id: string; version_number: number; draft_revision: number }> | null)?.[0]; if (!row) throw new Error('PROPOSAL_REVISION_NOT_CONFIRMED'); return row;
-}
-export async function markProposalSent(versionId: string, idempotencyKey = crypto.randomUUID()) {
-  const { data, error } = await supabase.rpc('mark_treatment_proposal_sent_v1', { p_version_id: versionId, p_idempotency_key: idempotencyKey }); if (error) throw error; return (data as unknown[] | null)?.[0];
-}
-export async function acceptProposal(versionId: string, markDealWon: boolean, idempotencyKey = crypto.randomUUID()) {
-  const { data, error } = await supabase.rpc('accept_treatment_proposal_v1', { p_version_id: versionId, p_mark_deal_won: markDealWon, p_idempotency_key: idempotencyKey }); if (error) throw error; return (data as unknown[] | null)?.[0];
-}
-export async function declineProposal(versionId: string, reason: string, idempotencyKey = crypto.randomUUID()) {
-  const { data, error } = await supabase.rpc('decline_treatment_proposal_v1', { p_version_id: versionId, p_reason: reason || null, p_idempotency_key: idempotencyKey }); if (error) throw error; return (data as unknown[] | null)?.[0];
-}
-export async function voidProposal(versionId: string, reason: string, idempotencyKey = crypto.randomUUID()) {
-  const { data, error } = await supabase.rpc('void_treatment_proposal_v1', { p_version_id: versionId, p_reason: reason, p_idempotency_key: idempotencyKey }); if (error) throw error; return (data as unknown[] | null)?.[0];
+export async function loadProposalAttachments(proposalId: string): Promise<ProposalAttachment[]> {
+  const { data, error } = await supabase.from('treatment_proposal_attachments').select('*').eq('proposal_id', proposalId).order('sort_order').order('created_at');
+  if (error) throw error;
+  return Promise.all(((data ?? []) as ProposalAttachment[]).map(async item => ({ ...item, signed_url: await createSignedStorageUrl('proposals', item.storage_path) })));
 }
 
-async function sha256(blob: Blob) { const digest = await crypto.subtle.digest('SHA-256', await blob.arrayBuffer()); return Array.from(new Uint8Array(digest)).map(byte => byte.toString(16).padStart(2, '0')).join(''); }
-export async function uploadProposalPdf(proposalId: string, versionId: string, blob: Blob) {
-  const { data: authData, error: authError } = await supabase.auth.getUser(); if (authError || !authData.user) throw new Error('PROPOSAL_SESSION_REQUIRED');
-  const path = `${authData.user.id}/${proposalId}/${versionId}/proposal.pdf`; let artifact = blob;
-  const { error } = await supabase.storage.from('proposals').upload(path, blob, { contentType: 'application/pdf', cacheControl: '0', upsert: false });
-  if (error) { if (!/exist|duplicate/i.test(error.message)) throw error; const { data: existing, error: downloadError } = await supabase.storage.from('proposals').download(path); if (downloadError || !existing) throw downloadError ?? error; artifact = existing; }
-  const hash = await sha256(artifact); const { error: attachError } = await supabase.rpc('attach_treatment_proposal_pdf_v1', { p_version_id: versionId, p_pdf_path: path, p_pdf_sha256: hash }); if (attachError) throw attachError; return { path, hash, blob: artifact };
+function safeAttachmentName(name: string) {
+  const clean = name.replace(/[^a-zA-Z0-9._-]+/g, '-').replace(/-+/g, '-');
+  return clean || 'imagem';
 }
+
+export async function uploadProposalAttachment(proposalId: string, file: File, sortOrder: number): Promise<ProposalAttachment> {
+  const allowed = ['image/jpeg','image/png','image/webp','image/heic','image/heif'];
+  if (!allowed.includes(file.type)) throw new Error('Use uma imagem JPEG, PNG, WebP ou HEIC.');
+  if (!file.size || file.size > 10 * 1024 * 1024) throw new Error('A imagem deve ter até 10 MB.');
+  const { data: authData, error: authError } = await supabase.auth.getUser(); if (authError || !authData.user) throw new Error('PROPOSAL_SESSION_REQUIRED');
+  const id = crypto.randomUUID();
+  const path = `${authData.user.id}/${proposalId}/attachments/${id}/${safeAttachmentName(file.name)}`;
+  const { error: storageError } = await supabase.storage.from('proposals').upload(path, file, { contentType: file.type, cacheControl: '3600', upsert: false });
+  if (storageError) throw storageError;
+  const { data, error } = await supabase.from('treatment_proposal_attachments').insert({ id, proposal_id: proposalId, storage_path: path, original_name: file.name || null, mime_type: file.type, size_bytes: file.size, sort_order: sortOrder }).select('*').single();
+  if (error) { await supabase.storage.from('proposals').remove([path]); throw error; }
+  return { ...(data as ProposalAttachment), signed_url: await createSignedStorageUrl('proposals', path) };
+}
+
+export async function deleteProposalAttachment(attachment: ProposalAttachment) {
+  const { error } = await supabase.from('treatment_proposal_attachments').delete().eq('id', attachment.id).eq('proposal_id', attachment.proposal_id); if (error) throw error;
+  const { error: storageError } = await supabase.storage.from('proposals').remove([attachment.storage_path]); if (storageError) console.warn('[proposals:attachment-remove]', storageError);
+}
+
+export async function reorderProposalAttachments(items: ProposalAttachment[]) {
+  for (let index = 0; index < items.length; index += 1) {
+    const { error } = await supabase.from('treatment_proposal_attachments').update({ sort_order: index, updated_at: new Date().toISOString() }).eq('id', items[index].id); if (error) throw error;
+  }
+}
+
+// Legado: mantido somente para leitura de propostas antigas que já possuam PDF.
 export async function loadProposalPdf(path: string) { const { data, error } = await supabase.storage.from('proposals').download(path); if (error) throw error; return data; }
 export async function proposalSignedUrl(path: string | null | undefined) { return createSignedStorageUrl('proposals', path); }
-export async function shareProposalFile(blob: Blob, title: string) {
-  const safeName = `${title || 'proposta'}.pdf`.replace(/[^a-zA-Z0-9À-ÿ._ -]+/g, '').replace(/\s+/g, '-'); const file = new File([blob], safeName, { type: 'application/pdf' }); const sharePayload = { title, files: [file] };
-  if (typeof navigator.share === 'function' && (!navigator.canShare || navigator.canShare(sharePayload))) { await navigator.share(sharePayload); return 'shared' as const; }
-  const url = URL.createObjectURL(blob); const anchor = document.createElement('a'); anchor.href = url; anchor.download = safeName; document.body.appendChild(anchor); anchor.click(); anchor.remove(); window.setTimeout(() => URL.revokeObjectURL(url), 1000); return 'downloaded' as const;
-}
