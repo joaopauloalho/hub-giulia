@@ -1,0 +1,176 @@
+.clinic-photo-group__managed-header {
+  align-items: center !important;
+}
+
+.clinic-photo-group__managed-header > div {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.clinic-photo-add-day {
+  display: inline-flex;
+  min-height: 34px;
+  align-items: center;
+  gap: 6px;
+  padding: 0 10px;
+  border: 1px solid var(--photo-border);
+  border-radius: 10px;
+  background: #fff;
+  color: var(--photo-rose);
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.clinic-photo-add-day:disabled {
+  opacity: .55;
+  cursor: default;
+}
+
+.clinic-photo-day-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 11px 13px;
+  border: 1px solid var(--photo-border);
+  border-radius: 12px;
+  background: #fffafb;
+  color: var(--photo-rose);
+}
+
+.clinic-photo-day-note.is-empty {
+  border-style: dashed;
+  background: #fff;
+}
+
+.clinic-photo-day-note > svg {
+  flex: 0 0 auto;
+  margin-top: 2px;
+}
+
+.clinic-photo-day-note button {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #574e54;
+  font: inherit;
+  font-size: .86rem;
+  line-height: 1.45;
+  text-align: left;
+  cursor: pointer;
+}
+
+.clinic-photo-day-note.is-empty button {
+  color: #9a7f8c;
+}
+
+.clinic-photo-day-note button svg {
+  flex: 0 0 auto;
+  margin-top: 2px;
+  color: var(--photo-rose);
+}
+
+.clinic-photo-day-note-editor {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid var(--photo-border);
+  border-radius: 14px;
+  background: #fffafb;
+}
+
+.clinic-photo-day-note-editor label {
+  display: grid;
+  gap: 6px;
+}
+
+.clinic-photo-day-note-editor label > span {
+  color: #574e54;
+  font-size: .8rem;
+  font-weight: 700;
+}
+
+.clinic-photo-day-note-editor label small {
+  color: #9ca3af;
+  font-size: .74rem;
+  font-weight: 500;
+}
+
+.clinic-photo-day-note-editor textarea {
+  min-height: 84px;
+  resize: vertical;
+  line-height: 1.45;
+}
+
+.clinic-photo-day-note-editor > div:last-child {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.clinic-photo-card__editor-actions--managed {
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.clinic-photo-card__editor-actions--managed > div {
+  display: flex;
+  gap: 8px;
+}
+
+.clinic-photo-delete-button {
+  display: inline-flex;
+  min-height: 40px;
+  align-items: center;
+  gap: 7px;
+  padding: 0 10px;
+  border: 1px solid #fecdd3;
+  border-radius: 10px;
+  background: #fff7f7;
+  color: #b42318;
+  font: inherit;
+  font-size: .78rem;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.clinic-photo-delete-button:disabled {
+  opacity: .55;
+  cursor: default;
+}
+
+@media (max-width: 680px) {
+  .clinic-photo-group__managed-header {
+    align-items: flex-start !important;
+  }
+
+  .clinic-photo-group__managed-header > div {
+    align-items: flex-end;
+    flex-direction: column;
+    gap: 5px;
+  }
+
+  .clinic-photo-card__editor-actions--managed {
+    align-items: stretch;
+    flex-direction: column-reverse;
+  }
+
+  .clinic-photo-card__editor-actions--managed > div {
+    width: 100%;
+  }
+
+  .clinic-photo-card__editor-actions--managed > div .btn,
+  .clinic-photo-delete-button {
+    flex: 1;
+    justify-content: center;
+  }
+}
