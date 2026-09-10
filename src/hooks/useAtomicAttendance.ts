@@ -28,18 +28,33 @@ export interface CreateAtomicAttendanceInput {
   injectable_maps: Array<{ points: InjectablePoint[] }>;
   injectable_draft_id?: string | null;
   injectable_draft_revision?: number | null;
+  parent_procedure_id?: string | null;
   notes: string | null;
 }
 
 export function useAtomicAttendance() {
   const createAtomic = async (input: CreateAtomicAttendanceInput): Promise<Procedure> => {
     const hasStructuredDraft = Boolean(input.injectable_draft_id && input.injectable_draft_revision);
+    const isReturn = Boolean(input.parent_procedure_id);
     const coverages = input.coverages ?? [];
     const materials = input.materials ?? [];
     const clinicalMinutes = Math.max(0, Math.min(1440, Math.round(input.clinical_minutes ?? getClinicalMinutes())));
 
     if (hasStructuredDraft) {
-      const { data, error } = await supabase.rpc('create_procedure_with_injectable_draft_v5', {
+      const rpc = isReturn ? 'create_clinical_return_with_injectable_draft_v1' : 'create_procedure_with_injectable_draft_v5';
+      const args = isReturn ? {
+        p_idempotency_key: input.idempotency_key,
+        p_parent_procedure_id: input.parent_procedure_id,
+        p_patient_id: input.patient_id,
+        p_appointment_id: input.appointment_id,
+        p_performed_at: input.performed_at,
+        p_items: input.items,
+        p_materials: materials,
+        p_clinical_minutes: clinicalMinutes,
+        p_notes: input.notes,
+        p_draft_id: input.injectable_draft_id,
+        p_draft_revision: input.injectable_draft_revision,
+      } : {
         p_idempotency_key: input.idempotency_key,
         p_patient_id: input.patient_id,
         p_appointment_id: input.appointment_id,
@@ -52,7 +67,8 @@ export function useAtomicAttendance() {
         p_notes: input.notes,
         p_draft_id: input.injectable_draft_id,
         p_draft_revision: input.injectable_draft_revision,
-      });
+      };
+      const { data, error } = await supabase.rpc(rpc, args);
 
       if (error) throw error;
       if (!data) throw new Error('ATTENDANCE_EMPTY_RESPONSE');
@@ -60,7 +76,19 @@ export function useAtomicAttendance() {
       return data as Procedure;
     }
 
-    const { data, error } = await supabase.rpc('create_procedure_v5', {
+    const rpc = isReturn ? 'create_clinical_return_v1' : 'create_procedure_v5';
+    const args = isReturn ? {
+      p_idempotency_key: input.idempotency_key,
+      p_parent_procedure_id: input.parent_procedure_id,
+      p_patient_id: input.patient_id,
+      p_appointment_id: input.appointment_id,
+      p_performed_at: input.performed_at,
+      p_items: input.items,
+      p_injectable_maps: input.injectable_maps,
+      p_materials: materials,
+      p_clinical_minutes: clinicalMinutes,
+      p_notes: input.notes,
+    } : {
       p_idempotency_key: input.idempotency_key,
       p_patient_id: input.patient_id,
       p_appointment_id: input.appointment_id,
@@ -72,7 +100,8 @@ export function useAtomicAttendance() {
       p_materials: materials,
       p_clinical_minutes: clinicalMinutes,
       p_notes: input.notes,
-    });
+    };
+    const { data, error } = await supabase.rpc(rpc, args);
 
     if (error) throw error;
     if (!data) throw new Error('ATTENDANCE_EMPTY_RESPONSE');
