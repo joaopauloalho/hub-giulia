@@ -11,7 +11,7 @@ type E2EState = {
 };
 const readState = async () => JSON.parse(await fs.readFile('.e2e-state.json', 'utf8')) as E2EState;
 
-test('canonical clinical photo uses private Storage, session metadata, immutable original and void lifecycle', async () => {
+test('canonical clinical photo keeps immutable asset while allowing clinical date and caption edits', async () => {
   const seeded = await readState();
   const a = await signedInClient('a');
   const b = await signedInClient('b');
@@ -86,6 +86,18 @@ test('canonical clinical photo uses private Storage, session metadata, immutable
   expect(bPhoto.data).toEqual([]);
   const bSigned = await b.storage.from('patient-photos').createSignedUrl(originalPath, 60);
   expect(bSigned.error).not.toBeNull();
+
+  const editedTakenAt = '2026-05-01T12:00:00.000Z';
+  const { data: edited, error: editError } = await a.from('patient_photos')
+    .update({ taken_at: editedTakenAt, caption: 'E2E TEST edited caption' })
+    .eq('id', photoId)
+    .select('id,taken_at,caption,sha256,original_path')
+    .single();
+  expect(editError).toBeNull();
+  expect(edited?.taken_at).toBe(editedTakenAt);
+  expect(edited?.caption).toBe('E2E TEST edited caption');
+  expect(edited?.sha256).toBe(sha256);
+  expect(edited?.original_path).toBe(originalPath);
 
   const immutableRewrite = await a.from('patient_photos')
     .update({ original_path: `${prefix}/tampered.png` })
