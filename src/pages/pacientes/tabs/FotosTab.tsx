@@ -1,18 +1,35 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { CalendarDays, ImagePlus, Images, Loader2, Pencil, Save, X } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { CalendarDays, ImagePlus, Images, Loader2, MessageSquareText, Pencil, Save, Trash2, X } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 import { supabase } from '../../../lib/supabase';
 import { usePatientPhotos, type AttendancePhotoContext, type PatientPhoto, type PatientPhotoSession } from '../../../hooks/usePatientPhotos';
 import PhotoViewer from '../../../components/photos/PhotoViewer';
 import '../photos.css';
 import '../photos-gallery.css';
+import '../photos-management.css';
 
 interface FotosTabProps { patientId: string }
+
+type DayNoteMap = Record<string, string>;
 
 function displayDate(value: string) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return '';
   return new Intl.DateTimeFormat('pt-BR').format(date);
+}
+
+function photoDateKey(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function dateKeyToIsoNoon(value: string) {
+  const [year, month, day] = value.split('-').map(Number);
+  return new Date(year, month - 1, day, 12, 0, 0).toISOString();
 }
 
 function parseTypedDate(value: string) {
@@ -73,11 +90,18 @@ async function normalizeGalleryImage(file: File): Promise<File> {
   }
 }
 
-function PhotoCard({ photo, patientId, onOpen, onChanged }: { photo: PatientPhoto; patientId: string; onOpen: () => void; onChanged: () => void }) {
+function PhotoCard({ photo, patientId, onOpen, onDelete, onChanged }: {
+  photo: PatientPhoto;
+  patientId: string;
+  onOpen: () => void;
+  onDelete: () => Promise<void>;
+  onChanged: () => void;
+}) {
   const [date, setDate] = useState(displayDate(photo.taken_at));
   const [caption, setCaption] = useState(photo.caption ?? '');
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -108,6 +132,20 @@ function PhotoCard({ photo, patientId, onOpen, onChanged }: { photo: PatientPhot
     onChanged();
   };
 
+  const remove = async () => {
+    if (!window.confirm('Excluir esta foto da galeria?')) return;
+    setDeleting(true);
+    setError(null);
+    try {
+      await onDelete();
+      onChanged();
+    } catch (cause) {
+      console.error('patient photo delete failed', cause);
+      setError('Não foi possível excluir a foto. Tente novamente.');
+      setDeleting(false);
+    }
+  };
+
   const cancel = () => {
     setDate(displayDate(photo.taken_at));
     setCaption(photo.caption ?? '');
@@ -132,9 +170,14 @@ function PhotoCard({ photo, patientId, onOpen, onChanged }: { photo: PatientPhot
             <textarea className="field-input" value={caption} maxLength={500} rows={2} placeholder="Ex.: Antes, depois de 15 dias, olheira…" onChange={event => setCaption(event.target.value)} />
           </label>
           {error && <p className="clinic-photo-inline-error">{error}</p>}
-          <div className="clinic-photo-card__editor-actions">
-            <button type="button" className="btn btn-secondary" onClick={cancel} disabled={saving}><X size={16} /> Cancelar</button>
-            <button type="button" className="btn btn-primary" onClick={() => void save()} disabled={saving}>{saving ? <Loader2 size={16} className="photo-spin" /> : <Save size={16} />} Salvar</button>
+          <div className="clinic-photo-card__editor-actions clinic-photo-card__editor-actions--managed">
+            <button type="button" className="clinic-photo-delete-button" onClick={() => void remove()} disabled={saving || deleting}>
+              {deleting ? <Loader2 size={16} className="photo-spin" /> : <Trash2 size={16} />} Excluir foto
+            </button>
+            <div>
+              <button type="button" className="btn btn-secondary" onClick={cancel} disabled={saving || deleting}><X size={16} /> Cancelar</button>
+              <button type="button" className="btn btn-primary" onClick={() => void save()} disabled={saving || deleting}>{saving ? <Loader2 size={16} className="photo-spin" /> : <Save size={16} />} Salvar</button>
+            </div>
           </div>
         </div>
       ) : (
@@ -143,10 +186,78 @@ function PhotoCard({ photo, patientId, onOpen, onChanged }: { photo: PatientPhot
             <strong><CalendarDays size={15} /> {displayDate(photo.taken_at)}</strong>
             <p className={photo.caption ? '' : 'is-muted'}>{photo.caption || 'Sem observação'}</p>
           </div>
-          <button type="button" className="clinic-photo-edit-button" onClick={() => setEditing(true)} aria-label="Editar data e observação"><Pencil size={17} /></button>
+          <button type="button" className="clinic-photo-edit-button" onClick={() => setEditing(true)} aria-label="Editar ou excluir foto"><Pencil size={17} /></button>
         </div>
       )}
     </article>
+  );
+}
+
+function DayNote({ patientId, dateKey, note, onSaved }: {
+  patientId: string;
+  dateKey: string;
+  note: string;
+  onSaved: (value: string) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState(note);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => { if (!editing) setValue(note); }, [editing, note]);
+
+  const save = async () => {
+    const clean = value.trim();
+    setSaving(true);
+    setError(null);
+    try {
+      if (!clean) {
+        const { error: deleteError } = await supabase
+          .from('patient_photo_day_notes')
+          .delete()
+          .eq('patient_id', patientId)
+          .eq('photo_date', dateKey);
+        if (deleteError) throw deleteError;
+      } else {
+        const { error: upsertError } = await supabase
+          .from('patient_photo_day_notes')
+          .upsert({ patient_id: patientId, photo_date: dateKey, note: clean }, { onConflict: 'user_id,patient_id,photo_date' });
+        if (upsertError) throw upsertError;
+      }
+      onSaved(clean);
+      setEditing(false);
+    } catch (cause) {
+      console.error('patient photo day note save failed', cause);
+      setError('Não foi possível salvar a observação geral. Tente novamente.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (!editing) {
+    return (
+      <div className={`clinic-photo-day-note ${note ? 'has-note' : 'is-empty'}`}>
+        <MessageSquareText size={16} />
+        <button type="button" onClick={() => setEditing(true)}>
+          {note ? <span>{note}</span> : <span>Adicionar observação geral deste dia</span>}
+          <Pencil size={14} />
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="clinic-photo-day-note-editor">
+      <label>
+        <span>Observação geral do dia <small>opcional</small></span>
+        <textarea className="field-input" value={value} rows={3} maxLength={2000} autoFocus placeholder="Ex.: Fotos antes do procedimento. Paciente realizou preenchimento labial e mento." onChange={event => setValue(event.target.value)} />
+      </label>
+      {error && <p className="clinic-photo-inline-error">{error}</p>}
+      <div>
+        <button type="button" className="btn btn-secondary" onClick={() => { setValue(note); setError(null); setEditing(false); }} disabled={saving}>Cancelar</button>
+        <button type="button" className="btn btn-primary" onClick={() => void save()} disabled={saving}>{saving ? <Loader2 size={16} className="photo-spin" /> : <Save size={16} />} Salvar observação</button>
+      </div>
+    </div>
   );
 }
 
@@ -160,8 +271,26 @@ export function FotosTab({ patientId }: FotosTabProps) {
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState('');
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [uploadDateOverride, setUploadDateOverride] = useState<string | null>(null);
+  const [dayNotes, setDayNotes] = useState<DayNoteMap>({});
+
+  const loadDayNotes = useCallback(async () => {
+    const { data, error } = await supabase
+      .from('patient_photo_day_notes')
+      .select('photo_date,note')
+      .eq('patient_id', patientId)
+      .order('photo_date', { ascending: false });
+    if (error) {
+      console.error('patient photo day notes load failed', error);
+      return;
+    }
+    const next: DayNoteMap = {};
+    for (const row of data ?? []) next[String(row.photo_date)] = String(row.note ?? '');
+    setDayNotes(next);
+  }, [patientId]);
 
   useEffect(() => { void photos.load(); }, [photos.load]);
+  useEffect(() => { void loadDayNotes(); }, [loadDayNotes]);
   useEffect(() => {
     if (!appointmentId) { setAttendanceContext(null); return; }
     let active = true;
@@ -178,10 +307,12 @@ export function FotosTab({ patientId }: FotosTabProps) {
   }, [photos.legacyPhotos, photos.sessions]);
 
   const groups = useMemo(() => {
-    const map = new Map<string, PatientPhoto[]>();
+    const map = new Map<string, { label: string; items: PatientPhoto[] }>();
     allPhotos.forEach(photo => {
-      const key = displayDate(photo.taken_at);
-      map.set(key, [...(map.get(key) ?? []), photo]);
+      const key = photoDateKey(photo.taken_at);
+      const current = map.get(key);
+      if (current) current.items.push(photo);
+      else map.set(key, { label: displayDate(photo.taken_at), items: [photo] });
     });
     return [...map.entries()];
   }, [allPhotos]);
@@ -195,9 +326,15 @@ export function FotosTab({ patientId }: FotosTabProps) {
     title: attendanceContext?.serviceName || 'Fotos clínicas',
   });
 
+  const openPicker = (dateKey: string | null = null) => {
+    setUploadDateOverride(dateKey);
+    pickerRef.current?.click();
+  };
+
   const importFiles = async (files: FileList | null) => {
     if (!files?.length || uploading) return;
     const selected = Array.from(files);
+    const targetDate = uploadDateOverride;
     setUploading(true);
     setUploadError(null);
     let session: PatientPhotoSession | null = null;
@@ -218,6 +355,7 @@ export function FotosTab({ patientId }: FotosTabProps) {
             uploadId: crypto.randomUUID(),
             region: null,
             pose: null,
+            takenAt: targetDate ? dateKeyToIsoNoon(targetDate) : null,
           });
           savedCount += 1;
         } catch (cause) {
@@ -234,6 +372,7 @@ export function FotosTab({ patientId }: FotosTabProps) {
     } finally {
       setUploading(false);
       setUploadProgress('');
+      setUploadDateOverride(null);
       if (pickerRef.current) pickerRef.current.value = '';
     }
   };
@@ -245,9 +384,9 @@ export function FotosTab({ patientId }: FotosTabProps) {
       <section className="clinic-photos-header">
         <div>
           <h2>Fotos</h2>
-          <p>Galeria clínica da paciente. Adicione fotos e registre a data e uma observação quando precisar.</p>
+          <p>Galeria clínica da paciente. Adicione, edite ou exclua fotos quando precisar.</p>
         </div>
-        <button type="button" className="btn btn-primary clinic-photos-add" onClick={() => pickerRef.current?.click()} disabled={uploading}>
+        <button type="button" className="btn btn-primary clinic-photos-add" onClick={() => openPicker()} disabled={uploading}>
           {uploading ? <Loader2 size={19} className="photo-spin" /> : <ImagePlus size={19} />}
           {uploading ? uploadProgress || 'Salvando…' : 'Adicionar fotos'}
         </button>
@@ -263,15 +402,38 @@ export function FotosTab({ patientId }: FotosTabProps) {
           <span><Images size={30} /></span>
           <h3>Nenhuma foto ainda</h3>
           <p>Adicione a primeira foto diretamente da galeria do iPad.</p>
-          <button type="button" className="btn btn-primary" onClick={() => pickerRef.current?.click()}><ImagePlus size={18} /> Adicionar fotos</button>
+          <button type="button" className="btn btn-primary" onClick={() => openPicker()}><ImagePlus size={18} /> Adicionar fotos</button>
         </section>
       ) : (
         <div className="clinic-photo-groups">
-          {groups.map(([date, items]) => (
-            <section className="clinic-photo-group" key={date}>
-              <header><h3>{date}</h3><span>{items.length} {items.length === 1 ? 'foto' : 'fotos'}</span></header>
+          {groups.map(([dateKey, group]) => (
+            <section className="clinic-photo-group" key={dateKey}>
+              <header className="clinic-photo-group__managed-header">
+                <h3>{group.label}</h3>
+                <div>
+                  <span>{group.items.length} {group.items.length === 1 ? 'foto' : 'fotos'}</span>
+                  <button type="button" className="clinic-photo-add-day" onClick={() => openPicker(dateKey)} disabled={uploading}><ImagePlus size={14} /> Adicionar neste dia</button>
+                </div>
+              </header>
+
+              <DayNote
+                patientId={patientId}
+                dateKey={dateKey}
+                note={dayNotes[dateKey] ?? ''}
+                onSaved={value => setDayNotes(current => ({ ...current, [dateKey]: value }))}
+              />
+
               <div className="clinic-photo-grid">
-                {items.map(photo => <PhotoCard key={photo.id} photo={photo} patientId={patientId} onOpen={() => setViewerPhoto(photo)} onChanged={() => void photos.load()} />)}
+                {group.items.map(photo => (
+                  <PhotoCard
+                    key={photo.id}
+                    photo={photo}
+                    patientId={patientId}
+                    onOpen={() => setViewerPhoto(photo)}
+                    onDelete={() => photos.voidPhoto(photo.id, 'Excluída da galeria pela profissional.')}
+                    onChanged={() => void photos.load()}
+                  />
+                ))}
               </div>
             </section>
           ))}
