@@ -1,11 +1,11 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Images, Pencil, Save } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { CalendarDays, ImagePlus, Images, Loader2, Pencil, Save, X } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 import { supabase } from '../../../lib/supabase';
 import { usePatientPhotos, type AttendancePhotoContext, type PatientPhoto, type PatientPhotoSession } from '../../../hooks/usePatientPhotos';
-import ClinicalPhotoCapture from '../../../components/photos/ClinicalPhotoCapture';
 import PhotoViewer from '../../../components/photos/PhotoViewer';
 import '../photos.css';
+import '../photos-gallery.css';
 
 interface FotosTabProps { patientId: string }
 
@@ -26,42 +26,126 @@ function parseTypedDate(value: string) {
   return date.toISOString();
 }
 
+function formatDateInput(value: string) {
+  const digits = value.replace(/\D/g, '').slice(0, 8);
+  const parts = [digits.slice(0, 2), digits.slice(2, 4), digits.slice(4, 8)].filter(Boolean);
+  return parts.join('/');
+}
+
+function friendlyPhotoError(cause: unknown) {
+  const message = cause instanceof Error ? cause.message : String(cause ?? '');
+  if (/offline|network|fetch|internet/i.test(message)) return 'Confira a internet e tente novamente.';
+  if (/size|grande|30 MB|18 MB|resolution|resolução/i.test(message)) return 'A foto é muito grande. Escolha uma versão menor.';
+  return 'A foto não pôde ser preparada. Tente novamente ou escolha outra foto da galeria.';
+}
+
+async function normalizeGalleryImage(file: File): Promise<File> {
+  if (/svg/i.test(file.type) || /\.svg$/i.test(file.name)) throw new Error('unsupported image');
+  if (!file.size) throw new Error('empty image');
+  if (file.size > 50 * 1024 * 1024) throw new Error('image too large');
+
+  const url = URL.createObjectURL(file);
+  try {
+    const image = new Image();
+    image.decoding = 'async';
+    image.src = url;
+    await image.decode();
+    if (!image.naturalWidth || !image.naturalHeight) throw new Error('invalid image');
+
+    const maxSide = 5000;
+    const scale = Math.min(1, maxSide / Math.max(image.naturalWidth, image.naturalHeight));
+    const width = Math.max(1, Math.round(image.naturalWidth * scale));
+    const height = Math.max(1, Math.round(image.naturalHeight * scale));
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('canvas unavailable');
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(image, 0, 0, width, height);
+    const blob = await new Promise<Blob>((resolve, reject) => {
+      canvas.toBlob(value => value ? resolve(value) : reject(new Error('image conversion failed')), 'image/jpeg', 0.94);
+    });
+    return new File([blob], `foto-${Date.now()}.jpg`, { type: 'image/jpeg', lastModified: file.lastModified || Date.now() });
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
 function PhotoCard({ photo, patientId, onOpen, onChanged }: { photo: PatientPhoto; patientId: string; onOpen: () => void; onChanged: () => void }) {
   const [date, setDate] = useState(displayDate(photo.taken_at));
   const [caption, setCaption] = useState(photo.caption ?? '');
-  const [saving, setSaving] = useState(false);
   const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setDate(displayDate(photo.taken_at));
+    setCaption(photo.caption ?? '');
+  }, [photo.caption, photo.taken_at]);
 
   const save = async () => {
     const takenAt = parseTypedDate(date);
-    if (!takenAt) { setError('Digite a data no formato DD/MM/AAAA.'); return; }
+    if (!takenAt) {
+      setError('Digite uma data válida no formato DD/MM/AAAA.');
+      return;
+    }
     setSaving(true);
     setError(null);
-    const { error: updateError } = await supabase.from('patient_photos').update({ taken_at: takenAt, caption: caption.trim() || null }).eq('id', photo.id).eq('patient_id', patientId);
+    const { error: updateError } = await supabase
+      .from('patient_photos')
+      .update({ taken_at: takenAt, caption: caption.trim() || null })
+      .eq('id', photo.id)
+      .eq('patient_id', patientId);
     setSaving(false);
-    if (updateError) { setError(updateError.message); return; }
+    if (updateError) {
+      console.error('patient photo metadata update failed', updateError);
+      setError('Não foi possível salvar as informações da foto. Tente novamente.');
+      return;
+    }
     setEditing(false);
     onChanged();
   };
 
+  const cancel = () => {
+    setDate(displayDate(photo.taken_at));
+    setCaption(photo.caption ?? '');
+    setError(null);
+    setEditing(false);
+  };
+
   return (
-    <article style={{ border: '1px solid #f3d7e2', borderRadius: 18, overflow: 'hidden', background: '#fff' }}>
-      <button type="button" onClick={onOpen} style={{ display: 'block', width: '100%', padding: 0, border: 0, background: '#f7f7f8', cursor: 'pointer' }} aria-label="Abrir foto">
-        {photo.thumbnail_url ? <img src={photo.thumbnail_url} alt="Foto clínica" style={{ width: '100%', aspectRatio: '4 / 3', objectFit: 'cover', display: 'block' }} /> : <div style={{ aspectRatio: '4 / 3', display: 'grid', placeItems: 'center', color: '#9ca3af' }}><Images size={30} /></div>}
+    <article className="clinic-photo-card">
+      <button type="button" className="clinic-photo-card__image" onClick={onOpen} aria-label={`Abrir foto de ${displayDate(photo.taken_at)}`}>
+        {photo.thumbnail_url ? <img src={photo.thumbnail_url} alt="Foto da paciente" loading="lazy" /> : <span className="clinic-photo-placeholder"><Images size={28} /></span>}
       </button>
-      <div style={{ padding: 14, display: 'grid', gap: 10 }}>
-        <label style={{ display: 'grid', gap: 5, fontSize: 12, color: '#6b7280' }}>
-          Data da foto
-          <input value={date} onChange={event => { setDate(event.target.value); setEditing(true); }} inputMode="numeric" placeholder="DD/MM/AAAA" style={{ minHeight: 42, border: '1px solid #e5e7eb', borderRadius: 10, padding: '0 11px', fontSize: 15 }} />
-        </label>
-        <label style={{ display: 'grid', gap: 5, fontSize: 12, color: '#6b7280' }}>
-          Observação
-          <textarea value={caption} onChange={event => { setCaption(event.target.value); setEditing(true); }} placeholder="Ex.: Antes, Depois de 15 dias, olheira…" rows={2} style={{ resize: 'vertical', border: '1px solid #e5e7eb', borderRadius: 10, padding: 10, font: 'inherit' }} />
-        </label>
-        {error && <small style={{ color: '#b42318' }}>{error}</small>}
-        {editing ? <button type="button" onClick={() => void save()} disabled={saving} className="photo-primary-button" style={{ justifyContent: 'center' }}><Save size={16} />{saving ? 'Salvando…' : 'Salvar'}</button> : <button type="button" onClick={() => setEditing(true)} className="photo-secondary-button" style={{ justifyContent: 'center' }}><Pencil size={15} />Editar informações</button>}
-      </div>
+
+      {editing ? (
+        <div className="clinic-photo-card__editor">
+          <label className="clinic-photo-field">
+            <span>Data da foto</span>
+            <input className="field-input" value={date} inputMode="numeric" autoComplete="off" placeholder="DD/MM/AAAA" onChange={event => setDate(formatDateInput(event.target.value))} />
+          </label>
+          <label className="clinic-photo-field">
+            <span>Observação <small>opcional</small></span>
+            <textarea className="field-input" value={caption} maxLength={500} rows={2} placeholder="Ex.: Antes, depois de 15 dias, olheira…" onChange={event => setCaption(event.target.value)} />
+          </label>
+          {error && <p className="clinic-photo-inline-error">{error}</p>}
+          <div className="clinic-photo-card__editor-actions">
+            <button type="button" className="btn btn-secondary" onClick={cancel} disabled={saving}><X size={16} /> Cancelar</button>
+            <button type="button" className="btn btn-primary" onClick={() => void save()} disabled={saving}>{saving ? <Loader2 size={16} className="photo-spin" /> : <Save size={16} />} Salvar</button>
+          </div>
+        </div>
+      ) : (
+        <div className="clinic-photo-card__meta">
+          <div className="clinic-photo-card__copy">
+            <strong><CalendarDays size={15} /> {displayDate(photo.taken_at)}</strong>
+            <p className={photo.caption ? '' : 'is-muted'}>{photo.caption || 'Sem observação'}</p>
+          </div>
+          <button type="button" className="clinic-photo-edit-button" onClick={() => setEditing(true)} aria-label="Editar data e observação"><Pencil size={17} /></button>
+        </div>
+      )}
     </article>
   );
 }
@@ -70,15 +154,20 @@ export function FotosTab({ patientId }: FotosTabProps) {
   const [searchParams] = useSearchParams();
   const appointmentId = searchParams.get('appointment_id');
   const photos = usePatientPhotos(patientId);
+  const pickerRef = useRef<HTMLInputElement>(null);
   const [attendanceContext, setAttendanceContext] = useState<AttendancePhotoContext | null>(null);
-  const [adding, setAdding] = useState(false);
   const [viewerPhoto, setViewerPhoto] = useState<PatientPhoto | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState('');
+  const [uploadError, setUploadError] = useState<string | null>(null);
 
   useEffect(() => { void photos.load(); }, [photos.load]);
   useEffect(() => {
     if (!appointmentId) { setAttendanceContext(null); return; }
     let active = true;
-    void photos.getAttendanceContext(appointmentId).then(value => { if (active) setAttendanceContext(value); }).catch(() => { if (active) setAttendanceContext(null); });
+    void photos.getAttendanceContext(appointmentId)
+      .then(value => { if (active) setAttendanceContext(value); })
+      .catch(() => { if (active) setAttendanceContext(null); });
     return () => { active = false; };
   }, [appointmentId, photos.getAttendanceContext]);
 
@@ -97,44 +186,97 @@ export function FotosTab({ patientId }: FotosTabProps) {
     return [...map.entries()];
   }, [allPhotos]);
 
-  const upload = async (session: PatientPhotoSession, file: File, angle: Parameters<typeof photos.uploadPhoto>[0]['angle'], sourceType: Parameters<typeof photos.uploadPhoto>[0]['sourceType'], uploadId: string, region: string | null, pose: Parameters<typeof photos.uploadPhoto>[0]['pose']) => {
-    await photos.uploadPhoto({ session, file, angle, sourceType, uploadId, region, pose });
+  const createGallerySession = async (): Promise<PatientPhotoSession> => photos.createSession({
+    appointmentId: attendanceContext?.appointmentId ?? null,
+    procedureId: attendanceContext?.procedureId ?? null,
+    serviceId: attendanceContext?.serviceId ?? null,
+    sessionType: 'other',
+    captureSet: 'free',
+    title: attendanceContext?.serviceName || 'Fotos clínicas',
+  });
+
+  const importFiles = async (files: FileList | null) => {
+    if (!files?.length || uploading) return;
+    const selected = Array.from(files);
+    setUploading(true);
+    setUploadError(null);
+    let session: PatientPhotoSession | null = null;
+    let savedCount = 0;
+    const failures: string[] = [];
+
+    try {
+      for (let index = 0; index < selected.length; index += 1) {
+        setUploadProgress(`Salvando ${index + 1} de ${selected.length}`);
+        try {
+          const normalized = await normalizeGalleryImage(selected[index]);
+          session ??= await createGallerySession();
+          await photos.uploadPhoto({
+            session,
+            file: normalized,
+            angle: null,
+            sourceType: 'library',
+            uploadId: crypto.randomUUID(),
+            region: null,
+            pose: null,
+          });
+          savedCount += 1;
+        } catch (cause) {
+          console.error('gallery photo import item failed', cause);
+          failures.push(friendlyPhotoError(cause));
+        }
+      }
+      if (savedCount > 0) await photos.load();
+      if (failures.length > 0) {
+        setUploadError(savedCount > 0
+          ? `${savedCount} ${savedCount === 1 ? 'foto foi salva' : 'fotos foram salvas'}, mas ${failures.length} ${failures.length === 1 ? 'não pôde ser adicionada' : 'não puderam ser adicionadas'}. ${failures[0]}`
+          : `Nenhuma foto foi salva. ${failures[0]}`);
+      }
+    } finally {
+      setUploading(false);
+      setUploadProgress('');
+      if (pickerRef.current) pickerRef.current.value = '';
+    }
   };
 
   return (
-    <div className="photos-page">
-      <section className="photos-hero" style={{ alignItems: 'center' }}>
+    <div className="clinic-photos-page">
+      <input ref={pickerRef} className="clinic-photo-native-input" type="file" accept="image/*,.heic,.heif" multiple onChange={event => void importFiles(event.target.files)} />
+
+      <section className="clinic-photos-header">
         <div>
-          <span className="photos-eyebrow"><Images size={16} /> GALERIA CLÍNICA</span>
-          <h2>Fotos & evolução</h2>
-          <p>Adicione fotos da galeria e escreva livremente a data e uma observação.</p>
+          <h2>Fotos</h2>
+          <p>Galeria clínica da paciente. Adicione fotos e registre a data e uma observação quando precisar.</p>
         </div>
-        <button type="button" className="photo-primary-button" onClick={() => setAdding(true)}><Images size={19} /> Adicionar fotos</button>
+        <button type="button" className="btn btn-primary clinic-photos-add" onClick={() => pickerRef.current?.click()} disabled={uploading}>
+          {uploading ? <Loader2 size={19} className="photo-spin" /> : <ImagePlus size={19} />}
+          {uploading ? uploadProgress || 'Salvando…' : 'Adicionar fotos'}
+        </button>
       </section>
 
-      {photos.error && <div className="photo-error">{photos.error}</div>}
+      {uploadError && <div className="clinic-photo-message is-error" role="alert">{uploadError}<button type="button" onClick={() => setUploadError(null)} aria-label="Fechar aviso"><X size={17} /></button></div>}
+      {photos.error && !uploadError && <div className="clinic-photo-message is-error" role="alert">Não foi possível carregar a galeria. Tente novamente.</div>}
 
-      {!photos.loading && allPhotos.length === 0 && (
-        <section style={{ padding: '44px 24px', textAlign: 'center', border: '1px solid #f3d7e2', borderRadius: 18, background: '#fff' }}>
-          <Images size={36} style={{ margin: '0 auto 12px', color: '#c02662' }} />
-          <h3 style={{ margin: 0 }}>Nenhuma foto ainda</h3>
-          <p style={{ color: '#6b7280' }}>Adicione uma ou várias fotos diretamente da galeria.</p>
-          <button type="button" className="photo-primary-button" onClick={() => setAdding(true)}>Adicionar fotos</button>
+      {photos.loading && allPhotos.length === 0 ? (
+        <div className="clinic-photos-loading"><Loader2 size={24} className="photo-spin" /><span>Carregando fotos…</span></div>
+      ) : allPhotos.length === 0 ? (
+        <section className="clinic-photos-empty">
+          <span><Images size={30} /></span>
+          <h3>Nenhuma foto ainda</h3>
+          <p>Adicione a primeira foto diretamente da galeria do iPad.</p>
+          <button type="button" className="btn btn-primary" onClick={() => pickerRef.current?.click()}><ImagePlus size={18} /> Adicionar fotos</button>
         </section>
+      ) : (
+        <div className="clinic-photo-groups">
+          {groups.map(([date, items]) => (
+            <section className="clinic-photo-group" key={date}>
+              <header><h3>{date}</h3><span>{items.length} {items.length === 1 ? 'foto' : 'fotos'}</span></header>
+              <div className="clinic-photo-grid">
+                {items.map(photo => <PhotoCard key={photo.id} photo={photo} patientId={patientId} onOpen={() => setViewerPhoto(photo)} onChanged={() => void photos.load()} />)}
+              </div>
+            </section>
+          ))}
+        </div>
       )}
-
-      <div style={{ display: 'grid', gap: 28 }}>
-        {groups.map(([date, items]) => (
-          <section key={date}>
-            <h3 style={{ margin: '0 0 12px', fontSize: 15, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '.03em' }}>{date}</h3>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 16 }}>
-              {items.map(photo => <PhotoCard key={photo.id} photo={photo} patientId={patientId} onOpen={() => setViewerPhoto(photo)} onChanged={() => void photos.load()} />)}
-            </div>
-          </section>
-        ))}
-      </div>
-
-      {adding && <ClinicalPhotoCapture context={attendanceContext ? { appointmentId: attendanceContext.appointmentId, procedureId: attendanceContext.procedureId, serviceId: attendanceContext.serviceId, serviceName: attendanceContext.serviceName } : undefined} onCreateSession={photos.createSession} onUpload={upload} onClose={changed => { setAdding(false); if (changed) void photos.load(); }} />}
 
       {viewerPhoto && <PhotoViewer photo={viewerPhoto} sessions={photos.sessions} onGetUrl={photos.getPhotoUrl} onUpdate={photos.updatePhotoMetadata} onVoid={photos.voidPhoto} onClose={changed => { setViewerPhoto(null); if (changed) void photos.load(); }} />}
     </div>

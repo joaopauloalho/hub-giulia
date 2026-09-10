@@ -91,8 +91,10 @@ test('CRM stays clean while proposal is a simple patient budget and can be delet
 
   await proposalButton.click();
   await expect(page).toHaveURL(new RegExp(`/crm/deals/${seeded.dealId}/proposals/${createdRow!.proposal_id}`));
-  await expect(page.getByLabel('Valor proposto')).toHaveValue('321');
-  await expect(page.getByLabel('Condição de pagamento')).toHaveValue('PIX à vista ou 6x sem juros');
+  const proposalItem = page.locator('.proposal-item-card').filter({ hasText: 'E2E TEST Service' }).first();
+  await expect(proposalItem).toBeVisible();
+  await expect(proposalItem.locator('input').nth(0)).toHaveValue('321');
+  await expect(proposalItem.locator('input').nth(1)).toHaveValue('PIX à vista ou 6x sem juros');
   await expect(page.getByText('Marcar como proposta enviada no CRM')).toBeVisible();
   await expect(page.getByRole('button', { name: /Emitir proposta/ })).toHaveCount(0);
   await expect(page.getByRole('button', { name: /Aceitar/ })).toHaveCount(0);
