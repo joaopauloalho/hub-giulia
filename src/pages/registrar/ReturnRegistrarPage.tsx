@@ -10,7 +10,7 @@ import { useServicos } from '../../hooks/useServicos';
 import { useProcedures } from '../../hooks/useProcedures';
 import { useInjetaveis } from '../../hooks/useInjetaveis';
 import { useToast } from '../../hooks/useToast';
-import type { InjectablePoint, Patient, Procedure, Service } from '../../types';
+import type { InjectablePoint, Patient, Procedure, ProcedureItem, Service } from '../../types';
 import { MaterialsStep, type SelectedAttendanceMaterial } from './MaterialsStep';
 
 const InjetaveisScreen = lazy(() => import('./InjetaveisScreen').then(module => ({ default: module.InjetaveisScreen })));
@@ -80,7 +80,7 @@ export function ReturnRegistrarPage() {
           if (originalError) throw originalError;
           if (!active) return;
           setParent({ ...original, items: original.procedure_items ?? [], payments: original.procedure_payments ?? [] } as unknown as ParentProcedure);
-          setSelectedServiceIds((original.procedure_items ?? []).map(item => item.service_id));
+          setSelectedServiceIds(((original.procedure_items ?? []) as ProcedureItem[]).map(item => item.service_id));
           const loadedPatient = await getById(original.patient_id);
           if (active) setPatient(loadedPatient);
         } else {
