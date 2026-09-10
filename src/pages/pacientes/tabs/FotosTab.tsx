@@ -34,9 +34,9 @@ function formatDateInput(value: string) {
 
 function friendlyPhotoError(cause: unknown) {
   const message = cause instanceof Error ? cause.message : String(cause ?? '');
-  if (/offline|network|fetch|internet/i.test(message)) return 'Não foi possível salvar as fotos. Confira a internet e tente novamente.';
-  if (/size|grande|30 MB|18 MB|resolution|resolução/i.test(message)) return 'Uma das fotos é muito grande. Escolha uma versão menor e tente novamente.';
-  return 'Não foi possível salvar uma das fotos. Tente novamente ou escolha outra foto da galeria.';
+  if (/offline|network|fetch|internet/i.test(message)) return 'Confira a internet e tente novamente.';
+  if (/size|grande|30 MB|18 MB|resolution|resolução/i.test(message)) return 'A foto é muito grande. Escolha uma versão menor.';
+  return 'A foto não pôde ser preparada. Tente novamente ou escolha outra foto da galeria.';
 }
 
 async function normalizeGalleryImage(file: File): Promise<File> {
@@ -197,28 +197,40 @@ export function FotosTab({ patientId }: FotosTabProps) {
 
   const importFiles = async (files: FileList | null) => {
     if (!files?.length || uploading) return;
+    const selected = Array.from(files);
     setUploading(true);
     setUploadError(null);
+    let session: PatientPhotoSession | null = null;
+    let savedCount = 0;
+    const failures: string[] = [];
+
     try {
-      const selected = Array.from(files);
-      const session = await createGallerySession();
       for (let index = 0; index < selected.length; index += 1) {
         setUploadProgress(`Salvando ${index + 1} de ${selected.length}`);
-        const normalized = await normalizeGalleryImage(selected[index]);
-        await photos.uploadPhoto({
-          session,
-          file: normalized,
-          angle: null,
-          sourceType: 'library',
-          uploadId: crypto.randomUUID(),
-          region: null,
-          pose: null,
-        });
+        try {
+          const normalized = await normalizeGalleryImage(selected[index]);
+          session ??= await createGallerySession();
+          await photos.uploadPhoto({
+            session,
+            file: normalized,
+            angle: null,
+            sourceType: 'library',
+            uploadId: crypto.randomUUID(),
+            region: null,
+            pose: null,
+          });
+          savedCount += 1;
+        } catch (cause) {
+          console.error('gallery photo import item failed', cause);
+          failures.push(friendlyPhotoError(cause));
+        }
       }
-      await photos.load();
-    } catch (cause) {
-      console.error('gallery photo import failed', cause);
-      setUploadError(friendlyPhotoError(cause));
+      if (savedCount > 0) await photos.load();
+      if (failures.length > 0) {
+        setUploadError(savedCount > 0
+          ? `${savedCount} ${savedCount === 1 ? 'foto foi salva' : 'fotos foram salvas'}, mas ${failures.length} ${failures.length === 1 ? 'não pôde ser adicionada' : 'não puderam ser adicionadas'}. ${failures[0]}`
+          : `Nenhuma foto foi salva. ${failures[0]}`);
+      }
     } finally {
       setUploading(false);
       setUploadProgress('');
