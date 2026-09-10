@@ -11,7 +11,7 @@ type E2EState = {
 };
 const readState = async () => JSON.parse(await fs.readFile('.e2e-state.json', 'utf8')) as E2EState;
 
-test('canonical clinical photo keeps immutable asset while allowing clinical date and caption edits', async () => {
+test('canonical clinical photo supports free gallery management without weakening asset integrity', async () => {
   const seeded = await readState();
   const a = await signedInClient('a');
   const b = await signedInClient('b');
@@ -99,6 +99,27 @@ test('canonical clinical photo keeps immutable asset while allowing clinical dat
   expect(edited?.sha256).toBe(sha256);
   expect(edited?.original_path).toBe(originalPath);
 
+  const { data: dayNote, error: dayNoteError } = await a.from('patient_photo_day_notes')
+    .upsert({ patient_id: seeded.patientId, photo_date: '2026-05-01', note: 'E2E TEST general day note' }, { onConflict: 'user_id,patient_id,photo_date' })
+    .select('patient_id,photo_date,note,user_id')
+    .single();
+  expect(dayNoteError).toBeNull();
+  expect(dayNote?.note).toBe('E2E TEST general day note');
+  expect(dayNote?.user_id).toBe(seeded.users.a);
+
+  const bDayNote = await b.from('patient_photo_day_notes').select('id').eq('patient_id', seeded.patientId).eq('photo_date', '2026-05-01');
+  expect(bDayNote.error).toBeNull();
+  expect(bDayNote.data).toEqual([]);
+
+  const updatedDayNote = await a.from('patient_photo_day_notes')
+    .update({ note: 'E2E TEST edited general day note' })
+    .eq('patient_id', seeded.patientId)
+    .eq('photo_date', '2026-05-01')
+    .select('note')
+    .single();
+  expect(updatedDayNote.error).toBeNull();
+  expect(updatedDayNote.data?.note).toBe('E2E TEST edited general day note');
+
   const immutableRewrite = await a.from('patient_photos')
     .update({ original_path: `${prefix}/tampered.png` })
     .eq('id', photoId)
@@ -106,7 +127,7 @@ test('canonical clinical photo keeps immutable asset while allowing clinical dat
   expect(immutableRewrite.error).not.toBeNull();
 
   const { data: voidedPhoto, error: voidPhotoError } = await a.from('patient_photos')
-    .update({ voided_at: new Date().toISOString(), void_reason: 'E2E TEST lifecycle cleanup' })
+    .update({ voided_at: new Date().toISOString(), void_reason: 'E2E TEST gallery delete' })
     .eq('id', photoId)
     .select('id,voided_at,void_reason,voided_by')
     .single();
@@ -119,6 +140,9 @@ test('canonical clinical photo keeps immutable asset while allowing clinical dat
   const originalStillPresent = await a.storage.from('patient-photos').download(originalPath);
   expect(originalStillPresent.error).toBeNull();
   expect(originalStillPresent.data).not.toBeNull();
+
+  const noteCleanup = await a.from('patient_photo_day_notes').delete().eq('patient_id', seeded.patientId).eq('photo_date', '2026-05-01');
+  expect(noteCleanup.error).toBeNull();
 
   const { data: voidedSession, error: voidSessionError } = await a.from('patient_photo_sessions')
     .update({ voided_at: new Date().toISOString(), void_reason: 'E2E TEST lifecycle cleanup' })
