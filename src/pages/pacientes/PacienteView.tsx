@@ -10,7 +10,6 @@ import { useToast } from '../../hooks/useToast';
 import { OverviewTab } from './tabs/OverviewTab';
 import { PatientCommunicationCard } from '../../components/communications/PatientCommunicationCard';
 import { PatientNextActionCard } from '../../components/operational/PatientNextActionCard';
-import { AnamnesisSignatureStatusStrip } from '../../components/clinical/AnamnesisSignatureStatusStrip';
 import { PatientWaitlistCard } from '../agenda/AgendaRecoveryUI';
 import { PatientAcquisitionCard } from '../../components/patients/PatientAcquisitionCard';
 
@@ -194,7 +193,7 @@ export function PacienteView({ patient, archived = false, sourceAppointmentId, i
                 {tab === 'procedures' && <HistoricoTab patientId={patient.id} onPhotos={() => setTab('photos')} onInjectables={() => setTab('injectables')} onContract={procedureId => setSignatureRequest({ procedureId })} />}
                 {tab === 'anamnesis' && <AnamneseTab patientId={patient.id} />}
                 {tab === 'photos' && <FotosTab patientId={patient.id} />}
-                {tab === 'injectables' && <><AnamnesisSignatureStatusStrip patientId={patient.id} /><InjetaveisTab patientId={patient.id} patientName={patient.name} /></>}
+                {tab === 'injectables' && <InjetaveisTab patientId={patient.id} patientName={patient.name} />}
                 {tab === 'finance' && <FinanceiroPacienteTab patientId={patient.id} />}
                 {tab === 'proposals' && <PropostasPacienteTab patientId={patient.id} patientName={patient.name} />}
                 {tab === 'contracts' && <ContratosTab patientId={patient.id} onSignNew={contractId => setSignatureRequest(contractId ? { contractId } : sourceAppointmentId ? { appointmentId: sourceAppointmentId } : {})} />}
