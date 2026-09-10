@@ -3,11 +3,20 @@ import { useNavigate } from 'react-router-dom';
 import { FileText, Loader2, Plus, Trash2 } from 'lucide-react';
 import { createProposal, deleteProposal, loadPatientProposals } from '../../../hooks/useProposals';
 import { CRM_OPEN_STAGES, type CrmStage } from '../../../lib/crm';
-import { proposalDate, proposalErrorMessage, proposalMoney, type ProposalSummary } from '../../../lib/proposals';
+import { proposalDate, proposalErrorMessage, proposalMoney, type ProposalItemPreview, type ProposalSummary } from '../../../lib/proposals';
 import { supabase } from '../../../lib/supabase';
 import { useToast } from '../../../hooks/useToast';
 
 type DealRow = { deal_id: string; stage: CrmStage; deal_created_at: string };
+
+function formatPreviewQuantity(item: ProposalItemPreview) {
+  const quantity = Number(item.quantity);
+  if (!Number.isFinite(quantity) || quantity <= 0) return '';
+  const formatted = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 3 }).format(quantity);
+  const unit = item.unit_label.trim();
+  if (quantity === 1 && (!unit || /^(un|unidade|sess[aã]o|procedimento)$/i.test(unit))) return '';
+  return `${formatted}${unit ? ` ${unit}` : ''}`;
+}
 
 export function PropostasPacienteTab({ patientId, patientName }: { patientId: string; patientName: string }) {
   const navigate = useNavigate();
@@ -53,6 +62,8 @@ export function PropostasPacienteTab({ patientId, patientName }: { patientId: st
     finally { setDeletingId(null); }
   };
 
+  const openProposal = (proposal: ProposalSummary) => navigate(`/crm/deals/${proposal.deal_id}/proposals/${proposal.proposal_id}`, { state: { from: `/pacientes/${patientId}?tab=proposals` } });
+
   return <div style={{ display: 'grid', gap: 12 }}>
     <section className="card" style={{ padding: 14 }}><div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
       <div style={{ flex: 1, minWidth: 220 }}><strong style={{ display: 'block', fontSize: 14 }}>Propostas da paciente</strong><span className="page-sub">Crie e consulte os orçamentos desta paciente.</span></div>
@@ -60,14 +71,27 @@ export function PropostasPacienteTab({ patientId, patientName }: { patientId: st
     </div></section>
     {error && <div className="card" style={{ padding: 12, color: 'var(--red)' }}>{error}</div>}
     {loading ? <div style={{ display: 'flex', justifyContent: 'center', padding: 48 }}><Loader2 size={24} className="spin" /></div> : proposals.length === 0 ? <div className="empty-state"><FileText size={42} strokeWidth={1.4}/><p>Nenhuma proposta criada para esta paciente.</p><button type="button" className="btn btn--primary btn--md" disabled={creating} onClick={() => void createNewProposal()}><Plus size={15}/> Criar primeira proposta</button></div> : <div style={{ display: 'grid', gap: 9 }}>
-      {proposals.map(proposal => <article key={proposal.proposal_id} className="card" style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) auto auto', gap: 10, alignItems: 'center', padding: 14 }}>
-        <button type="button" onClick={() => navigate(`/crm/deals/${proposal.deal_id}/proposals/${proposal.proposal_id}`, { state: { from: `/pacientes/${patientId}?tab=proposals` } })} style={{ border: 0, background: 'transparent', padding: 0, textAlign: 'left', cursor: 'pointer', minWidth: 0, color: 'inherit' }}>
-          <strong style={{ display: 'block', fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{proposal.title}</strong>
-          <span className="page-sub">{proposal.valid_until ? `Válida até ${proposalDate(proposal.valid_until)}` : 'Sem validade definida'}</span>
-        </button>
-        <strong style={{ fontSize: 13, whiteSpace: 'nowrap' }}>{proposalMoney(proposal.total_value)}</strong>
-        <button type="button" className="icon-btn" aria-label={`Excluir proposta ${proposal.title}`} disabled={deletingId === proposal.proposal_id} onClick={() => void remove(proposal)}><Trash2 size={15}/></button>
-      </article>)}
+      {proposals.map(proposal => {
+        const preview = proposal.items_preview ?? [];
+        const visible = preview.slice(0, 4);
+        const remaining = Math.max(0, preview.length - visible.length);
+        return <article key={proposal.proposal_id} className="card" style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) auto auto', gap: 12, alignItems: 'center', padding: 14, cursor: 'pointer' }} onClick={() => openProposal(proposal)}>
+          <div style={{ minWidth: 0 }}>
+            <strong style={{ display: 'block', fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{proposal.title}</strong>
+            {visible.length > 0 && <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 10px', marginTop: 6, marginBottom: 5, color: 'var(--text-2)', fontSize: 12.5, lineHeight: 1.35 }}>
+              {visible.map(item => {
+                const quantity = formatPreviewQuantity(item);
+                return <span key={item.id} style={{ whiteSpace: 'nowrap', maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis' }}>• {item.service_name_snapshot}{quantity ? ` — ${quantity}` : ''}</span>;
+              })}
+              {remaining > 0 && <span style={{ fontWeight: 700, color: 'var(--primary)' }}>+ {remaining} {remaining === 1 ? 'item' : 'itens'}</span>}
+            </div>}
+            {visible.length === 0 && <span className="page-sub" style={{ display: 'block', marginTop: 4 }}>Proposta sem itens adicionados</span>}
+            <span className="page-sub">{proposal.valid_until ? `Válida até ${proposalDate(proposal.valid_until)}` : 'Sem validade definida'}</span>
+          </div>
+          <strong style={{ fontSize: 13, whiteSpace: 'nowrap' }}>{proposalMoney(proposal.total_value)}</strong>
+          <button type="button" className="icon-btn" aria-label={`Excluir proposta ${proposal.title}`} disabled={deletingId === proposal.proposal_id} onClick={event => { event.stopPropagation(); void remove(proposal); }}><Trash2 size={15}/></button>
+        </article>;
+      })}
     </div>}
   </div>;
 }
