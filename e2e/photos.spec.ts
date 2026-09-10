@@ -94,7 +94,7 @@ test('canonical clinical photo keeps immutable asset while allowing clinical dat
     .select('id,taken_at,caption,sha256,original_path')
     .single();
   expect(editError).toBeNull();
-  expect(edited?.taken_at).toBe(editedTakenAt);
+  expect(new Date(edited!.taken_at).toISOString()).toBe(editedTakenAt);
   expect(edited?.caption).toBe('E2E TEST edited caption');
   expect(edited?.sha256).toBe(sha256);
   expect(edited?.original_path).toBe(originalPath);
