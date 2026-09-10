@@ -46,6 +46,7 @@ interface CreateProcedureInput {
   coverage_entries?: PackageCoverageSelection[];
   material_entries?: ProcedureMaterialInput[];
   item_values?: Array<{ service_id: string; qty?: number; final_price: number }>;
+  item_costs?: Array<{ service_id: string; cost: number }>;
   clinical_minutes?: number;
   parent_procedure_id?: string | null;
 }
@@ -129,6 +130,12 @@ export function useProcedures(patientId?: string) {
           return { service_id: serviceId, qty, final_price: Number(price) };
         });
 
+        const itemCosts = (input.item_costs ?? []).map(item => ({
+          service_id: item.service_id,
+          cost: Number(item.cost),
+        }));
+        if (itemCosts.some(item => !Number.isFinite(item.cost) || item.cost < 0)) throw new Error('ATTENDANCE_COSTS_INVALID');
+
         const paymentEntries = paymentInput.map(entry => ({
           method: entry.method,
           base_amount: entry.absorve_taxa ? entry.amount : entry.net_amount,
@@ -161,13 +168,24 @@ export function useProcedures(patientId?: string) {
           notes: input.notes ?? null,
         });
 
+        let finalizedProcedure = procedure;
+        if (itemCosts.length) {
+          const { data: costAdjusted, error: costError } = await supabase.rpc('set_procedure_item_costs_v1', {
+            p_procedure_id: procedure.id,
+            p_costs: itemCosts,
+          });
+          if (costError) throw costError;
+          if (!costAdjusted) throw new Error('ATTENDANCE_COSTS_EMPTY_RESPONSE');
+          finalizedProcedure = costAdjusted as Procedure;
+        }
+
         if (injectableDraft || injectablePoints.length > 0) markAtomicAttendanceProcedure(procedure.id);
         clearAttendanceInjectableDraft();
         clearAttendanceInjectablePoints();
         idempotencyKeyRef.current = null;
         performedAtRef.current = null;
         await refresh();
-        return procedure;
+        return finalizedProcedure;
       } catch (err) {
         console.error('[attendance:create]', err);
         setPendingAttendanceError(getAttendanceErrorMessage(err));
