@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Loader2, Pencil, X } from 'lucide-react';
+import { Loader2, X } from 'lucide-react';
 import type { PatientPhoto, PatientPhotoSession } from '../../hooks/usePatientPhotos';
 import type { PhotoAngle } from '../../lib/clinicalPhotos';
 
@@ -65,7 +65,6 @@ export default function PhotoViewer({ photo, onGetUrl, onClose }: PhotoViewerPro
 
       <footer className="simple-photo-viewer__footer">
         <p className={`simple-photo-viewer__caption${photo.caption ? '' : ' is-muted'}`}>{photo.caption || 'Sem observação'}</p>
-        <button type="button" className="btn btn-secondary" onClick={() => onClose(false)}><Pencil size={16} /> Voltar e editar informações</button>
       </footer>
     </div>
   );
