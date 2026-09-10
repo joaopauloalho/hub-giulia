@@ -1,6 +1,6 @@
 import { supabase } from '../lib/supabase';
 import { createSignedStorageUrl } from '../lib/storage';
-import type { ProposalDiscountType, ProposalEditorItem, ProposalSummary, TreatmentProposal, TreatmentProposalItem, TreatmentProposalVersion } from '../lib/proposals';
+import type { ProposalDiscountType, ProposalEditorItem, ProposalItemPreview, ProposalSummary, TreatmentProposal, TreatmentProposalItem, TreatmentProposalVersion } from '../lib/proposals';
 
 export type ProposalDealContext = {
   deal_id: string; contact_id: string; contact_name: string; patient_id: string | null; title: string; stage: string;
@@ -24,7 +24,35 @@ export async function loadDealProposals(dealId: string): Promise<ProposalSummary
   const { data, error } = await supabase.from('treatment_proposal_summary_v').select('*').eq('deal_id', dealId).order('proposal_updated_at', { ascending: false }); if (error) throw error; return (data ?? []) as ProposalSummary[];
 }
 export async function loadPatientProposals(patientId: string): Promise<ProposalSummary[]> {
-  const { data, error } = await supabase.rpc('list_patient_treatment_proposals_v1', { p_patient_id: patientId }); if (error) throw error; return (data ?? []) as ProposalSummary[];
+  const { data, error } = await supabase.rpc('list_patient_treatment_proposals_v1', { p_patient_id: patientId });
+  if (error) throw error;
+  const summaries = (data ?? []) as ProposalSummary[];
+  const versionIds = [...new Set(summaries.map(item => item.version_id).filter(Boolean))];
+  if (versionIds.length === 0) return summaries;
+
+  const { data: itemRows, error: itemError } = await supabase
+    .from('treatment_proposal_items')
+    .select('id,proposal_version_id,service_name_snapshot,quantity,unit_label,sort_order')
+    .in('proposal_version_id', versionIds)
+    .order('sort_order')
+    .order('created_at');
+  if (itemError) throw itemError;
+
+  const previewsByVersion = new Map<string, ProposalItemPreview[]>();
+  for (const row of itemRows ?? []) {
+    const versionId = String(row.proposal_version_id);
+    const current = previewsByVersion.get(versionId) ?? [];
+    current.push({
+      id: String(row.id),
+      service_name_snapshot: String(row.service_name_snapshot ?? 'Procedimento'),
+      quantity: Number(row.quantity ?? 0),
+      unit_label: String(row.unit_label ?? '').trim(),
+      sort_order: Number(row.sort_order ?? 0),
+    });
+    previewsByVersion.set(versionId, current);
+  }
+
+  return summaries.map(summary => ({ ...summary, items_preview: previewsByVersion.get(summary.version_id) ?? [] }));
 }
 
 export async function loadProposal(proposalId: string, preferredVersionId?: string | null): Promise<ProposalDetail> {
