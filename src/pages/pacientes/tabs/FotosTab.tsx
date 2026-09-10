@@ -261,6 +261,79 @@ function DayNote({ patientId, dateKey, note, onSaved }: {
   );
 }
 
+function DayDateEditor({ patientId, dateKey, label, items, note, onChanged }: {
+  patientId: string;
+  dateKey: string;
+  label: string;
+  items: PatientPhoto[];
+  note: string;
+  onChanged: (oldDateKey: string, newDateKey: string, note: string) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState(label);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => { if (!editing) setValue(label); }, [editing, label]);
+
+  const save = async () => {
+    const takenAt = parseTypedDate(value);
+    if (!takenAt) { setError('Digite uma data válida no formato DD/MM/AAAA.'); return; }
+    const newDateKey = photoDateKey(takenAt);
+    if (!newDateKey) { setError('Data inválida.'); return; }
+    if (newDateKey === dateKey) { setEditing(false); return; }
+
+    setSaving(true);
+    setError(null);
+    try {
+      const ids = items.map(photo => photo.id);
+      const { error: updateError } = await supabase
+        .from('patient_photos')
+        .update({ taken_at: takenAt })
+        .eq('patient_id', patientId)
+        .in('id', ids);
+      if (updateError) throw updateError;
+
+      // The note belongs to this visual day group. Move it with the photos so no
+      // clinical context is left orphaned under the old, now-empty date.
+      if (note.trim()) {
+        const { error: noteError } = await supabase
+          .from('patient_photo_day_notes')
+          .upsert({ patient_id: patientId, photo_date: newDateKey, note: note.trim() }, { onConflict: 'user_id,patient_id,photo_date' });
+        if (noteError) throw noteError;
+        const { error: deleteNoteError } = await supabase
+          .from('patient_photo_day_notes')
+          .delete()
+          .eq('patient_id', patientId)
+          .eq('photo_date', dateKey);
+        if (deleteNoteError) throw deleteNoteError;
+      }
+
+      onChanged(dateKey, newDateKey, note);
+      setEditing(false);
+    } catch (cause) {
+      console.error('patient photo batch date update failed', cause);
+      setError('Não foi possível alterar a data de todas as fotos. Tente novamente.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (!editing) {
+    return <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+      <h3>{label}</h3>
+      <button type="button" className="clinic-photo-edit-button" style={{ width: 34, height: 34 }} onClick={() => setEditing(true)} aria-label={`Editar data das ${items.length} fotos deste dia`}><Pencil size={15} /></button>
+    </div>;
+  }
+
+  return <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap' }}>
+    <input className="field-input" style={{ width: 132, minHeight: 38 }} value={value} inputMode="numeric" autoComplete="off" autoFocus placeholder="DD/MM/AAAA" onChange={event => setValue(formatDateInput(event.target.value))} aria-label={`Nova data para ${items.length} fotos`} />
+    <button type="button" className="btn btn-primary btn--sm" onClick={() => void save()} disabled={saving}>{saving ? <Loader2 size={14} className="photo-spin" /> : <Save size={14} />} Salvar em todas</button>
+    <button type="button" className="btn btn-secondary btn--sm" onClick={() => { setValue(label); setError(null); setEditing(false); }} disabled={saving}><X size={14} /> Cancelar</button>
+    {error && <span className="clinic-photo-inline-error" style={{ width: '100%' }}>{error}</span>}
+  </div>;
+}
+
 export function FotosTab({ patientId }: FotosTabProps) {
   const [searchParams] = useSearchParams();
   const appointmentId = searchParams.get('appointment_id');
@@ -409,7 +482,22 @@ export function FotosTab({ patientId }: FotosTabProps) {
           {groups.map(([dateKey, group]) => (
             <section className="clinic-photo-group" key={dateKey}>
               <header className="clinic-photo-group__managed-header">
-                <h3>{group.label}</h3>
+                <DayDateEditor
+                  patientId={patientId}
+                  dateKey={dateKey}
+                  label={group.label}
+                  items={group.items}
+                  note={dayNotes[dateKey] ?? ''}
+                  onChanged={(oldDateKey, newDateKey, note) => {
+                    setDayNotes(current => {
+                      const next = { ...current };
+                      delete next[oldDateKey];
+                      if (note.trim()) next[newDateKey] = note;
+                      return next;
+                    });
+                    void photos.load();
+                  }}
+                />
                 <div>
                   <span>{group.items.length} {group.items.length === 1 ? 'foto' : 'fotos'}</span>
                   <button type="button" className="clinic-photo-add-day" onClick={() => openPicker(dateKey)} disabled={uploading}><ImagePlus size={14} /> Adicionar neste dia</button>
