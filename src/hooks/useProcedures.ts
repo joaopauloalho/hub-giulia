@@ -46,6 +46,8 @@ interface CreateProcedureInput {
   coverage_entries?: PackageCoverageSelection[];
   material_entries?: ProcedureMaterialInput[];
   item_values?: Array<{ service_id: string; qty?: number; final_price: number }>;
+  clinical_minutes?: number;
+  parent_procedure_id?: string | null;
 }
 
 export function useProcedures(patientId?: string) {
@@ -105,10 +107,11 @@ export function useProcedures(patientId?: string) {
 
     const operation = (async () => {
       try {
-        const coverageEntries = input.coverage_entries ?? [];
+        const isReturn = Boolean(input.parent_procedure_id);
+        const coverageEntries = isReturn ? [] : (input.coverage_entries ?? []);
         const materialEntries = input.material_entries ?? [];
-        const paymentInput = input.payment_entries ?? [];
-        if (input.total_value > 0.02 && paymentInput.length === 0) throw new Error('ATTENDANCE_PAYMENTS_REQUIRED');
+        const paymentInput = isReturn ? [] : (input.payment_entries ?? []);
+        if (!isReturn && input.total_value > 0.02 && paymentInput.length === 0) throw new Error('ATTENDANCE_PAYMENTS_REQUIRED');
 
         const { data: serviceRows, error: servicesError } = await supabase
           .from('services')
@@ -120,7 +123,7 @@ export function useProcedures(patientId?: string) {
         const explicitItems = new Map((input.item_values ?? []).map(item => [item.service_id, item]));
         const items = input.services_ids.map(serviceId => {
           const explicit = explicitItems.get(serviceId);
-          const price = explicit?.final_price ?? priceByService.get(serviceId);
+          const price = isReturn ? 0 : (explicit?.final_price ?? priceByService.get(serviceId));
           const qty = explicit?.qty ?? 1;
           if (price === undefined || !Number.isFinite(price) || !Number.isFinite(qty) || qty <= 0) throw new Error('ATTENDANCE_SERVICE_FORBIDDEN');
           return { service_id: serviceId, qty, final_price: Number(price) };
@@ -150,9 +153,11 @@ export function useProcedures(patientId?: string) {
           payment_entries: paymentEntries,
           coverages: coverageEntries,
           materials: materialEntries,
+          clinical_minutes: input.clinical_minutes,
           injectable_maps: injectableDraft ? [] : (injectablePoints.length > 0 ? [{ points: injectablePoints }] : []),
           injectable_draft_id: injectableDraft?.mapId ?? null,
           injectable_draft_revision: injectableDraft?.revision ?? null,
+          parent_procedure_id: input.parent_procedure_id ?? null,
           notes: input.notes ?? null,
         });
 
