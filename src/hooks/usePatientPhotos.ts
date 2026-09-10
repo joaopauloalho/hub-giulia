@@ -96,6 +96,7 @@ export interface UploadClinicalPhotoInput {
   region?: string | null;
   pose?: PhotoPose | null;
   caption?: string | null;
+  takenAt?: string | null;
 }
 
 interface SignedCacheEntry {
@@ -317,7 +318,7 @@ export function usePatientPhotos(patientId: string) {
         angle: input.angle,
         region: input.region ?? null,
         pose: input.pose ?? null,
-        taken_at: new Date().toISOString(),
+        taken_at: input.takenAt || new Date().toISOString(),
         original_path: paths.original,
         preview_path: paths.preview,
         thumbnail_path: paths.thumbnail,
