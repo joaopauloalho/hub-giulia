@@ -134,7 +134,6 @@ begin
 end;
 $function$;
 
--- Corrige retornos já criados com custo-base do serviço duplicado.
 with costs as (
   select p.id, coalesce(sum(coalesce(pi.cost_snapshot,0) * coalesce(pi.qty,1)),0) as service_cost
   from public.procedures p

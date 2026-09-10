@@ -8,6 +8,7 @@ export type AttendanceDraftPayload = {
   serviceIds?: string[];
   coverageByService?: Record<string, string | undefined>;
   finalPriceByService?: Record<string, number>;
+  costByService?: Record<string, number>;
   courtesyByService?: Record<string, boolean>;
   materials?: unknown[];
   clinicalMinutes?: number;

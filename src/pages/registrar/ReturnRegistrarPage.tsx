@@ -15,6 +15,7 @@ import { MaterialsStep, type SelectedAttendanceMaterial } from './MaterialsStep'
 
 const InjetaveisScreen = lazy(() => import('./InjetaveisScreen').then(module => ({ default: module.InjetaveisScreen })));
 const TODAY = format(new Date(), 'yyyy-MM-dd');
+const money = (value: number) => Number(value || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
 type ParentProcedure = Procedure & {
   attendance_type?: 'procedure' | 'return';
@@ -42,6 +43,7 @@ export function ReturnRegistrarPage() {
   const [parent, setParent] = useState<ParentProcedure | null>(null);
   const [patient, setPatient] = useState<Patient | null>(null);
   const [selectedServiceIds, setSelectedServiceIds] = useState<string[]>([]);
+  const [costs, setCosts] = useState<Record<string, number>>({});
   const [performedDate, setPerformedDate] = useState(TODAY);
   const [notes, setNotes] = useState('');
   const [clinicalMinutes, setClinicalMinutes] = useState(0);
@@ -111,6 +113,7 @@ export function ReturnRegistrarPage() {
   const selectedServices = useMemo(() => originalServices.filter(service => selectedServiceIds.includes(service.id)), [originalServices, selectedServiceIds]);
   const injectableServices = selectedServices.filter(service => service.is_injectable);
   const hasInjectables = injectableServices.length > 0;
+  const additionalProductCost = selectedServices.reduce((sum, service) => sum + Number(costs[service.id] ?? 0), 0);
 
   const toggleService = (service: Service) => {
     setSelectedServiceIds(current => current.includes(service.id) ? current.filter(id => id !== service.id) : [...current, service.id]);
@@ -131,7 +134,7 @@ export function ReturnRegistrarPage() {
         performed_at: new Date(`${performedDate}T12:00:00`).toISOString(),
         services_ids: selectedServices.map(service => service.id),
         total_value: 0,
-        total_cost: selectedServices.reduce((sum, service) => sum + Number(service.cost_per_unit || 0), 0),
+        total_cost: 0,
         payment_method: 'pix',
         card_fee_pct: null,
         card_fee_value: null,
@@ -141,6 +144,7 @@ export function ReturnRegistrarPage() {
         coverage_entries: [],
         material_entries: materials.map(item => ({ material_id: item.material_id, quantity: item.quantity })),
         item_values: selectedServices.map(service => ({ service_id: service.id, qty: 1, final_price: 0 })),
+        item_costs: selectedServices.map(service => ({ service_id: service.id, cost: Number(costs[service.id] ?? 0) })),
         clinical_minutes: clinicalMinutes,
       });
       if (injectablePoints.length) await saveInjectables(patient.id, injectablePoints, procedure.id);
@@ -186,11 +190,18 @@ export function ReturnRegistrarPage() {
         <div style={{ display: 'grid', gap: 8, marginTop: 12 }}>{originalServices.map(service => <button key={service.id} type="button" onClick={() => toggleService(service)} style={{ minHeight: 50, padding: '10px 12px', borderRadius: 11, border: `1px solid ${selectedServiceIds.includes(service.id) ? 'var(--primary)' : 'var(--border)'}`, background: selectedServiceIds.includes(service.id) ? 'var(--bg-2)' : 'var(--bg)', color: 'inherit', display: 'flex', justifyContent: 'space-between', alignItems: 'center', textAlign: 'left' }}><span><strong>{service.name}</strong>{service.is_injectable && <small className="page-sub" style={{ display: 'block' }}>Permite novo mapa de injetáveis</small>}</span><strong style={{ color: '#166534' }}>R$ 0,00</strong></button>)}</div>
       </section>
 
+      <section className="card" style={{ padding: 16 }}>
+        <strong style={{ display: 'block' }}>Custo adicional de produto</strong>
+        <div className="page-sub" style={{ marginTop: 3 }}>Opcional. O retorno nunca gera nova cobrança. Preencha apenas se houve novo gasto de produto neste retorno.</div>
+        <div style={{ display: 'grid', gap: 9, marginTop: 12 }}>{selectedServices.map(service => <div key={service.id} style={{ display: 'grid', gridTemplateColumns: '1fr minmax(150px,220px)', gap: 12, alignItems: 'center', padding: 11, border: '1px solid var(--border)', borderRadius: 11, background: 'var(--bg-2)' }}><div><strong>{service.name}</strong><small className="page-sub" style={{ display: 'block' }}>Padrão no retorno: R$ 0,00</small></div><div><label className="field-label">Custo usado no retorno</label><input className="field-input" type="number" inputMode="decimal" min="0" step="0.01" value={costs[service.id] ?? 0} onChange={event => setCosts(current => ({ ...current, [service.id]: Math.max(0, Number(event.target.value) || 0) }))}/></div></div>)}</div>
+        <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', gap: 12 }}><span>Custo adicional de produto informado</span><strong>{money(additionalProductCost)}</strong></div>
+      </section>
+
       {hasInjectables && <section className="card" style={{ padding: 16, display: 'flex', gap: 12, alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap' }}><div><strong>Novo mapa de injetáveis</strong><div className="page-sub">Começa vazio. Registre novamente pontos, quantidade, lote, validade, etiqueta e resumo.</div></div><button type="button" className={`btn btn--md ${injectablesDone ? 'btn--secondary' : 'btn--primary'}`} onClick={() => setInjectablesOpen(true)}><MapPin size={16}/> {injectablesDone ? 'Editar mapa do retorno' : 'Registrar mapa do retorno'}</button></section>}
 
       <section className="card" style={{ padding: 16 }}><MaterialsStep selected={materials} onChange={setMaterials}/></section>
 
-      <section className="card" style={{ padding: 16 }}><div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}><div><strong>Financeiro</strong><div className="page-sub">Retorno vinculado ao atendimento original.</div></div><div style={{ textAlign: 'right' }}><strong style={{ color: '#166534' }}>R$ 0,00</strong><div className="page-sub">sem nova cobrança</div></div></div></section>
+      <section className="card" style={{ padding: 16 }}><div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}><div><strong>Financeiro</strong><div className="page-sub">Retorno incluído no atendimento original. Custos adicionais afetam apenas o custo interno, nunca a cobrança.</div></div><div style={{ textAlign: 'right' }}><strong style={{ color: '#166534' }}>R$ 0,00</strong><div className="page-sub">sem nova cobrança</div></div></div></section>
 
       <button type="button" className="btn-primary" style={{ minHeight: 52, display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 8, opacity: selectedServices.length ? 1 : .45 }} disabled={saving || !selectedServices.length} onClick={() => void save()}>{saving ? <Loader2 className="spin" size={18}/> : <Check size={18}/>} {saving ? 'Registrando…' : 'Registrar retorno'}</button>
     </div>
