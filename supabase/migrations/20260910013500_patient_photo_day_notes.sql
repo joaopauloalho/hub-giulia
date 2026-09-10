@@ -12,6 +12,8 @@ create table if not exists public.patient_photo_day_notes (
 
 alter table public.patient_photo_day_notes enable row level security;
 
+grant select, insert, update, delete on table public.patient_photo_day_notes to authenticated;
+
 create policy "patient_photo_day_notes_select_own"
 on public.patient_photo_day_notes
 for select
