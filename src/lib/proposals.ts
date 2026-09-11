@@ -29,9 +29,18 @@ export interface TreatmentProposalItem {
   discount_type: ProposalDiscountType; discount_value: number; discount_amount: number; line_subtotal: number; line_total: number; sort_order: number; created_at: string; updated_at: string;
 }
 
+export interface ProposalItemPreview {
+  id: string;
+  service_name_snapshot: string;
+  quantity: number;
+  unit_label: string;
+  sort_order: number;
+}
+
 export interface ProposalSummary {
   proposal_id: string; deal_id: string; proposal_name: string; version_id: string; version_number: number; status: ProposalStatus; effective_status: ProposalEffectiveStatus;
   title: string; total_value: number; valid_until: string | null; issued_at: string | null; sent_at: string | null; accepted_at: string | null; declined_at: string | null; pdf_path: string | null;
+  items_preview?: ProposalItemPreview[];
 }
 
 export interface ProposalEditorItem {

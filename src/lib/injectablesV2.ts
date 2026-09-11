@@ -92,15 +92,19 @@ const DECIMAL_SCALE = 4;
 const DECIMAL_FACTOR = 10n ** BigInt(DECIMAL_SCALE);
 
 export function normalizeQuantityInput(value: string): string {
-  const normalized = value.replace(',', '.').trim();
+  const normalized = value.replace(/,/g, '.').replace(/\s/g, '');
   if (normalized === '') return '';
   if (!/^\d*(?:\.\d*)?$/.test(normalized)) return '';
 
-  const [whole = '0', fraction = ''] = normalized.split('.');
-  const safeWhole = whole === '' ? '0' : whole.replace(/^0+(?=\d)/, '');
-  return fraction.length > 0
-    ? `${safeWhole}.${fraction.slice(0, DECIMAL_SCALE)}`
-    : safeWhole;
+  const hasDecimalSeparator = normalized.includes('.');
+  const [whole = '', fraction = ''] = normalized.split('.');
+  const safeWhole = (whole || '0').replace(/^0+(?=\d)/, '');
+  const safeFraction = fraction.slice(0, DECIMAL_SCALE);
+
+  // Preserve the separator while the user is typing (e.g. "0." -> "0.").
+  // Without this, iPad/mobile users cannot reach values such as 0.01 one key at a time.
+  if (hasDecimalSeparator) return `${safeWhole}.${safeFraction}`;
+  return safeWhole;
 }
 
 function decimalToScaled(value: string | number): bigint {
