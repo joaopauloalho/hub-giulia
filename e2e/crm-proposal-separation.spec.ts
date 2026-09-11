@@ -85,11 +85,11 @@ test('CRM stays clean while proposal is a simple patient budget and can be delet
 
   await page.goto(`/pacientes/${seeded.patientId}?tab=proposals`);
   await expect(page.getByText('Propostas da paciente')).toBeVisible();
-  const proposalButton = page.getByRole('button', { name: new RegExp(proposalTitle) }).first();
-  await expect(proposalButton).toBeVisible();
+  const proposalTitleText = page.getByText(proposalTitle, { exact: true }).first();
+  await expect(proposalTitleText).toBeVisible();
   await expect(page.getByRole('button', { name: /Nova proposta/ })).toBeVisible();
 
-  await proposalButton.click();
+  await proposalTitleText.click();
   await expect(page).toHaveURL(new RegExp(`/crm/deals/${seeded.dealId}/proposals/${createdRow!.proposal_id}`));
   const proposalItem = page.locator('.proposal-item-card').filter({ hasText: 'E2E TEST Service' }).first();
   await expect(proposalItem).toBeVisible();
