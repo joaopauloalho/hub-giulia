@@ -1,8 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { expect, test } from '@playwright/test';
-import { signedInClient } from './helpers';
+import { browserLogin, signedInClient } from './helpers';
 
-test('attendance editor owner can load procedure and every linked-history lookup', async () => {
+test('attendance editor owner can load procedure and every linked-history lookup', async ({ page }) => {
   const client = await signedInClient('a');
   const suffix = randomUUID();
   const patientName = `EDIT LOAD E2E ${suffix}`;
@@ -73,4 +73,11 @@ test('attendance editor owner can load procedure and every linked-history lookup
   expect(returns.error, returns.error?.message).toBeNull();
   expect(patientRead.error, patientRead.error?.message).toBeNull();
   expect(patientRead.data?.name).toBe(patientName);
+
+  await browserLogin(page, 'a');
+  await page.goto(`/registrar?edit=${procedureId}`);
+
+  await expect(page.getByRole('heading', { name: 'Editar atendimento' })).toBeVisible({ timeout: 12_000 });
+  await expect(page.getByText(patientName, { exact: false })).toBeVisible();
+  await expect(page.getByText('Não foi possível carregar este atendimento para edição.')).toHaveCount(0);
 });
