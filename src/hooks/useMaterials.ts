@@ -88,5 +88,13 @@ export function useMaterials(options: { activeOnly?: boolean } = {}) {
     return normalize(data as unknown as Record<string, unknown>);
   };
 
-  return { materials, loading, error, refresh, create, update, addStock, adjustStock };
+  const remove = async (materialId: string) => {
+    const { error: rpcError } = await supabase.rpc('delete_material_v1', {
+      p_material_id: materialId,
+    });
+    if (rpcError) throw rpcError;
+    await refresh();
+  };
+
+  return { materials, loading, error, refresh, create, update, addStock, adjustStock, remove };
 }
