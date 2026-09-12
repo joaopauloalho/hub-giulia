@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { AlertTriangle, Boxes, Minus, Pencil, Plus, Search, ToggleLeft, ToggleRight, X } from 'lucide-react';
+import { AlertTriangle, Boxes, Minus, Pencil, Plus, Search, ToggleLeft, ToggleRight, Trash2, X } from 'lucide-react';
 import { useMaterials } from '../../hooks/useMaterials';
 import { useToast } from '../../hooks/useToast';
 import type { Material, MaterialDraft } from '../../types/materials';
@@ -17,6 +17,14 @@ const normalizeMoneyInput = (value: string) => {
 const parseDecimal = (value: string) => {
   const parsed = Number(value.replace(',', '.'));
   return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const getErrorMessage = (error: unknown) => {
+  if (error instanceof Error) return error.message;
+  if (error && typeof error === 'object' && 'message' in error) {
+    return String((error as { message?: unknown }).message ?? '');
+  }
+  return '';
 };
 
 const formatQty = (value: number) => value.toLocaleString('pt-BR', { maximumFractionDigits: 3 });
@@ -76,15 +84,38 @@ function StockDrawer({ mode, material, onClose, onSave }: { mode:'entry'|'adjust
 }
 
 export function MaterialsSection() {
-  const { materials, loading, error, create, update, addStock, adjustStock } = useMaterials();
-  const { toast } = useToast();
+  const { materials, loading, error, create, update, addStock, adjustStock, remove } = useMaterials();
+  const { confirm, toast } = useToast();
   const [search,setSearch]=useState(''); const [filter,setFilter]=useState<Filter>('all'); const [drawer,setDrawer]=useState<Drawer>(null);
   const filtered=useMemo(()=>materials.filter(m=>m.name.toLowerCase().includes(search.trim().toLowerCase())).filter(m=>filter==='low'?m.active&&m.stock_quantity<=m.minimum_stock:filter==='inactive'?!m.active:true),[materials,search,filter]);
+
+  const deleteMaterial = async (material: Material) => {
+    const ok = await confirm({
+      title: 'Excluir material permanentemente',
+      message: `Excluir "${material.name}" de forma permanente? Esta ação não pode ser desfeita. Se o material já tiver histórico de estoque ou uso em atendimento, ele será preservado e deverá ser deixado inativo.`,
+      confirmLabel: 'Excluir permanentemente',
+      tone: 'danger',
+    });
+    if (!ok) return;
+
+    try {
+      await remove(material.id);
+      toast.success('Material excluído permanentemente.');
+    } catch (err) {
+      const message = getErrorMessage(err);
+      if (message.includes('MATERIAL_DELETE_HAS_HISTORY')) {
+        toast.error('Este material já possui histórico de estoque ou uso em atendimento. Para preservar a rastreabilidade, deixe-o inativo.');
+        return;
+      }
+      toast.error('Não foi possível excluir o material.');
+    }
+  };
+
   return <div style={{padding:16}}>
     <div style={{display:'flex',gap:8,flexWrap:'wrap',marginBottom:14}}><button className="btn-primary" onClick={()=>setDrawer({type:'new'})}><Plus size={17}/> Novo material</button></div>
     <div className="search-wrap"><Search size={18} className="search-icon"/><input className="search-input" placeholder="Buscar material..." value={search} onChange={e=>setSearch(e.target.value)}/></div>
     <div style={{display:'flex',gap:6,flexWrap:'wrap',marginBottom:14}}>{([['all','Todos'],['low','Estoque baixo'],['inactive','Inativos']] as [Filter,string][]).map(([key,label])=><button key={key} onClick={()=>setFilter(key)} style={{padding:'6px 13px',borderRadius:16,border:'1px solid var(--border)',cursor:'pointer',fontSize:12,fontWeight:600,background:filter===key?'var(--primary)':'transparent',color:filter===key?'#fff':'var(--text-2)'}}>{label}</button>)}</div>
-    {error?<div className="empty-state"><p>{error}</p></div>:loading?<div className="empty-state"><p>Carregando materiais...</p></div>:filtered.length===0?<div className="empty-state"><Boxes size={44} strokeWidth={1}/><p>Nenhum material encontrado.</p></div>:<div style={{display:'flex',flexDirection:'column',gap:10}}>{filtered.map(m=>{const low=m.active&&m.stock_quantity<=m.minimum_stock;return <div className="card" key={m.id} style={{opacity:m.active?1:.58}}><div style={{display:'flex',gap:12,alignItems:'flex-start'}}><div style={{flex:1,minWidth:0}}><div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}><strong>{m.name}</strong>{low&&<span style={{fontSize:11,fontWeight:700,color:'#b45309',background:'#fff7ed',padding:'3px 7px',borderRadius:10}}><AlertTriangle size={12} style={{verticalAlign:-2}}/> Estoque baixo</span>}{!m.active&&<span style={{fontSize:11,color:'var(--text-3)'}}>Inativo</span>}</div><div style={{marginTop:7,fontSize:13,color:'var(--text-2)',display:'flex',gap:14,flexWrap:'wrap'}}><span><strong style={{color:'var(--text)'}}>{formatQty(m.stock_quantity)} {m.unit_label}</strong></span><span>Mínimo {formatQty(m.minimum_stock)}</span><span>{formatMoney(m.unit_cost)}/{m.unit_label}</span></div></div><button className="icon-btn" onClick={()=>setDrawer({type:'edit',material:m})}><Pencil size={16}/></button></div><div style={{display:'flex',gap:8,marginTop:12,flexWrap:'wrap'}}><button className="btn-secondary" style={{display:'flex',gap:5,alignItems:'center'}} onClick={()=>setDrawer({type:'entry',material:m})}><Plus size={15}/> Entrada</button><button className="btn-secondary" style={{display:'flex',gap:5,alignItems:'center'}} onClick={()=>setDrawer({type:'adjust',material:m})}><Minus size={15}/> Ajustar</button></div></div>})}</div>}
+    {error?<div className="empty-state"><p>{error}</p></div>:loading?<div className="empty-state"><p>Carregando materiais...</p></div>:filtered.length===0?<div className="empty-state"><Boxes size={44} strokeWidth={1}/><p>Nenhum material encontrado.</p></div>:<div style={{display:'flex',flexDirection:'column',gap:10}}>{filtered.map(m=>{const low=m.active&&m.stock_quantity<=m.minimum_stock;return <div className="card" key={m.id} style={{opacity:m.active?1:.58}}><div style={{display:'flex',gap:12,alignItems:'flex-start'}}><div style={{flex:1,minWidth:0}}><div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}><strong>{m.name}</strong>{low&&<span style={{fontSize:11,fontWeight:700,color:'#b45309',background:'#fff7ed',padding:'3px 7px',borderRadius:10}}><AlertTriangle size={12} style={{verticalAlign:-2}}/> Estoque baixo</span>}{!m.active&&<span style={{fontSize:11,color:'var(--text-3)'}}>Inativo</span>}</div><div style={{marginTop:7,fontSize:13,color:'var(--text-2)',display:'flex',gap:14,flexWrap:'wrap'}}><span><strong style={{color:'var(--text)'}}>{formatQty(m.stock_quantity)} {m.unit_label}</strong></span><span>Mínimo {formatQty(m.minimum_stock)}</span><span>{formatMoney(m.unit_cost)}/{m.unit_label}</span></div></div><div style={{display:'flex',gap:4}}><button className="icon-btn" onClick={()=>setDrawer({type:'edit',material:m})} aria-label={`Editar ${m.name}`}><Pencil size={16}/></button><button className="icon-btn" style={{color:'var(--red)'}} onClick={()=>void deleteMaterial(m)} aria-label={`Excluir ${m.name} permanentemente`} title="Excluir permanentemente"><Trash2 size={16}/></button></div></div><div style={{display:'flex',gap:8,marginTop:12,flexWrap:'wrap'}}><button className="btn-secondary" style={{display:'flex',gap:5,alignItems:'center'}} onClick={()=>setDrawer({type:'entry',material:m})}><Plus size={15}/> Entrada</button><button className="btn-secondary" style={{display:'flex',gap:5,alignItems:'center'}} onClick={()=>setDrawer({type:'adjust',material:m})}><Minus size={15}/> Ajustar</button></div></div>})}</div>}
     {drawer?.type==='new'&&<MaterialForm onClose={()=>setDrawer(null)} onSave={async draft=>{await create(draft);toast.success('Material cadastrado.');}}/>}
     {drawer?.type==='edit'&&<MaterialForm material={drawer.material} onClose={()=>setDrawer(null)} onSave={async draft=>{await update(drawer.material.id,{name:draft.name,unit_label:draft.unit_label,unit_cost:draft.unit_cost,minimum_stock:draft.minimum_stock,active:draft.active});toast.success('Material atualizado.');}}/>}
     {drawer?.type==='entry'&&<StockDrawer mode="entry" material={drawer.material} onClose={()=>setDrawer(null)} onSave={async(q,r)=>{await addStock(drawer.material.id,q,r);toast.success('Entrada registrada.');}}/>}
