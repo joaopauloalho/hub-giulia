@@ -33,7 +33,7 @@ export interface InventoryMovement {
   id: string;
   user_id: string;
   material_id: string;
-  movement_type: 'initial_stock' | 'stock_entry' | 'manual_adjustment' | 'procedure_consumption' | 'procedure_reversal';
+  movement_type: 'initial_stock' | 'stock_entry' | 'manual_adjustment' | 'procedure_consumption' | 'procedure_reversal' | 'procedure_edit_consumption' | 'procedure_edit_reversal';
   quantity_delta: number;
   unit_cost_snapshot: number | null;
   procedure_id: string | null;

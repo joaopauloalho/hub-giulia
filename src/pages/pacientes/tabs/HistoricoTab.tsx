@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Camera, CheckCircle2, ChevronRight, ClipboardList, Clock3, FileText, Loader2, MapPin, Plus, RotateCcw } from 'lucide-react';
+import { Camera, CheckCircle2, ChevronRight, ClipboardList, Clock3, FileText, Loader2, MapPin, Pencil, Plus, RotateCcw } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { useProcedures } from '../../../hooks/useProcedures';
@@ -50,7 +50,7 @@ function clinicalTimeLabel(minutes: number) {
   return rest ? `${hours}h${String(rest).padStart(2, '0')}` : `${hours}h`;
 }
 
-function ProcedureCard({ proc, contracts, treatmentSessions, settlingPaymentId, onReceive, onPhotos, onInjectables, onContract, onReturn }: {
+function ProcedureCard({ proc, contracts, treatmentSessions, settlingPaymentId, onReceive, onPhotos, onInjectables, onContract, onReturn, onEdit }: {
   proc: ClinicalProcedure;
   contracts: Contract[];
   treatmentSessions: TreatmentSessionRecord[];
@@ -60,6 +60,7 @@ function ProcedureCard({ proc, contracts, treatmentSessions, settlingPaymentId, 
   onInjectables?: () => void;
   onContract?: (procedureId: string) => void;
   onReturn?: (procedureId: string) => void;
+  onEdit?: (procedureId: string) => void;
 }) {
   const [open, setOpen] = useState(false);
   const finance = getProcedureFinancials(proc);
@@ -125,7 +126,13 @@ function ProcedureCard({ proc, contracts, treatmentSessions, settlingPaymentId, 
 
       {proc.notes && <section><strong style={{ fontSize: 12, textTransform: 'uppercase', letterSpacing: '.04em' }}>{isReturn ? 'Resumo do retorno' : 'Observações'}</strong><p style={{ fontSize: 13, marginTop: 6, lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{proc.notes}</p></section>}
       {proc.appointment_id && <div className="page-sub">Originado do agendamento {proc.appointment_id.slice(0, 8)}…</div>}
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>{!isReturn && onContract && <button className="btn btn--secondary btn--sm" onClick={() => onContract(proc.id)}><FileText size={14} /> Gerar documento</button>}{onPhotos && <button className="btn btn--ghost btn--sm" onClick={onPhotos}><Camera size={14} /> Fotos</button>}{onInjectables && <button className="btn btn--ghost btn--sm" onClick={onInjectables}><MapPin size={14} /> Injetáveis</button>}{!isReturn && onReturn && <button className="btn btn--secondary btn--sm" onClick={() => onReturn(proc.id)}><RotateCcw size={14}/> Registrar retorno</button>}</div>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        {onEdit && <button className="btn btn--primary btn--sm" onClick={() => onEdit(proc.id)}><Pencil size={14}/> Editar atendimento</button>}
+        {!isReturn && onContract && <button className="btn btn--secondary btn--sm" onClick={() => onContract(proc.id)}><FileText size={14} /> Gerar documento</button>}
+        {onPhotos && <button className="btn btn--ghost btn--sm" onClick={onPhotos}><Camera size={14} /> Fotos</button>}
+        {onInjectables && <button className="btn btn--ghost btn--sm" onClick={onInjectables}><MapPin size={14} /> Injetáveis</button>}
+        {!isReturn && onReturn && <button className="btn btn--secondary btn--sm" onClick={() => onReturn(proc.id)}><RotateCcw size={14}/> Registrar retorno</button>}
+      </div>
     </div>}
   </div>;
 }
@@ -164,7 +171,7 @@ export function HistoricoTab({ patientId, onPhotos, onInjectables, onContract }:
   };
 
   const newAttendanceButton = <button type="button" className="btn btn--primary btn--md" style={{ minHeight: 44 }} onClick={() => navigate(`/registrar?patientId=${encodeURIComponent(patientId)}`)}><Plus size={16}/> Novo atendimento</button>;
-  const renderCard = (proc: ClinicalProcedure) => <ProcedureCard key={proc.id} proc={proc} contracts={contractsByProcedure.get(proc.id) ?? []} treatmentSessions={sessionsByProcedure.get(proc.id) ?? []} settlingPaymentId={settlingPaymentId} onReceive={payment => void receivePayment(payment)} onPhotos={onPhotos} onInjectables={onInjectables} onContract={onContract} onReturn={procedureId => navigate(`/registrar?return_of=${encodeURIComponent(procedureId)}`)}/>;
+  const renderCard = (proc: ClinicalProcedure) => <ProcedureCard key={proc.id} proc={proc} contracts={contractsByProcedure.get(proc.id) ?? []} treatmentSessions={sessionsByProcedure.get(proc.id) ?? []} settlingPaymentId={settlingPaymentId} onReceive={payment => void receivePayment(payment)} onPhotos={onPhotos} onInjectables={onInjectables} onContract={onContract} onReturn={procedureId => navigate(`/registrar?return_of=${encodeURIComponent(procedureId)}`)} onEdit={procedureId => navigate(`/registrar?edit=${encodeURIComponent(procedureId)}`)}/>;
 
   if (error) return <div><div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>{newAttendanceButton}</div><div className="empty-state" style={{ padding: '48px 20px' }}><p>{error}</p></div></div>;
   if (loading || loadingSessions) return <div style={{ display: 'flex', justifyContent: 'center', padding: 48 }}><Loader2 size={24} className="spin" style={{ color: 'var(--primary)' }} /></div>;

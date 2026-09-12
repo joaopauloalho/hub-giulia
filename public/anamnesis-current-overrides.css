@@ -1,0 +1,5 @@
+/* Current clinical form override: acne is no longer a standalone anamnesis question.
+   Historical snapshots remain untouched and can still render the old field. */
+.anamnesis-conditional:has(#q-surgicalHistory-acne) {
+  display: none !important;
+}
