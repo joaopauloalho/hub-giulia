@@ -310,6 +310,31 @@ export function AnamneseEditorPage() {
           </Section>
 
           <Section id="womens-health" title="Saúde Feminina">
+            <BinaryField
+              id="q-surgicalHistory-tem_filhos"
+              label="Tem filhos?"
+              value={draft.surgicalHistory.tem_filhos as boolean | undefined}
+              onChange={value => {
+                setMap('surgicalHistory', 'tem_filhos', value);
+                if (!value) setMap('surgicalHistory', 'quantidade_filhos', '');
+              }}
+            />
+            {draft.surgicalHistory.tem_filhos === true && (
+              <div className="field">
+                <label className="field-label" htmlFor="detail-surgicalHistory-quantidade_filhos">Quantos filhos?</label>
+                <input
+                  id="detail-surgicalHistory-quantidade_filhos"
+                  data-focus-target
+                  className="field-input"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  value={String(draft.surgicalHistory.quantidade_filhos ?? '')}
+                  onChange={event => setMap('surgicalHistory', 'quantidade_filhos', event.target.value.replace(/\D/g, '').slice(0, 2))}
+                  placeholder="Ex.: 2"
+                  aria-label="Quantidade de filhos"
+                />
+              </div>
+            )}
             <div className="anamnesis-question anamnesis-question--with-observation" id="q-surgicalHistory-gestante">
               <span className="anamnesis-question__label" id="gestante-label">Gestante?</span>
               <div className="anamnesis-choice-group" role="radiogroup" aria-labelledby="gestante-label" data-focus-target>
