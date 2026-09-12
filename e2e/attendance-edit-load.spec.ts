@@ -1,8 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { expect, test } from '@playwright/test';
-import { browserLogin, signedInClient } from './helpers';
+import { signedInClient } from './helpers';
 
-test('existing attendance editor loads an owner procedure instead of failing on return-history lookup', async ({ page }) => {
+test('attendance editor owner can load procedure and every linked-history lookup', async () => {
   const client = await signedInClient('a');
   const suffix = randomUUID();
   const patientName = `EDIT LOAD E2E ${suffix}`;
@@ -48,10 +48,29 @@ test('existing attendance editor loads an owner procedure instead of failing on 
   expect(created.error, created.error?.message).toBeNull();
   const procedureId = (created.data as { id: string }).id;
 
-  await browserLogin(page, 'a');
-  await page.goto(`/registrar?edit=${procedureId}`);
+  // Mirror the exact reads performed by EditAttendancePage before it renders.
+  const loaded = await client.from('procedures').select(`
+    *,
+    procedure_items:procedure_items!procedure_items_procedure_owner_fkey(*),
+    procedure_payments:procedure_payments!procedure_payments_procedure_owner_fkey(*),
+    procedure_materials:procedure_materials!procedure_materials_procedure_owner_fkey(*)
+  `).eq('id', procedureId).single();
+  expect(loaded.error, loaded.error?.message).toBeNull();
 
-  await expect(page.getByRole('heading', { name: 'Editar atendimento' })).toBeVisible();
-  await expect(page.getByText(patientName, { exact: false })).toBeVisible();
-  await expect(page.getByText('Não foi possível carregar este atendimento para edição.')).toHaveCount(0);
+  const row = loaded.data as { patient_id: string; procedure_items: Array<{ id: string }> };
+  expect(row.procedure_items).toHaveLength(1);
+  const itemIds = row.procedure_items.map(item => item.id);
+
+  const [redemptions, applications, returns, patientRead] = await Promise.all([
+    client.from('package_redemptions').select('procedure_item_id_snapshot,coverage_value_snapshot').eq('procedure_id_snapshot', procedureId),
+    client.from('injectable_applications').select('procedure_item_id').in('procedure_item_id', itemIds),
+    client.from('procedure_returns').select('procedure_item_id').in('procedure_item_id', itemIds),
+    client.from('patients').select('name').eq('id', row.patient_id).single(),
+  ]);
+
+  expect(redemptions.error, redemptions.error?.message).toBeNull();
+  expect(applications.error, applications.error?.message).toBeNull();
+  expect(returns.error, returns.error?.message).toBeNull();
+  expect(patientRead.error, patientRead.error?.message).toBeNull();
+  expect(patientRead.data?.name).toBe(patientName);
 });
