@@ -18,14 +18,14 @@ async function createMaterial(client: Client, name: string) {
   return (result.data as { id: string }).id;
 }
 
-test.describe.serial('permanent material deletion', () => {
+test.describe.serial('material deletion', () => {
   let client: Client;
 
   test.beforeAll(async () => {
     client = await signedInClient('a');
   });
 
-  test('permanently deletes an unused material and its creation ledger row', async () => {
+  test('physically deletes an unused material and its creation ledger row', async () => {
     const materialId = await createMaterial(client, `MAT DELETE UNUSED ${randomUUID()}`);
 
     const before = await client.from('inventory_movements').select('movement_type').eq('material_id', materialId);
@@ -44,7 +44,7 @@ test.describe.serial('permanent material deletion', () => {
     expect(movements.data).toEqual([]);
   });
 
-  test('refuses permanent deletion after a real stock movement', async () => {
+  test('soft-deletes a material with stock history and preserves its audit trail', async () => {
     const materialId = await createMaterial(client, `MAT DELETE HISTORY ${randomUUID()}`);
 
     const entry = await client.rpc('record_material_stock_entry_v1', {
@@ -56,11 +56,16 @@ test.describe.serial('permanent material deletion', () => {
     expect(entry.error).toBeNull();
 
     const removed = await client.rpc('delete_material_v1', { p_material_id: materialId });
-    expect(removed.error).not.toBeNull();
-    expect(`${removed.error?.message} ${removed.error?.details}`).toContain('MATERIAL_DELETE_HAS_HISTORY');
+    expect(removed.error).toBeNull();
 
-    const material = await client.from('materials').select('id').eq('id', materialId).single();
+    const material = await client.from('materials').select('id, active, deleted_at').eq('id', materialId).single();
     expect(material.error).toBeNull();
     expect(material.data?.id).toBe(materialId);
+    expect(material.data?.active).toBe(false);
+    expect(material.data?.deleted_at).not.toBeNull();
+
+    const movements = await client.from('inventory_movements').select('movement_type').eq('material_id', materialId);
+    expect(movements.error).toBeNull();
+    expect(movements.data?.map(row => row.movement_type)).toEqual(['initial_stock', 'stock_entry']);
   });
 });
