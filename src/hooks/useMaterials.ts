@@ -20,7 +20,7 @@ export function useMaterials(options: { activeOnly?: boolean } = {}) {
     setLoading(true);
     setError(null);
     try {
-      let query = supabase.from('materials').select('*').order('name');
+      let query = supabase.from('materials').select('*').is('deleted_at', null).order('name');
       if (options.activeOnly) query = query.eq('active', true);
       const { data, error: queryError } = await query;
       if (queryError) throw queryError;
