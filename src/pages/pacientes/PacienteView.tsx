@@ -20,6 +20,7 @@ const HistoricoTab = lazy(() => import('./tabs/HistoricoTab').then(module => ({ 
 const InjetaveisTab = lazy(() => import('./tabs/InjetaveisTab').then(module => ({ default: module.InjetaveisTab })));
 const FinanceiroPacienteTab = lazy(() => import('./tabs/FinanceiroPacienteTab').then(module => ({ default: module.FinanceiroPacienteTab })));
 const PropostasPacienteTab = lazy(() => import('./tabs/PropostasPacienteTab').then(module => ({ default: module.PropostasPacienteTab })));
+const ProtocolosTab = lazy(() => import('./tabs/ProtocolosTab').then(module => ({ default: module.ProtocolosTab })));
 const ContratosTab = lazy(() => import('./tabs/ContratosTab').then(module => ({ default: module.ContratosTab })));
 const NotasTab = lazy(() => import('./tabs/NotasTab').then(module => ({ default: module.NotasTab })));
 const TimelineTab = lazy(() => import('./tabs/TimelineTab').then(module => ({ default: module.TimelineTab })));
@@ -40,6 +41,7 @@ const TABS = [
   ['Visão geral', 'overview'],
   ['Histórico 360', 'timeline'],
   ['Atendimentos', 'procedures'],
+  ['Protocolos', 'protocols'],
   ['Anamnese', 'anamnesis'],
   ['Fotos', 'photos'],
   ['Injetáveis', 'injectables'],
@@ -191,6 +193,7 @@ export function PacienteView({ patient, archived = false, sourceAppointmentId, i
             : <Suspense fallback={<div className="loading-state">Carregando...</div>}>
                 {tab === 'timeline' && <TimelineTab patientId={patient.id} onOpen={openTimelineEvent} />}
                 {tab === 'procedures' && <HistoricoTab patientId={patient.id} onPhotos={() => setTab('photos')} onInjectables={() => setTab('injectables')} onContract={procedureId => setSignatureRequest({ procedureId })} />}
+                {tab === 'protocols' && <ProtocolosTab patientId={patient.id} />}
                 {tab === 'anamnesis' && <AnamneseTab patientId={patient.id} />}
                 {tab === 'photos' && <FotosTab patientId={patient.id} />}
                 {tab === 'injectables' && <InjetaveisTab patientId={patient.id} patientName={patient.name} />}

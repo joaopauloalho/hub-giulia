@@ -51,6 +51,14 @@ interface CreateProcedureInput {
   parent_procedure_id?: string | null;
 }
 
+type AttendanceServiceRow = {
+  id: string;
+  name: string;
+  type: string;
+  price: number;
+  cost_per_unit: number;
+};
+
 export function useProcedures(patientId?: string) {
   const [procedures, setProcedures] = useState<Procedure[]>([]);
   const [loading, setLoading] = useState(true);
@@ -116,11 +124,17 @@ export function useProcedures(patientId?: string) {
 
         const { data: serviceRows, error: servicesError } = await supabase
           .from('services')
-          .select('id, price')
+          .select('id, name, type, price, cost_per_unit')
           .in('id', input.services_ids);
         if (servicesError) throw servicesError;
 
-        const priceByService = new Map((serviceRows ?? []).map(service => [service.id, Number(service.price)]));
+        const normalizedServices = (serviceRows ?? []).map(service => ({
+          ...service,
+          price: Number(service.price),
+          cost_per_unit: Number(service.cost_per_unit ?? 0),
+        })) as AttendanceServiceRow[];
+        const serviceById = new Map(normalizedServices.map(service => [service.id, service]));
+        const priceByService = new Map(normalizedServices.map(service => [service.id, service.price]));
         const explicitItems = new Map((input.item_values ?? []).map(item => [item.service_id, item]));
         const items = input.services_ids.map(serviceId => {
           const explicit = explicitItems.get(serviceId);
@@ -130,9 +144,20 @@ export function useProcedures(patientId?: string) {
           return { service_id: serviceId, qty, final_price: Number(price) };
         });
 
+        const coveredServiceIds = new Set(coverageEntries.map(entry => entry.service_id));
+        const purchasedComboIds = new Set(
+          isReturn
+            ? []
+            : items
+                .filter(item => serviceById.get(item.service_id)?.type === 'combo' && !coveredServiceIds.has(item.service_id))
+                .map(item => item.service_id),
+        );
+        const requestedCostByService = new Map((input.item_costs ?? []).map(item => [item.service_id, Number(item.cost)]));
         const itemCosts = (input.item_costs ?? []).map(item => ({
           service_id: item.service_id,
-          cost: Number(item.cost),
+          // O custo do combo é o custo previsto do protocolo inteiro. A venda, por si só,
+          // não realiza esse custo clínico; os custos reais entram nas sessões seguintes.
+          cost: purchasedComboIds.has(item.service_id) ? 0 : Number(item.cost),
         }));
         if (itemCosts.some(item => !Number.isFinite(item.cost) || item.cost < 0)) throw new Error('ATTENDANCE_COSTS_INVALID');
 
@@ -177,6 +202,24 @@ export function useProcedures(patientId?: string) {
           if (costError) throw costError;
           if (!costAdjusted) throw new Error('ATTENDANCE_COSTS_EMPTY_RESPONSE');
           finalizedProcedure = costAdjusted as Procedure;
+        }
+
+        // Venda direta de um combo vira um protocolo ativo. O RPC é idempotente pelo
+        // par atendimento + combo; se houver falha depois do atendimento atômico, uma
+        // nova tentativa reaproveita o mesmo atendimento em vez de duplicar a venda.
+        for (const item of items) {
+          if (!purchasedComboIds.has(item.service_id)) continue;
+          const service = serviceById.get(item.service_id);
+          if (!service) continue;
+          const estimatedCost = requestedCostByService.get(item.service_id) ?? service.cost_per_unit;
+          const { error: protocolError } = await supabase.rpc('create_protocol_from_attendance_v1', {
+            p_procedure_id: procedure.id,
+            p_service_id: item.service_id,
+            p_commercial_value: item.final_price,
+            p_estimated_cost: estimatedCost,
+            p_quantity: item.qty,
+          });
+          if (protocolError) throw protocolError;
         }
 
         if (injectableDraft || injectablePoints.length > 0) markAtomicAttendanceProcedure(procedure.id);
