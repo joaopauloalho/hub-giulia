@@ -1,4 +1,4 @@
-const VERSION = '3.6.1';
+const VERSION = '3.6.0';
 const STATIC_CACHE = `hub-giulia-static-${VERSION}`;
 const SHELL_CACHE = `hub-giulia-shell-${VERSION}`;
 const SAFE_STATIC = [
