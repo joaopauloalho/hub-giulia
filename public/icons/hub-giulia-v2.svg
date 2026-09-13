@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Hub Giulia">
+  <rect width="512" height="512" rx="112" fill="#fffafb"/>
+  <circle cx="256" cy="256" r="174" fill="#fce7f3"/>
+  <circle cx="256" cy="256" r="148" fill="#fffafb" stroke="#be185d" stroke-width="14"/>
+  <text x="256" y="334" text-anchor="middle" fill="#be185d" font-family="Georgia, 'Times New Roman', serif" font-size="250" font-style="italic" font-weight="700">g</text>
+  <circle cx="352" cy="154" r="18" fill="#be185d"/>
+</svg>
