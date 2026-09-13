@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
-import { CalendarDays, CheckCircle2, ClipboardPlus, Loader2, WalletCards } from 'lucide-react';
+import { AlertCircle, CalendarDays, CheckCircle2, ClipboardPlus, Link2, Loader2, WalletCards } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { usePatientEntitlements, usePatientPackages } from '../../../hooks/usePackages';
 import { useProcedures } from '../../../hooks/useProcedures';
+import { useToast } from '../../../hooks/useToast';
 import { supabase } from '../../../lib/supabase';
 import { completedTreatmentSessions, effectiveTreatmentTotal, remainingTreatmentSessions } from '../../../lib/treatmentExecution';
 import type { Procedure } from '../../../types';
@@ -30,6 +31,26 @@ type ProtocolGroup = {
   active: boolean;
 };
 
+type LegacyProtocolCandidate = {
+  patient_id: string;
+  procedure_id: string;
+  performed_at: string;
+  procedure_item_id: string;
+  service_id: string;
+  service_name_snapshot: string;
+  qty: number;
+  final_price: number;
+  cost_snapshot: number;
+  catalog_estimated_cost: number;
+  component_count: number;
+  planned_sessions: number | null;
+};
+
+type LegacyDraft = {
+  totalSessions: string;
+  completedSessions: string;
+};
+
 function groupProtocols(entitlements: PatientEntitlement[]) {
   const grouped = new Map<string, PatientEntitlement[]>();
   for (const item of entitlements) {
@@ -54,13 +75,23 @@ function groupProtocols(entitlements: PatientEntitlement[]) {
   }).sort((a, b) => Number(b.active) - Number(a.active) || a.title.localeCompare(b.title, 'pt-BR'));
 }
 
+function legacyKey(candidate: LegacyProtocolCandidate) {
+  return `${candidate.procedure_id}:${candidate.service_id}`;
+}
+
 export function ProtocolosTab({ patientId }: { patientId: string }) {
   const navigate = useNavigate();
-  const { data: entitlements, loading: loadingEntitlements } = usePatientEntitlements(patientId);
-  const { ledger, loading: loadingPackages } = usePatientPackages(patientId);
+  const { toast } = useToast();
+  const { data: entitlements, loading: loadingEntitlements, refresh: refreshEntitlements } = usePatientEntitlements(patientId);
+  const { ledger, loading: loadingPackages, refresh: refreshPackages } = usePatientPackages(patientId);
   const { procedures, loading: loadingProcedures } = useProcedures(patientId);
   const [meta, setMeta] = useState<Record<string, ProtocolMeta>>({});
   const [loadingMeta, setLoadingMeta] = useState(true);
+  const [legacyCandidates, setLegacyCandidates] = useState<LegacyProtocolCandidate[]>([]);
+  const [loadingLegacy, setLoadingLegacy] = useState(true);
+  const [legacyDrafts, setLegacyDrafts] = useState<Record<string, LegacyDraft>>({});
+  const [linkingLegacyKey, setLinkingLegacyKey] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     let alive = true;
@@ -93,7 +124,53 @@ export function ProtocolosTab({ patientId }: { patientId: string }) {
       }
     })();
     return () => { alive = false; };
-  }, [patientId]);
+  }, [patientId, reloadKey]);
+
+  useEffect(() => {
+    let alive = true;
+    setLoadingLegacy(true);
+    void (async () => {
+      try {
+        const { data, error } = await supabase
+          .from('patient_legacy_protocol_candidates_v')
+          .select('patient_id,procedure_id,performed_at,procedure_item_id,service_id,service_name_snapshot,qty,final_price,cost_snapshot,catalog_estimated_cost,component_count,planned_sessions')
+          .eq('patient_id', patientId)
+          .order('performed_at', { ascending: false });
+        if (error) throw error;
+        if (!alive) return;
+        const normalized = (data ?? []).map(row => ({
+          ...row,
+          qty: Number(row.qty ?? 1),
+          final_price: Number(row.final_price ?? 0),
+          cost_snapshot: Number(row.cost_snapshot ?? 0),
+          catalog_estimated_cost: Number(row.catalog_estimated_cost ?? 0),
+          component_count: Number(row.component_count ?? 0),
+          planned_sessions: row.planned_sessions == null ? null : Number(row.planned_sessions),
+        })) as LegacyProtocolCandidate[];
+        setLegacyCandidates(normalized);
+        setLegacyDrafts(current => {
+          const next = { ...current };
+          for (const candidate of normalized) {
+            const key = legacyKey(candidate);
+            if (!next[key]) {
+              next[key] = {
+                totalSessions: candidate.planned_sessions == null ? '' : String(candidate.planned_sessions),
+                completedSessions: '1',
+              };
+            }
+          }
+          return next;
+        });
+      } catch (error) {
+        if (!alive) return;
+        console.warn('[patient-protocols:legacy-candidates]', error);
+        setLegacyCandidates([]);
+      } finally {
+        if (alive) setLoadingLegacy(false);
+      }
+    })();
+    return () => { alive = false; };
+  }, [patientId, reloadKey]);
 
   const groups = useMemo(() => groupProtocols(entitlements), [entitlements]);
   const procedureById = useMemo(() => new Map(procedures.map(procedure => [procedure.id, procedure])), [procedures]);
@@ -118,14 +195,132 @@ export function ProtocolosTab({ patientId }: { patientId: string }) {
     return byPackage;
   }, [ledger]);
 
-  const loading = loadingEntitlements || loadingPackages || loadingProcedures || loadingMeta;
+  const linkLegacyProtocol = async (candidate: LegacyProtocolCandidate) => {
+    const key = legacyKey(candidate);
+    const draft = legacyDrafts[key] ?? { totalSessions: '', completedSessions: '1' };
+    const completedSessions = Math.trunc(Number(draft.completedSessions));
+    const structured = candidate.planned_sessions != null && candidate.component_count > 0;
+    const totalSessions = structured ? null : Math.trunc(Number(draft.totalSessions));
+    const capacity = structured ? Number(candidate.planned_sessions) : Number(totalSessions);
+
+    if (!Number.isFinite(completedSessions) || completedSessions < 0) {
+      toast.error('Informe quantas sessões já foram realizadas.');
+      return;
+    }
+    if (!structured && (!Number.isFinite(totalSessions) || Number(totalSessions) < 1)) {
+      toast.error('Informe quantas sessões existem no protocolo completo.');
+      return;
+    }
+    if (completedSessions > capacity) {
+      toast.error('As sessões realizadas não podem ser maiores que o total do protocolo.');
+      return;
+    }
+
+    setLinkingLegacyKey(key);
+    try {
+      const { error } = await supabase.rpc('link_legacy_protocol_from_attendance_v1', {
+        p_procedure_id: candidate.procedure_id,
+        p_service_id: candidate.service_id,
+        p_total_sessions: totalSessions,
+        p_completed_sessions: completedSessions,
+      });
+      if (error) throw error;
+      await Promise.all([refreshEntitlements(), refreshPackages()]);
+      setReloadKey(current => current + 1);
+      toast.success('Protocolo anterior vinculado. A próxima visita pode ser registrada como nova sessão.');
+    } catch (error) {
+      console.error('[patient-protocols:link-legacy]', error);
+      const raw = error instanceof Error ? error.message : String(error ?? '');
+      if (raw.includes('LEGACY_PROTOCOL_TOTAL_SESSIONS_REQUIRED')) toast.error('Informe o total de sessões do protocolo.');
+      else if (raw.includes('LEGACY_PROTOCOL_COMPLETED_EXCEEDS_TOTAL')) toast.error('As sessões realizadas excedem o total do protocolo.');
+      else toast.error('Não foi possível vincular esse protocolo anterior.');
+    } finally {
+      setLinkingLegacyKey(null);
+    }
+  };
+
+  const legacyPanel = legacyCandidates.length > 0 ? <section style={{ border: '1px solid #fbcfe8', borderRadius: 14, background: '#fff7fb', overflow: 'hidden' }}>
+    <div style={{ padding: 15, borderBottom: '1px solid #fbcfe8', display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+      <Link2 size={19} style={{ color: 'var(--primary)', marginTop: 1, flexShrink: 0 }} />
+      <div>
+        <strong style={{ display: 'block' }}>Vincular protocolo anterior</strong>
+        <span className="page-sub">Encontramos atendimento(s) antigo(s) de combo/protocolo. Vincular mantém o pagamento original e não cria uma nova cobrança.</span>
+      </div>
+    </div>
+    <div style={{ display: 'grid', gap: 10, padding: 15 }}>
+      {legacyCandidates.map(candidate => {
+        const key = legacyKey(candidate);
+        const draft = legacyDrafts[key] ?? { totalSessions: '', completedSessions: '1' };
+        const structured = candidate.planned_sessions != null && candidate.component_count > 0;
+        const maxSessions = structured ? Number(candidate.planned_sessions) : Number(draft.totalSessions || 0);
+        const linking = linkingLegacyKey === key;
+        return <div key={key} style={{ padding: 13, border: '1px solid var(--border)', borderRadius: 12, background: 'var(--bg-1)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+            <div>
+              <strong style={{ display: 'block' }}>{candidate.service_name_snapshot}</strong>
+              <span className="page-sub">{new Date(candidate.performed_at).toLocaleDateString('pt-BR')} · valor registrado {money(candidate.final_price)}</span>
+            </div>
+            <span className="badge" style={{ background: '#fce7f3', color: '#9d174d' }}>Atendimento antigo</span>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(190px,1fr))', gap: 9, marginTop: 12 }}>
+            {structured ? <div style={{ padding: 10, borderRadius: 10, background: 'var(--bg-2)', border: '1px solid var(--border)' }}>
+              <small className="page-sub">Sessões previstas no catálogo</small>
+              <strong style={{ display: 'block', marginTop: 3 }}>{quantity(Number(candidate.planned_sessions))}</strong>
+            </div> : <div>
+              <label className="field-label">Total de sessões do protocolo</label>
+              <input
+                className="field-input"
+                type="number"
+                inputMode="numeric"
+                min="1"
+                step="1"
+                placeholder="Ex.: 6"
+                value={draft.totalSessions}
+                onChange={event => setLegacyDrafts(current => ({ ...current, [key]: { ...draft, totalSessions: event.target.value } }))}
+              />
+              <small className="page-sub">Como esse protocolo antigo não tinha composição cadastrada, informe o total combinado com a paciente.</small>
+            </div>}
+
+            <div>
+              <label className="field-label">Sessões já realizadas</label>
+              <input
+                className="field-input"
+                type="number"
+                inputMode="numeric"
+                min="0"
+                max={maxSessions > 0 ? maxSessions : undefined}
+                step="1"
+                value={draft.completedSessions}
+                onChange={event => setLegacyDrafts(current => ({ ...current, [key]: { ...draft, completedSessions: event.target.value } }))}
+              />
+              <small className="page-sub">Inclua a sessão que já aconteceu nesse atendimento antigo. Para a primeira visita, normalmente é 1.</small>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 11, color: 'var(--text-2)', fontSize: '.73rem' }}>
+            <AlertCircle size={14} /> O valor pago e a data original serão preservados. Nenhum recebimento novo será lançado.
+          </div>
+
+          <button type="button" className="btn btn--primary btn--md" style={{ marginTop: 12 }} disabled={linking} onClick={() => void linkLegacyProtocol(candidate)}>
+            {linking ? <Loader2 size={15} className="spin" /> : <Link2 size={15} />} {linking ? 'Vinculando…' : 'Vincular como protocolo ativo'}
+          </button>
+        </div>;
+      })}
+    </div>
+  </section> : null;
+
+  const loading = loadingEntitlements || loadingPackages || loadingProcedures || loadingMeta || loadingLegacy;
   if (loading) return <div className="loading-state"><Loader2 size={18} className="spin" /> Carregando protocolos…</div>;
 
   if (!groups.length) {
-    return <div className="empty-state" style={{ padding: 26 }}>
-      <WalletCards size={28} style={{ marginBottom: 8 }} />
-      <strong style={{ display: 'block', marginBottom: 5 }}>Nenhum protocolo vinculado</strong>
-      <span>Quando um combo/protocolo for contratado, ele aparecerá aqui e as sessões continuarão sendo registradas em Atendimento.</span>
+    return <div style={{ display: 'grid', gap: 14 }}>
+      {legacyPanel}
+      {!legacyPanel && <div className="empty-state" style={{ padding: 26 }}>
+        <WalletCards size={28} style={{ marginBottom: 8 }} />
+        <strong style={{ display: 'block', marginBottom: 5 }}>Nenhum protocolo vinculado</strong>
+        <span>Quando um combo/protocolo for contratado, ele aparecerá aqui e as sessões continuarão sendo registradas em Atendimento.</span>
+      </div>}
     </div>;
   }
 
@@ -134,6 +329,8 @@ export function ProtocolosTab({ patientId }: { patientId: string }) {
       <strong style={{ display: 'block', fontSize: '1rem' }}>Protocolos da paciente</strong>
       <span className="page-sub">O protocolo agrupa as sessões. Cada visita continua sendo um atendimento normal, sem cobrar novamente o que já foi pago.</span>
     </div>
+
+    {legacyPanel}
 
     {groups.map(group => {
       const protocolMeta = meta[group.packageId];
