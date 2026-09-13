@@ -5,6 +5,7 @@ import { usePatientEntitlements, usePatientPackages } from '../../../hooks/usePa
 import { useProcedures } from '../../../hooks/useProcedures';
 import { supabase } from '../../../lib/supabase';
 import { completedTreatmentSessions, effectiveTreatmentTotal, remainingTreatmentSessions } from '../../../lib/treatmentExecution';
+import type { Procedure } from '../../../types';
 import type { PatientEntitlement } from '../../../types/packages';
 
 const money = (value: number) => Number(value || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -64,17 +65,14 @@ export function ProtocolosTab({ patientId }: { patientId: string }) {
   useEffect(() => {
     let alive = true;
     setLoadingMeta(true);
-    void supabase
-      .from('patient_packages')
-      .select('id,commercial_total_snapshot,estimated_cost_snapshot,activated_at,created_at')
-      .eq('patient_id', patientId)
-      .then(({ data, error }) => {
+    void (async () => {
+      try {
+        const { data, error } = await supabase
+          .from('patient_packages')
+          .select('id,commercial_total_snapshot,estimated_cost_snapshot,activated_at,created_at')
+          .eq('patient_id', patientId);
+        if (error) throw error;
         if (!alive) return;
-        if (error) {
-          console.warn('[patient-protocols:meta]', error);
-          setMeta({});
-          return;
-        }
         const next: Record<string, ProtocolMeta> = {};
         for (const row of data ?? []) {
           next[row.id] = {
@@ -86,8 +84,14 @@ export function ProtocolosTab({ patientId }: { patientId: string }) {
           };
         }
         setMeta(next);
-      })
-      .finally(() => { if (alive) setLoadingMeta(false); });
+      } catch (error) {
+        if (!alive) return;
+        console.warn('[patient-protocols:meta]', error);
+        setMeta({});
+      } finally {
+        if (alive) setLoadingMeta(false);
+      }
+    })();
     return () => { alive = false; };
   }, [patientId]);
 
@@ -136,7 +140,7 @@ export function ProtocolosTab({ patientId }: { patientId: string }) {
       const linkedIds = activeRedemptionProcedureIds.get(group.packageId) ?? new Set<string>();
       const sessions = [...linkedIds]
         .map(id => procedureById.get(id))
-        .filter((row): row is NonNullable<typeof row> => Boolean(row))
+        .filter((row): row is Procedure => Boolean(row))
         .sort((a, b) => new Date(b.performed_at).getTime() - new Date(a.performed_at).getTime());
       const realizedCost = sessions.reduce((sum, row) => sum + Number(row.total_cost || 0), 0);
       const progress = group.total > 0 ? Math.min(100, group.completed / group.total * 100) : 0;
