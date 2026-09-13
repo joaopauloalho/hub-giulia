@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { AlertCircle, CalendarDays, Check, CheckCircle2, ClipboardPlus, Link2, Loader2, Pencil, Save, WalletCards, X } from 'lucide-react';
+import { AlertCircle, CalendarDays, CheckCircle2, ClipboardPlus, Link2, Loader2, Pencil, Save, WalletCards, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { usePatientEntitlements, usePatientPackages } from '../../../hooks/usePackages';
 import { useProcedures } from '../../../hooks/useProcedures';
