@@ -1,12 +1,9 @@
-const VERSION = '3.6.0';
+const VERSION = '3.6.1';
 const STATIC_CACHE = `hub-giulia-static-${VERSION}`;
 const SHELL_CACHE = `hub-giulia-shell-${VERSION}`;
 const SAFE_STATIC = [
   '/manifest.webmanifest',
-  '/icons/apple-touch-icon.png',
-  '/icons/icon-192.png',
-  '/icons/icon-512.png',
-  '/icons/icon-maskable-512.png',
+  '/icons/hub-giulia-v2.svg',
 ];
 const SHELL_KEY = '/__hub_safe_shell__';
 
