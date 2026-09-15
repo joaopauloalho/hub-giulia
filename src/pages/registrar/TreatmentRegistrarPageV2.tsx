@@ -24,6 +24,25 @@ type PaymentTiming = 'today' | 'past' | 'later';
 const METHOD_LABELS: Record<SimplePaymentMethod, string> = { dinheiro: 'Dinheiro', pix: 'PIX', cartao_credito: 'Crédito', cartao_debito: 'Débito' };
 const money = (value: number) => Number(value || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
+function BrlCurrencyInput({ value, onChange, label }: { value: number; onChange: (value: number) => void; label: string }) {
+  const safeValue = Number.isFinite(value) ? Math.max(0, value) : 0;
+  return <input
+    className="field-input"
+    type="text"
+    inputMode="numeric"
+    enterKeyHint="done"
+    autoComplete="off"
+    value={money(safeValue)}
+    aria-label={label}
+    onFocus={event => event.currentTarget.select()}
+    onChange={event => {
+      const digits = event.currentTarget.value.replace(/\D/g, '');
+      const cents = digits ? Number(digits) : 0;
+      onChange(Number.isFinite(cents) ? cents / 100 : 0);
+    }}
+  />;
+}
+
 function newPayment(amount: number, timing: PaymentTiming, performedDate = TODAY): PaymentEntryUI {
   return {
     tempId: crypto.randomUUID(),
@@ -75,7 +94,7 @@ function ServiceAdjustments({ services, coverage, prices, courtesy, setPrice, se
 function ServiceCostAdjustments({ services, costs, setCost }: { services: Service[]; costs: Record<string, number>; setCost: (id: string, value: number) => void }) {
   if (!services.length) return null;
   const total = services.reduce((sum, service) => sum + Number(costs[service.id] ?? service.cost_per_unit ?? 0), 0);
-  return <section style={{ marginTop: 18 }}><div style={{ marginBottom: 10 }}><strong style={{ display: 'block' }}>Custo real deste atendimento</strong><span className="page-sub">O custo padrão do catálogo vem preenchido só como referência. Ajuste livremente conforme o produto realmente utilizado; isso não altera o catálogo nem o valor cobrado da paciente.</span></div><div style={{ display: 'grid', gap: 9 }}>{services.map(service => <div key={service.id} style={{ padding: 13, border: '1px solid var(--border)', borderRadius: 12, background: 'var(--bg-2)', display: 'grid', gridTemplateColumns: '1fr minmax(160px,220px)', gap: 12, alignItems: 'center' }}><div><strong>{service.name}</strong><small className="page-sub" style={{ display: 'block' }}>Custo padrão: {money(Number(service.cost_per_unit || 0))}</small></div><div><label className="field-label">Custo neste atendimento</label><input className="field-input" type="number" inputMode="decimal" min="0" step="0.01" value={costs[service.id] ?? Number(service.cost_per_unit || 0)} onChange={event => setCost(service.id, Math.max(0, Number(event.target.value) || 0))}/></div></div>)}</div><div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', gap: 12 }}><span>Custo de procedimentos informado</span><strong>{money(total)}</strong></div></section>;
+  return <section style={{ marginTop: 18 }}><div style={{ marginBottom: 10 }}><strong style={{ display: 'block' }}>Custo real deste atendimento</strong><span className="page-sub">O custo padrão do catálogo vem preenchido só como referência. Toque no valor e digite somente os números; os centavos são posicionados automaticamente. Isso não altera o catálogo nem o valor cobrado da paciente.</span></div><div style={{ display: 'grid', gap: 9 }}>{services.map(service => <div key={service.id} style={{ padding: 13, border: '1px solid var(--border)', borderRadius: 12, background: 'var(--bg-2)', display: 'grid', gridTemplateColumns: '1fr minmax(160px,220px)', gap: 12, alignItems: 'center' }}><div><strong>{service.name}</strong><small className="page-sub" style={{ display: 'block' }}>Custo padrão: {money(Number(service.cost_per_unit || 0))}</small></div><div><label className="field-label">Custo neste atendimento</label><BrlCurrencyInput value={Number(costs[service.id] ?? service.cost_per_unit ?? 0)} onChange={value => setCost(service.id, value)} label={`Custo neste atendimento: ${service.name}`} /></div></div>)}</div><div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', gap: 12 }}><span>Custo de procedimentos informado</span><strong>{money(total)}</strong></div></section>;
 }
 
 function PaymentCard({ entry, timing, rates, canRemove, onChange, onRemove }: { entry: PaymentEntryUI; timing: PaymentTiming; rates: MaquininhaRates; canRemove: boolean; onChange: (entry: PaymentEntryUI) => void; onRemove: () => void }) {
