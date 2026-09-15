@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { AlertCircle, CalendarDays, CheckCircle2, ClipboardPlus, Link2, Loader2, Pencil, RotateCcw, Save, SquareCheckBig, WalletCards, X } from 'lucide-react';
+import { AlertCircle, CalendarDays, CheckCircle2, ClipboardPlus, Link2, Loader2, Pencil, RotateCcw, Save, WalletCards, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { usePackagesActions, usePatientEntitlements, usePatientPackages } from '../../../hooks/usePackages';
 import { useProcedures } from '../../../hooks/useProcedures';
@@ -259,8 +259,10 @@ export function ProtocolosTab({ patientId }: { patientId: string }) {
     for (const item of group.items) {
       const total = Number(editDraft.totals[item.package_item_id]?.replace(',', '.'));
       const completed = completedTreatmentSessions(item);
+      const contracted = effectiveTreatmentTotal(item);
+      const minimumPreservedTotal = Math.min(completed, contracted);
       if (!Number.isFinite(total) || total <= 0) return toast.error(`Informe um total válido para ${item.service_name_snapshot}.`);
-      if (total + 0.0001 < completed) return toast.error(`O total de ${item.service_name_snapshot} não pode ser menor que ${quantity(completed)} já realizada(s).`);
+      if (total + 0.0001 < minimumPreservedTotal) return toast.error(`O total contratado de ${item.service_name_snapshot} não pode ser menor que ${quantity(minimumPreservedTotal)} neste histórico.`);
     }
 
     setSavingEdit(true);
@@ -292,7 +294,7 @@ export function ProtocolosTab({ patientId }: { patientId: string }) {
     } catch (error) {
       console.error('[patient-protocols:update-plan]', error);
       const raw = error instanceof Error ? error.message : String(error ?? '');
-      if (raw.includes('PROTOCOL_TOTAL_BELOW_COMPLETED')) toast.error('Não é possível reduzir o total abaixo do número de sessões já realizadas.');
+      if (raw.includes('PROTOCOL_TOTAL_BELOW_COMPLETED')) toast.error('Não é possível reduzir o total contratado abaixo do mínimo preservado pelo histórico.');
       else if (raw.includes('PROTOCOL_CLINICALLY_FINALIZED')) toast.error('Reabra o protocolo antes de alterar o planejamento.');
       else toast.error('Não foi possível atualizar o protocolo.');
     } finally {
@@ -488,7 +490,7 @@ export function ProtocolosTab({ patientId }: { patientId: string }) {
           <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
             {!editing && group.active && <button type="button" className="btn btn--ghost btn--sm" onClick={() => startEditing(group)} disabled={!protocolMeta || changingStatus}><Pencil size={14} /> Editar protocolo</button>}
             {clinicallyFinalized && extendable && <button type="button" className="btn btn--ghost btn--sm" onClick={() => void reopenClinicalProtocol(group)} disabled={changingStatus}>{changingStatus ? <Loader2 size={14} className="spin" /> : <RotateCcw size={14} />} Reabrir protocolo</button>}
-            {group.active && extendable && <button type="button" className="btn btn--ghost btn--sm" onClick={() => void finalizeClinicalProtocol(group)} disabled={changingStatus}>{changingStatus ? <Loader2 size={14} className="spin" /> : <SquareCheckBig size={14} />} Finalizar protocolo</button>}
+            {group.active && extendable && <button type="button" className="btn btn--ghost btn--sm" onClick={() => void finalizeClinicalProtocol(group)} disabled={changingStatus}>{changingStatus ? <Loader2 size={14} className="spin" /> : <CheckCircle2 size={14} />} Finalizar protocolo</button>}
             {group.active && <button type="button" className="btn btn--primary btn--sm" onClick={registerSession} disabled={!nextItem || changingStatus}><ClipboardPlus size={15} /> Registrar nova sessão</button>}
           </div>
         </div>
@@ -508,11 +510,14 @@ export function ProtocolosTab({ patientId }: { patientId: string }) {
             <div style={{ marginTop: 12 }}>
               <strong style={{ display: 'block', fontSize: '.8rem', marginBottom: 7 }}>Total contratado de sessões</strong>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(210px,1fr))', gap: 8 }}>
-                {group.items.map(item => <div key={item.package_item_id} style={{ padding: 10, border: '1px solid var(--border)', borderRadius: 10, background: 'var(--bg-1)' }}>
-                  <label className="field-label">{item.service_name_snapshot}</label>
-                  <input className="field-input" type="number" inputMode="decimal" min={completedTreatmentSessions(item)} step="1" value={editDraft.totals[item.package_item_id] ?? ''} onChange={event => setEditDraft(current => current ? { ...current, totals: { ...current.totals, [item.package_item_id]: event.target.value } } : current)}/>
-                  <small className="page-sub">Já realizadas: {quantity(completedTreatmentSessions(item))}. Sessões adicionais clínicas não alteram automaticamente o total contratado.</small>
-                </div>)}
+                {group.items.map(item => {
+                  const minimumPreservedTotal = Math.min(completedTreatmentSessions(item), effectiveTreatmentTotal(item));
+                  return <div key={item.package_item_id} style={{ padding: 10, border: '1px solid var(--border)', borderRadius: 10, background: 'var(--bg-1)' }}>
+                    <label className="field-label">{item.service_name_snapshot}</label>
+                    <input className="field-input" type="number" inputMode="decimal" min={minimumPreservedTotal} step="1" value={editDraft.totals[item.package_item_id] ?? ''} onChange={event => setEditDraft(current => current ? { ...current, totals: { ...current.totals, [item.package_item_id]: event.target.value } } : current)}/>
+                    <small className="page-sub">Já realizadas: {quantity(completedTreatmentSessions(item))}. Sessões adicionais clínicas não alteram automaticamente o total contratado.</small>
+                  </div>;
+                })}
               </div>
             </div>
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 12 }}>
