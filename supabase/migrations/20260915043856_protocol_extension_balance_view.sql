@@ -3,7 +3,7 @@
 -- usar primeiro apenas o que foi contratado e voltar a expor uma única sessão clínica quando
 -- esse saldo terminar novamente.
 
-create or replace view public.patient_credit_item_balances_v as
+create or replace view public.patient_credit_item_balances_v with (security_invoker = true) as
 select
   i.user_id,
   p.patient_id,
