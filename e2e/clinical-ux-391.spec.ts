@@ -5,11 +5,12 @@ import { browserLogin } from './helpers';
 type E2EState={patientId:string};
 const readState=async()=>JSON.parse(await fs.readFile('.e2e-state.json','utf8')) as E2EState;
 
-test('clinical v3 binary UX has no explicit unanswered option and procedures use free notes',async({page})=>{
+test('clinical binary UX opens optional observations only after Sim and procedures keep free notes',async({page})=>{
  const seeded=await readState();await browserLogin(page);await page.goto(`/pacientes/${seeded.patientId}/anamnese`);await expect(page.getByText('Condições de Saúde')).toBeVisible();
  await expect(page.getByText('Não resp.',{exact:true})).toHaveCount(0);await expect(page.getByText('Não respondido',{exact:true})).toHaveCount(0);
- const hypertension=page.locator('#q-conditions-hipertensao');await expect(hypertension.getByRole('radio',{name:'Sim'})).toBeVisible();await expect(hypertension.getByRole('radio',{name:'Não'})).toBeVisible();
- const procedures=page.locator('#procedures');await expect(procedures.getByText('Limpeza de pele',{exact:true})).toBeVisible();await expect(procedures.locator('textarea#detail-aesthetics-limpeza_pele')).toBeVisible();await expect(procedures.locator('input[type="date"]')).toHaveCount(0);
+ const hypertension=page.locator('#q-conditions-hipertensao');const hypertensionYes=hypertension.getByRole('radio',{name:'Sim'});const hypertensionNo=hypertension.getByRole('radio',{name:'Não'});await expect(hypertensionYes).toBeVisible();await expect(hypertensionNo).toBeVisible();
+ await hypertensionNo.click();await expect(hypertension.locator('textarea')).toHaveCount(0);await hypertensionYes.click();await expect(hypertension.locator('textarea')).toBeVisible();
+ const procedures=page.locator('#procedures');const limpeza=page.locator('#q-aesthetics-limpeza_pele');const limpezaYes=limpeza.getByRole('radio',{name:'Sim'});const limpezaNo=limpeza.getByRole('radio',{name:'Não'});await expect(procedures.getByText('Limpeza de pele',{exact:true})).toBeVisible();await limpezaNo.click();await expect(limpeza.locator('textarea')).toHaveCount(0);await limpezaYes.click();await expect(limpeza.locator('textarea')).toBeVisible();await expect(procedures.locator('input[type="date"]')).toHaveCount(0);
  await expect(page.getByLabel('Pele da paciente')).toBeVisible();await expect(page.getByLabel('Observações gerais')).toBeVisible();await expect(page.getByLabel('Minhas recomendações')).toBeVisible();
 });
 
@@ -21,5 +22,5 @@ test('new patient draft survives backdrop, ESC and explicit close guard',async({
 });
 
 test('anamnesis remains touch-usable on iPad and iPhone widths',async({page})=>{
- const seeded=await readState();await browserLogin(page);for(const viewport of[{width:1024,height:1366},{width:1366,height:1024},{width:390,height:844}]){await page.setViewportSize(viewport);await page.goto(`/pacientes/${seeded.patientId}/anamnese`);await expect(page.locator('#q-conditions-hipertensao').getByRole('radio',{name:'Sim'})).toBeVisible();const box=await page.locator('#q-conditions-hipertensao').getByRole('radio',{name:'Sim'}).boundingBox();expect(box?.height??0).toBeGreaterThanOrEqual(44);await expect(page.locator('#procedures textarea').first()).toBeVisible();}}
+ const seeded=await readState();await browserLogin(page);for(const viewport of[{width:1024,height:1366},{width:1366,height:1024},{width:390,height:844}]){await page.setViewportSize(viewport);await page.goto(`/pacientes/${seeded.patientId}/anamnese`);const hypertension=page.locator('#q-conditions-hipertensao');const sim=hypertension.getByRole('radio',{name:'Sim'});await expect(sim).toBeVisible();const box=await sim.boundingBox();expect(box?.height??0).toBeGreaterThanOrEqual(44);await sim.click();await expect(hypertension.locator('textarea')).toBeVisible();}}
 );

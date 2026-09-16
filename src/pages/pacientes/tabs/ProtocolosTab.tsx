@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
-import { AlertCircle, CalendarDays, CheckCircle2, ClipboardPlus, Link2, Loader2, Pencil, Save, WalletCards, X } from 'lucide-react';
+import { AlertCircle, CalendarDays, CheckCircle2, ClipboardPlus, Link2, Loader2, Pencil, RotateCcw, Save, WalletCards, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { usePatientEntitlements, usePatientPackages } from '../../../hooks/usePackages';
+import { usePackagesActions, usePatientEntitlements, usePatientPackages } from '../../../hooks/usePackages';
 import { useProcedures } from '../../../hooks/useProcedures';
 import { useToast } from '../../../hooks/useToast';
 import { supabase } from '../../../lib/supabase';
-import { completedTreatmentSessions, effectiveTreatmentTotal, remainingTreatmentSessions } from '../../../lib/treatmentExecution';
+import { additionalTreatmentSessions, completedTreatmentSessions, effectiveTreatmentTotal, remainingTreatmentSessions, treatmentProgressLabel } from '../../../lib/treatmentExecution';
 import type { Procedure } from '../../../types';
 import type { PatientEntitlement } from '../../../types/packages';
 
@@ -33,6 +33,7 @@ type ProtocolGroup = {
   total: number;
   completed: number;
   remaining: number;
+  additional: number;
   active: boolean;
 };
 
@@ -75,6 +76,7 @@ function groupProtocols(entitlements: PatientEntitlement[]) {
     const total = items.reduce((sum, item) => sum + effectiveTreatmentTotal(item), 0);
     const completed = items.reduce((sum, item) => sum + completedTreatmentSessions(item), 0);
     const remaining = items.reduce((sum, item) => sum + remainingTreatmentSessions(item), 0);
+    const additional = items.reduce((sum, item) => sum + additionalTreatmentSessions(item), 0);
     return {
       packageId,
       title: items[0]?.package_title ?? 'Protocolo',
@@ -83,7 +85,8 @@ function groupProtocols(entitlements: PatientEntitlement[]) {
       total,
       completed,
       remaining,
-      active: items.some(item => item.effective_status === 'active') && remaining > 0,
+      additional,
+      active: items.some(item => item.effective_status === 'active'),
     };
   }).sort((a, b) => Number(b.active) - Number(a.active) || a.title.localeCompare(b.title, 'pt-BR'));
 }
@@ -100,6 +103,7 @@ function isoDate(value: string | null | undefined) {
 export function ProtocolosTab({ patientId }: { patientId: string }) {
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { finalizeProtocol, reopenProtocol } = usePackagesActions();
   const { data: entitlements, loading: loadingEntitlements, refresh: refreshEntitlements } = usePatientEntitlements(patientId);
   const { ledger, loading: loadingPackages, refresh: refreshPackages } = usePatientPackages(patientId);
   const { procedures, loading: loadingProcedures, refresh: refreshProcedures } = useProcedures(patientId);
@@ -112,6 +116,7 @@ export function ProtocolosTab({ patientId }: { patientId: string }) {
   const [editingPackageId, setEditingPackageId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState<ProtocolEditDraft | null>(null);
   const [savingEdit, setSavingEdit] = useState(false);
+  const [changingStatusPackageId, setChangingStatusPackageId] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
@@ -221,9 +226,14 @@ export function ProtocolosTab({ patientId }: { patientId: string }) {
     return byPackage;
   }, [ledger]);
 
+  const refreshAll = async () => {
+    await Promise.all([refreshEntitlements(), refreshPackages(), refreshProcedures()]);
+    setReloadKey(current => current + 1);
+  };
+
   const startEditing = (group: ProtocolGroup) => {
     const protocolMeta = meta[group.packageId];
-    if (!protocolMeta) return;
+    if (!protocolMeta || !group.active) return;
     setEditingPackageId(group.packageId);
     setEditDraft({
       title: protocolMeta.title_snapshot || group.title,
@@ -249,8 +259,10 @@ export function ProtocolosTab({ patientId }: { patientId: string }) {
     for (const item of group.items) {
       const total = Number(editDraft.totals[item.package_item_id]?.replace(',', '.'));
       const completed = completedTreatmentSessions(item);
+      const contracted = effectiveTreatmentTotal(item);
+      const minimumPreservedTotal = Math.min(completed, contracted);
       if (!Number.isFinite(total) || total <= 0) return toast.error(`Informe um total válido para ${item.service_name_snapshot}.`);
-      if (total + 0.0001 < completed) return toast.error(`O total de ${item.service_name_snapshot} não pode ser menor que ${quantity(completed)} já realizada(s).`);
+      if (total + 0.0001 < minimumPreservedTotal) return toast.error(`O total contratado de ${item.service_name_snapshot} não pode ser menor que ${quantity(minimumPreservedTotal)} neste histórico.`);
     }
 
     setSavingEdit(true);
@@ -276,17 +288,47 @@ export function ProtocolosTab({ patientId }: { patientId: string }) {
         if (totalError) throw totalError;
       }
 
-      await Promise.all([refreshEntitlements(), refreshPackages(), refreshProcedures()]);
-      setReloadKey(current => current + 1);
+      await refreshAll();
       cancelEditing();
       toast.success('Protocolo atualizado. A previsão não movimenta o caixa; os custos reais continuam vindo das sessões.');
     } catch (error) {
       console.error('[patient-protocols:update-plan]', error);
       const raw = error instanceof Error ? error.message : String(error ?? '');
-      if (raw.includes('PROTOCOL_TOTAL_BELOW_COMPLETED')) toast.error('Não é possível reduzir o total abaixo do número de sessões já realizadas.');
+      if (raw.includes('PROTOCOL_TOTAL_BELOW_COMPLETED')) toast.error('Não é possível reduzir o total contratado abaixo do mínimo preservado pelo histórico.');
+      else if (raw.includes('PROTOCOL_CLINICALLY_FINALIZED')) toast.error('Reabra o protocolo antes de alterar o planejamento.');
       else toast.error('Não foi possível atualizar o protocolo.');
     } finally {
       setSavingEdit(false);
+    }
+  };
+
+  const finalizeClinicalProtocol = async (group: ProtocolGroup) => {
+    if (!window.confirm(`Finalizar ${group.title}? Ele deixará de aparecer como opção de nova sessão, mas todo o histórico continuará preservado.`)) return;
+    setChangingStatusPackageId(group.packageId);
+    try {
+      await finalizeProtocol(group.packageId);
+      if (editingPackageId === group.packageId) cancelEditing();
+      await refreshAll();
+      toast.success('Protocolo finalizado. O histórico e a quantidade originalmente contratada foram preservados.');
+    } catch (error) {
+      console.error('[patient-protocols:finalize]', error);
+      toast.error('Não foi possível finalizar o protocolo.');
+    } finally {
+      setChangingStatusPackageId(null);
+    }
+  };
+
+  const reopenClinicalProtocol = async (group: ProtocolGroup) => {
+    setChangingStatusPackageId(group.packageId);
+    try {
+      await reopenProtocol(group.packageId);
+      await refreshAll();
+      toast.success('Protocolo reaberto. Novas sessões podem ser registradas novamente.');
+    } catch (error) {
+      console.error('[patient-protocols:reopen]', error);
+      toast.error('Não foi possível reabrir o protocolo.');
+    } finally {
+      setChangingStatusPackageId(null);
     }
   };
 
@@ -400,7 +442,7 @@ export function ProtocolosTab({ patientId }: { patientId: string }) {
   return <div style={{ display: 'grid', gap: 14 }}>
     <div style={{ padding: '2px 2px 6px' }}>
       <strong style={{ display: 'block', fontSize: '1rem' }}>Protocolos da paciente</strong>
-      <span className="page-sub">O protocolo agrupa as sessões. Cada visita continua sendo um atendimento normal, sem cobrar novamente o que já foi pago.</span>
+      <span className="page-sub">A quantidade contratada fica preservada como referência. Se precisar de sessões adicionais para entregar o resultado, continue registrando normalmente e finalize o protocolo apenas quando o tratamento clínico realmente terminar.</span>
     </div>
 
     {legacyPanel}
@@ -416,12 +458,15 @@ export function ProtocolosTab({ patientId }: { patientId: string }) {
       const progress = group.total > 0 ? Math.min(100, group.completed / group.total * 100) : 0;
       const nextItem = group.items.find(item => item.effective_status === 'active' && item.available_balance >= 1 && item.service_id);
       const purchasedAt = protocolMeta?.valid_from ?? protocolMeta?.activated_at ?? protocolMeta?.created_at ?? null;
-      const statusLabel = group.active ? 'Em andamento' : group.remaining <= 0 && group.completed > 0 ? 'Concluído' : 'Sem sessões disponíveis';
+      const clinicallyFinalized = group.items.some(item => Boolean(item.clinically_finalized_at));
+      const extendable = group.items.some(item => item.allow_clinical_extensions);
+      const statusLabel = clinicallyFinalized ? 'Finalizado' : group.active ? 'Em andamento' : 'Sem sessões disponíveis';
       const currentForecast = protocolMeta?.estimated_cost_snapshot ?? null;
       const initialForecast = protocolMeta?.initial_estimated_cost_snapshot ?? currentForecast;
       const forecastRemaining = currentForecast == null ? null : currentForecast - realizedCost;
       const predictedMargin = currentForecast == null || !protocolMeta ? null : protocolMeta.commercial_total_snapshot - currentForecast;
       const editing = editingPackageId === group.packageId && editDraft != null;
+      const changingStatus = changingStatusPackageId === group.packageId;
 
       const registerSession = () => {
         const query = new URLSearchParams({ patient_id: patientId });
@@ -438,12 +483,15 @@ export function ProtocolosTab({ patientId }: { patientId: string }) {
               <strong style={{ fontSize: '.96rem' }}>{protocolMeta?.title_snapshot || group.title}</strong>
               <span className={`badge ${group.active ? 'badge--green' : ''}`} style={!group.active ? { background: 'var(--bg-3)', color: 'var(--text-2)' } : undefined}>{statusLabel}</span>
               {group.sourceType === 'complimentary' && <span className="badge" style={{ background: '#fce7f3', color: '#9d174d' }}>Cortesia</span>}
+              {group.additional > 0 && <span className="badge" style={{ background: '#fff7ed', color: '#9a3412' }}>+{quantity(group.additional)} adicional{group.additional === 1 ? '' : 'is'} sem cobrança</span>}
             </div>
             {purchasedAt && <span className="page-sub" style={{ display: 'flex', alignItems: 'center', gap: 5, marginTop: 5 }}><CalendarDays size={13} /> Iniciado em {new Date(`${isoDate(purchasedAt)}T12:00:00`).toLocaleDateString('pt-BR')}</span>}
           </div>
           <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-            {!editing && <button type="button" className="btn btn--ghost btn--sm" onClick={() => startEditing(group)} disabled={!protocolMeta}><Pencil size={14} /> Editar protocolo</button>}
-            {group.active && <button type="button" className="btn btn--primary btn--sm" onClick={registerSession} disabled={!nextItem}><ClipboardPlus size={15} /> Registrar nova sessão</button>}
+            {!editing && group.active && <button type="button" className="btn btn--ghost btn--sm" onClick={() => startEditing(group)} disabled={!protocolMeta || changingStatus}><Pencil size={14} /> Editar protocolo</button>}
+            {clinicallyFinalized && extendable && <button type="button" className="btn btn--ghost btn--sm" onClick={() => void reopenClinicalProtocol(group)} disabled={changingStatus}>{changingStatus ? <Loader2 size={14} className="spin" /> : <RotateCcw size={14} />} Reabrir protocolo</button>}
+            {group.active && extendable && <button type="button" className="btn btn--ghost btn--sm" onClick={() => void finalizeClinicalProtocol(group)} disabled={changingStatus}>{changingStatus ? <Loader2 size={14} className="spin" /> : <CheckCircle2 size={14} />} Finalizar protocolo</button>}
+            {group.active && <button type="button" className="btn btn--primary btn--sm" onClick={registerSession} disabled={!nextItem || changingStatus}><ClipboardPlus size={15} /> Registrar nova sessão</button>}
           </div>
         </div>
 
@@ -460,13 +508,16 @@ export function ProtocolosTab({ patientId }: { patientId: string }) {
             </div>
             <div style={{ marginTop: 11 }}><label className="field-label">Observação do protocolo</label><textarea className="field-input" rows={2} value={editDraft.notes} onChange={event => setEditDraft(current => current ? { ...current, notes: event.target.value } : current)} placeholder="Opcional…"/></div>
             <div style={{ marginTop: 12 }}>
-              <strong style={{ display: 'block', fontSize: '.8rem', marginBottom: 7 }}>Total planejado de sessões</strong>
+              <strong style={{ display: 'block', fontSize: '.8rem', marginBottom: 7 }}>Total contratado de sessões</strong>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(210px,1fr))', gap: 8 }}>
-                {group.items.map(item => <div key={item.package_item_id} style={{ padding: 10, border: '1px solid var(--border)', borderRadius: 10, background: 'var(--bg-1)' }}>
-                  <label className="field-label">{item.service_name_snapshot}</label>
-                  <input className="field-input" type="number" inputMode="decimal" min={completedTreatmentSessions(item)} step="1" value={editDraft.totals[item.package_item_id] ?? ''} onChange={event => setEditDraft(current => current ? { ...current, totals: { ...current.totals, [item.package_item_id]: event.target.value } } : current)}/>
-                  <small className="page-sub">Já realizadas: {quantity(completedTreatmentSessions(item))}. Você pode aumentar o total a qualquer momento.</small>
-                </div>)}
+                {group.items.map(item => {
+                  const minimumPreservedTotal = Math.min(completedTreatmentSessions(item), effectiveTreatmentTotal(item));
+                  return <div key={item.package_item_id} style={{ padding: 10, border: '1px solid var(--border)', borderRadius: 10, background: 'var(--bg-1)' }}>
+                    <label className="field-label">{item.service_name_snapshot}</label>
+                    <input className="field-input" type="number" inputMode="decimal" min={minimumPreservedTotal} step="1" value={editDraft.totals[item.package_item_id] ?? ''} onChange={event => setEditDraft(current => current ? { ...current, totals: { ...current.totals, [item.package_item_id]: event.target.value } } : current)}/>
+                    <small className="page-sub">Já realizadas: {quantity(completedTreatmentSessions(item))}. Sessões adicionais clínicas não alteram automaticamente o total contratado.</small>
+                  </div>;
+                })}
               </div>
             </div>
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 12 }}>
@@ -480,23 +531,33 @@ export function ProtocolosTab({ patientId }: { patientId: string }) {
             <div style={{ padding: 10, borderRadius: 10, background: 'var(--bg-1)', border: '1px solid var(--border)' }}><small className="page-sub">Previsão inicial</small><strong style={{ display: 'block', marginTop: 3 }}>{initialForecast == null ? '—' : money(initialForecast)}</strong></div>
             <div style={{ padding: 10, borderRadius: 10, background: 'var(--bg-1)', border: '1px solid var(--border)' }}><small className="page-sub">Previsão atual</small><strong style={{ display: 'block', marginTop: 3 }}>{currentForecast == null ? '—' : money(currentForecast)}</strong></div>
             <div style={{ padding: 10, borderRadius: 10, background: 'var(--bg-1)', border: '1px solid var(--border)' }}><small className="page-sub">Custo realizado</small><strong style={{ display: 'block', marginTop: 3 }}>{money(realizedCost)}</strong></div>
-            <div style={{ padding: 10, borderRadius: 10, background: 'var(--bg-1)', border: '1px solid var(--border)' }}><small className="page-sub">Sessões</small><strong style={{ display: 'block', marginTop: 3 }}>{quantity(group.completed)} de {quantity(group.total)}</strong></div>
+            <div style={{ padding: 10, borderRadius: 10, background: 'var(--bg-1)', border: '1px solid var(--border)' }}><small className="page-sub">Sessões</small><strong style={{ display: 'block', marginTop: 3 }}>{group.completed > group.total ? `${quantity(group.completed)} realizadas · ${quantity(group.total)} contratadas` : `${quantity(group.completed)} de ${quantity(group.total)}`}</strong></div>
           </div>
 
           <div style={{ marginTop: 10, padding: 11, borderRadius: 10, border: `1px solid ${forecastRemaining != null && forecastRemaining < 0 ? '#fecaca' : '#bbf7d0'}`, background: forecastRemaining != null && forecastRemaining < 0 ? '#fff7f7' : '#f7fff9', display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-            <span style={{ fontSize: '.76rem' }}><strong>Previsão não é saída de caixa.</strong> O custo realizado acima soma apenas os atendimentos/sessões efetivamente registrados.</span>
+            <span style={{ fontSize: '.76rem' }}><strong>Previsão não é saída de caixa.</strong> O custo realizado acima soma apenas os atendimentos/sessões efetivamente registrados, inclusive sessões adicionais.</span>
             {forecastRemaining != null && <strong style={{ fontSize: '.76rem', color: forecastRemaining < 0 ? '#b91c1c' : '#166534' }}>{forecastRemaining < 0 ? `${money(Math.abs(forecastRemaining))} acima da previsão` : `${money(forecastRemaining)} ainda previstos`}</strong>}
           </div>
           {predictedMargin != null && <div className="page-sub" style={{ marginTop: 6 }}>Resultado bruto previsto do protocolo: <strong>{money(predictedMargin)}</strong> antes de despesas gerais e taxas.</div>}
 
           <div style={{ height: 7, borderRadius: 999, background: 'var(--bg-3)', overflow: 'hidden', marginTop: 12 }}><div style={{ height: '100%', width: `${progress}%`, background: 'var(--primary)', borderRadius: 999 }} /></div>
-          <div className="page-sub" style={{ marginTop: 5 }}>{quantity(group.remaining)} sessão{group.remaining === 1 ? '' : 'ões'} restante{group.remaining === 1 ? '' : 's'}</div>
+          <div className="page-sub" style={{ marginTop: 5 }}>
+            {group.remaining > 0
+              ? `${quantity(group.remaining)} sessão${group.remaining === 1 ? '' : 'ões'} contratada${group.remaining === 1 ? '' : 's'} restante${group.remaining === 1 ? '' : 's'}`
+              : group.active
+                ? `Quantidade contratada concluída${group.additional > 0 ? ` · +${quantity(group.additional)} adicional${group.additional === 1 ? '' : 'is'} realizada${group.additional === 1 ? '' : 's'}` : ''} · continuidade clínica liberada`
+                : 'Protocolo finalizado'}
+          </div>
 
           <div style={{ display: 'grid', gap: 6, marginTop: 13 }}>
-            {group.items.map(item => <div key={item.package_item_id} style={{ display: 'flex', justifyContent: 'space-between', gap: 10, padding: '8px 10px', borderRadius: 9, background: 'var(--bg-1)', border: '1px solid var(--border)' }}>
-              <span><strong style={{ display: 'block', fontSize: '.79rem' }}>{item.service_name_snapshot}</strong><small className="page-sub">{quantity(completedTreatmentSessions(item))} de {quantity(effectiveTreatmentTotal(item))} realizadas</small></span>
-              {remainingTreatmentSessions(item) <= 0 ? <CheckCircle2 size={17} style={{ color: '#15803d', flexShrink: 0 }} /> : <strong style={{ fontSize: '.76rem', whiteSpace: 'nowrap' }}>{quantity(remainingTreatmentSessions(item))} restantes</strong>}
-            </div>)}
+            {group.items.map(item => {
+              const itemRemaining = remainingTreatmentSessions(item);
+              const itemAdditional = additionalTreatmentSessions(item);
+              return <div key={item.package_item_id} style={{ display: 'flex', justifyContent: 'space-between', gap: 10, padding: '8px 10px', borderRadius: 9, background: 'var(--bg-1)', border: '1px solid var(--border)' }}>
+                <span><strong style={{ display: 'block', fontSize: '.79rem' }}>{item.service_name_snapshot}</strong><small className="page-sub">{treatmentProgressLabel(item)}</small>{itemAdditional > 0 && <small style={{ display: 'block', color: '#9a3412', marginTop: 2 }}>+{quantity(itemAdditional)} adicional{itemAdditional === 1 ? '' : 'is'} sem cobrança</small>}</span>
+                {itemRemaining > 0 ? <strong style={{ fontSize: '.76rem', whiteSpace: 'nowrap' }}>{quantity(itemRemaining)} restantes</strong> : item.effective_status === 'active' ? <strong style={{ fontSize: '.76rem', whiteSpace: 'nowrap', color: '#166534' }}>Continuidade liberada</strong> : <CheckCircle2 size={17} style={{ color: '#15803d', flexShrink: 0 }} />}
+              </div>;
+            })}
           </div>
 
           {protocolMeta?.notes && !editing && <div style={{ marginTop: 12, padding: 10, borderRadius: 9, background: 'var(--bg-1)', border: '1px solid var(--border)', fontSize: '.76rem' }}><strong>Observação</strong><div className="page-sub" style={{ marginTop: 3, whiteSpace: 'pre-wrap' }}>{protocolMeta.notes}</div></div>}

@@ -121,12 +121,14 @@ type BinaryFieldProps = {
   observation?: string;
   onObservationChange?: (value: string) => void;
   observationPlaceholder?: string;
+  observeWhen?: boolean;
 };
 
-function BinaryField({ id, label, value, onChange, help, observation, onObservationChange, observationPlaceholder }: BinaryFieldProps) {
+function BinaryField({ id, label, value, onChange, help, observation, onObservationChange, observationPlaceholder, observeWhen = true }: BinaryFieldProps) {
   const labelId = `${id}-label`;
   const canObserve = Boolean(onObservationChange);
-  const showObservation = canObserve && (typeof value === 'boolean' || Boolean(observation?.trim()));
+  const hasSavedObservation = Boolean(observation?.trim());
+  const showObservation = canObserve && (value === observeWhen || hasSavedObservation);
   return (
     <div className={`anamnesis-question${showObservation ? ' anamnesis-question--with-observation' : ''}`} id={id} tabIndex={-1}>
       <div className="anamnesis-question__copy">
@@ -150,7 +152,7 @@ function BinaryField({ id, label, value, onChange, help, observation, onObservat
   );
 }
 
-function DetailQuestion(props: { area: string; flag: string; label: string; value?: boolean; detail?: string; setFlag: (value: boolean) => void; setDetail: (value: string) => void; placeholder: string; help?: string }) {
+function DetailQuestion(props: { area: string; flag: string; label: string; value?: boolean; detail?: string; setFlag: (value: boolean) => void; setDetail: (value: string) => void; placeholder: string; help?: string; observeWhen?: boolean }) {
   return (
     <div className="anamnesis-conditional">
       <BinaryField
@@ -161,7 +163,8 @@ function DetailQuestion(props: { area: string; flag: string; label: string; valu
         help={props.help}
         observation={props.detail}
         onObservationChange={props.setDetail}
-        observationPlaceholder={props.value === false ? 'Observação (opcional)' : props.placeholder}
+        observationPlaceholder={props.placeholder}
+        observeWhen={props.observeWhen}
       />
     </div>
   );
@@ -170,11 +173,24 @@ function DetailQuestion(props: { area: string; flag: string; label: string; valu
 function ProcedureQuestion({ flag, label, value, note, onFlag, onNote }: { flag: string; label: string; value?: boolean; note?: string; onFlag: (value: boolean) => void; onNote: (value: string) => void }) {
   return (
     <div className="anamnesis-procedure-card">
-      <BinaryField id={`q-aesthetics-${flag}`} label={label} value={value} onChange={onFlag} />
-      <div className="field">
-        <label className="field-label" htmlFor={`detail-aesthetics-${flag}`}>Observações</label>
-        <textarea id={`detail-aesthetics-${flag}`} data-focus-target className="field-input anamnesis-detail" rows={2} value={note ?? ''} onChange={event => onNote(event.target.value)} placeholder="Ex.: há 6 meses, 3 sessões, não lembra quando, reação, outra clínica…" />
-      </div>
+      <BinaryField
+        id={`q-aesthetics-${flag}`}
+        label={label}
+        value={value}
+        onChange={onFlag}
+        observation={note}
+        onObservationChange={onNote}
+        observationPlaceholder="Ex.: há 6 meses, 3 sessões, reação, outra clínica…"
+      />
+    </div>
+  );
+}
+
+function SectionNotes({ id, value, onChange, placeholder = 'Registre aqui qualquer contexto importante desta parte da anamnese…' }: { id: string; value?: string; onChange: (value: string) => void; placeholder?: string }) {
+  return (
+    <div className="field field--full" style={{ marginTop: 16 }}>
+      <label className="field-label" htmlFor={id}>Observações adicionais <span className="page-sub">· opcional</span></label>
+      <textarea id={id} className="field-input anamnesis-large-text" rows={3} value={value ?? ''} onChange={event => onChange(event.target.value)} placeholder={placeholder} />
     </div>
   );
 }
@@ -281,13 +297,9 @@ export function AnamneseEditorPage() {
         </nav>
         <main className="anamnesis-form">
           <Section id="conditions" title="Condições de Saúde">
-            <p className="anamnesis-section-help">No rascunho uma pergunta pode ficar em branco. Ao concluir, cada item obrigatório precisa de Sim ou Não.</p>
+            <p className="anamnesis-section-help">Ao marcar uma condição, a observação aparece somente quando há algo clínico para detalhar.</p>
             <div className="anamnesis-grid">{CONDITIONS.map(([key, label]) => <BinaryField key={key} id={`q-conditions-${key}`} label={label} value={draft.conditions[key] as boolean | undefined} onChange={value => setMap('conditions', key, value)} observation={draft.conditions[`${key}_observacao`] as string | undefined} onObservationChange={value => setMap('conditions', `${key}_observacao`, value)} />)}</div>
-            <div className="field field--full" style={{ marginTop: 16 }}>
-              <label className="field-label" htmlFor="conditions-observations">Observações adicionais <span className="page-sub">· opcional</span></label>
-              <textarea id="conditions-observations" className="field-input anamnesis-large-text" rows={4} value={String(draft.conditions.observacoes_adicionais ?? '')} onChange={event => setMap('conditions', 'observacoes_adicionais', event.target.value)} placeholder="Registre aqui contexto importante sobre doenças, condições ou histórico de saúde…" />
-              <small className="page-sub">Quando preenchida, esta observação também aparece no resumo da anamnese.</small>
-            </div>
+            <SectionNotes id="conditions-observations" value={String(draft.conditions.observacoes_adicionais ?? '')} onChange={value => setMap('conditions', 'observacoes_adicionais', value)} placeholder="Registre aqui contexto importante sobre doenças, condições ou histórico de saúde…" />
           </Section>
 
           <Section id="medications" title="Medicamentos">
@@ -295,18 +307,21 @@ export function AnamneseEditorPage() {
               <BinaryField id="q-medications-choice" label="Faz uso contínuo de algum medicamento?" value={draft.medicationsStatus === 'reported' ? true : draft.medicationsStatus === 'none' ? false : undefined} onChange={value => setDraft(previous => ({ ...previous, medicationsStatus: value ? 'reported' : 'none' }))} />
               {draft.medicationsStatus === 'reported' && <div className="field"><MedicationAutocomplete id="detail-medications" value={draft.medications} onChange={medications => setDraft(previous => ({ ...previous, medications }))} /></div>}
             </div>
+            <SectionNotes id="medications-observations" value={String(draft.surgicalHistory.medicamentos_observacoes_adicionais ?? '')} onChange={value => setMap('surgicalHistory', 'medicamentos_observacoes_adicionais', value)} />
           </Section>
 
           <Section id="allergies" title="Alergias">
-            <p className="anamnesis-section-help">Alergias ficam centralizadas aqui. Respostas antigas continuam apenas no histórico; não são convertidas automaticamente.</p>
+            <p className="anamnesis-section-help">Detalhes aparecem quando a resposta indica alergia ou intolerância; observações antigas permanecem visíveis para não esconder informação clínica.</p>
             {ALLERGIES.map(([flag, label, detail, placeholder]) => <DetailQuestion key={flag} area="surgicalHistory" flag={flag} label={label} value={draft.surgicalHistory[flag] as boolean | undefined} detail={draft.surgicalHistory[detail] as string | undefined} setFlag={value => setMap('surgicalHistory', flag, value)} setDetail={value => setMap('surgicalHistory', detail, value)} placeholder={placeholder} />)}
             <h3>Intolerâncias e restrições</h3>
             {INTOLERANCES.map(([flag, label, detail, placeholder]) => <DetailQuestion key={flag} area="surgicalHistory" flag={flag} label={label} value={draft.surgicalHistory[flag] as boolean | undefined} detail={draft.surgicalHistory[detail] as string | undefined} setFlag={value => setMap('surgicalHistory', flag, value)} setDetail={value => setMap('surgicalHistory', detail, value)} placeholder={placeholder} />)}
+            <SectionNotes id="allergies-observations" value={String(draft.surgicalHistory.alergias_observacoes_adicionais ?? '')} onChange={value => setMap('surgicalHistory', 'alergias_observacoes_adicionais', value)} />
           </Section>
 
           <Section id="history" title="Histórico Médico">
             {HISTORY.map(([flag, label, detail, placeholder]) => <DetailQuestion key={flag} area="surgicalHistory" flag={flag} label={label} value={draft.surgicalHistory[flag] as boolean | undefined} detail={draft.surgicalHistory[detail] as string | undefined} setFlag={value => setMap('surgicalHistory', flag, value)} setDetail={value => setMap('surgicalHistory', detail, value)} placeholder={placeholder} help={flag === 'recebeu_anestesia' ? 'Incluindo anestesia odontológica.' : undefined} />)}
-            <div className="anamnesis-grid">{HISTORY_SIMPLE.map(([key, label]) => <BinaryField key={key} id={`q-surgicalHistory-${key}`} label={label} value={draft.surgicalHistory[key] as boolean | undefined} onChange={value => setMap('surgicalHistory', key, value)} observation={draft.surgicalHistory[`${key}_observacao`] as string | undefined} onObservationChange={value => setMap('surgicalHistory', `${key}_observacao`, value)} />)}</div>
+            <div className="anamnesis-grid">{HISTORY_SIMPLE.map(([key, label]) => <BinaryField key={key} id={`q-surgicalHistory-${key}`} label={label} value={draft.surgicalHistory[key] as boolean | undefined} onChange={value => setMap('surgicalHistory', key, value)} observation={draft.surgicalHistory[`${key}_observacao`] as string | undefined} onObservationChange={value => setMap('surgicalHistory', `${key}_observacao`, value)} observeWhen={key === 'intestino_regular' ? false : true} />)}</div>
+            <SectionNotes id="history-observations" value={String(draft.surgicalHistory.historico_observacoes_adicionais ?? '')} onChange={value => setMap('surgicalHistory', 'historico_observacoes_adicionais', value)} />
           </Section>
 
           <Section id="womens-health" title="Saúde Feminina">
@@ -335,33 +350,37 @@ export function AnamneseEditorPage() {
                 />
               </div>
             )}
-            <div className="anamnesis-question anamnesis-question--with-observation" id="q-surgicalHistory-gestante">
+            <div className={`anamnesis-question${(['sim', 'tentando'].includes(String(draft.surgicalHistory.gestante)) || Boolean(String(draft.surgicalHistory.gestante_detalhe ?? '').trim())) ? ' anamnesis-question--with-observation' : ''}`} id="q-surgicalHistory-gestante">
               <span className="anamnesis-question__label" id="gestante-label">Gestante?</span>
               <div className="anamnesis-choice-group" role="radiogroup" aria-labelledby="gestante-label" data-focus-target>
                 {[['sim', 'Sim'], ['não', 'Não'], ['tentando', 'Tentando']].map(([value, label]) => <button key={value} type="button" role="radio" aria-checked={draft.surgicalHistory.gestante === value} className={draft.surgicalHistory.gestante === value ? 'is-selected' : ''} onClick={() => setMap('surgicalHistory', 'gestante', value)}>{label}</button>)}
               </div>
-              {(Boolean(draft.surgicalHistory.gestante) || Boolean(String(draft.surgicalHistory.gestante_detalhe ?? '').trim())) && <CompactObservation id="detail-surgicalHistory-gestante" label="Gestante" value={String(draft.surgicalHistory.gestante_detalhe ?? '')} placeholder="Observação (opcional)" onChange={value => setMap('surgicalHistory', 'gestante_detalhe', value)} />}
+              {((draft.surgicalHistory.gestante === 'sim' || draft.surgicalHistory.gestante === 'tentando') || Boolean(String(draft.surgicalHistory.gestante_detalhe ?? '').trim())) && <CompactObservation id="detail-surgicalHistory-gestante" label="Gestante" value={String(draft.surgicalHistory.gestante_detalhe ?? '')} placeholder="Observação (opcional)" onChange={value => setMap('surgicalHistory', 'gestante_detalhe', value)} />}
             </div>
             {draft.surgicalHistory.gestante === 'sim' && <div className="form-grid"><div className="field"><label className="field-label">Quantas gestações?</label><input className="field-input" value={String(draft.surgicalHistory.quantas_gestacoes ?? '')} onChange={event => setMap('surgicalHistory', 'quantas_gestacoes', event.target.value)} /></div><div className="field"><label className="field-label">Tipo de parto</label><input className="field-input" value={String(draft.surgicalHistory.tipo_parto ?? '')} onChange={event => setMap('surgicalHistory', 'tipo_parto', event.target.value)} /></div></div>}
-            <BinaryField id="q-surgicalHistory-menstruacao_regular" label="Menstruação regular" value={draft.surgicalHistory.menstruacao_regular as boolean | undefined} onChange={value => setMap('surgicalHistory', 'menstruacao_regular', value)} observation={draft.surgicalHistory.menstruacao_regular_detalhe as string | undefined} onObservationChange={value => setMap('surgicalHistory', 'menstruacao_regular_detalhe', value)} observationPlaceholder="Ex.: fluxo, sintomas, irregularidade, última menstruação" />
+            <BinaryField id="q-surgicalHistory-menstruacao_regular" label="Menstruação regular" value={draft.surgicalHistory.menstruacao_regular as boolean | undefined} onChange={value => setMap('surgicalHistory', 'menstruacao_regular', value)} observation={draft.surgicalHistory.menstruacao_regular_detalhe as string | undefined} onObservationChange={value => setMap('surgicalHistory', 'menstruacao_regular_detalhe', value)} observationPlaceholder="Ex.: fluxo, sintomas, irregularidade, última menstruação" observeWhen={false} />
             <div className="field"><label className="field-label">Método contraceptivo</label><input className="field-input" value={String(draft.surgicalHistory.metodo_contraceptivo ?? '')} onChange={event => setMap('surgicalHistory', 'metodo_contraceptivo', event.target.value)} /></div>
             <BinaryField id="q-surgicalHistory-colica_menstrual" label="Tem cólica menstrual?" value={draft.surgicalHistory.colica_menstrual as boolean | undefined} onChange={value => setMap('surgicalHistory', 'colica_menstrual', value)} observation={draft.surgicalHistory.colica_menstrual_detalhe as string | undefined} onObservationChange={value => setMap('surgicalHistory', 'colica_menstrual_detalhe', value)} observationPlaceholder="Descreva intensidade/contexto" />
+            <SectionNotes id="womens-health-observations" value={String(draft.surgicalHistory.saude_feminina_observacoes_adicionais ?? '')} onChange={value => setMap('surgicalHistory', 'saude_feminina_observacoes_adicionais', value)} />
           </Section>
 
           <Section id="food" title="Alimentação">
-            <p className="anamnesis-section-help">A observação é opcional tanto no Sim quanto no Não. Em telas largas ela fica ao lado; em telas menores quebra para baixo.</p>
+            <p className="anamnesis-section-help">Quando a resposta for Sim, você pode detalhar frequência ou contexto. Respostas Não ficam compactas.</p>
             {FOOD.map(([flag, label, detail]) => <DetailQuestion key={flag} area="habits" flag={flag} label={label} value={draft.habits[flag] as boolean | undefined} detail={draft.habits[detail] as string | undefined} setFlag={value => setMap('habits', flag, value)} setDetail={value => setMap('habits', detail, value)} placeholder="Frequência / observação" />)}
             <BinaryField id="q-habits-cigarros" label="Cigarros" value={draft.habits.cigarros as boolean | undefined} onChange={value => setMap('habits', 'cigarros', value)} observation={draft.habits.cigarros_observacao as string | undefined} onObservationChange={value => setMap('habits', 'cigarros_observacao', value)} />
             <div className="field"><label className="field-label">Quantidade de água por dia</label><input className="field-input" value={String(draft.habits.quantidade_agua ?? '')} placeholder="Ex.: 2 litros" onChange={event => setMap('habits', 'quantidade_agua', event.target.value)} /></div>
+            <SectionNotes id="food-observations" value={String(draft.habits.alimentacao_observacoes_adicionais ?? '')} onChange={value => setMap('habits', 'alimentacao_observacoes_adicionais', value)} />
           </Section>
 
           <Section id="routine" title="Hábitos / Rotina">
             {ROUTINE.map(([flag, label, detail, placeholder]) => <DetailQuestion key={flag} area="habits" flag={flag} label={label} value={draft.habits[flag] as boolean | undefined} detail={draft.habits[detail] as string | undefined} setFlag={value => setMap('habits', flag, value)} setDetail={value => setMap('habits', detail, value)} placeholder={placeholder} />)}
+            <SectionNotes id="routine-observations" value={String(draft.habits.rotina_observacoes_adicionais ?? '')} onChange={value => setMap('habits', 'rotina_observacoes_adicionais', value)} />
           </Section>
 
           <Section id="procedures" title="Procedimentos anteriores">
-            <p className="anamnesis-section-help">Todos os campos ficam abertos. Não há data obrigatória: escreva como a paciente relata, por exemplo “há 6 meses”, “3 sessões” ou “não lembra”.</p>
+            <p className="anamnesis-section-help">Marque Sim apenas para procedimentos já realizados; o campo de detalhe aparece quando houver algo para registrar.</p>
             <div className="anamnesis-procedure-grid">{PROCEDURES.map(([flag, label, detail]) => <ProcedureQuestion key={flag} flag={flag} label={label} value={draft.aesthetics[flag] as boolean | undefined} note={draft.aesthetics[detail] as string | undefined} onFlag={value => setMap('aesthetics', flag, value)} onNote={value => setMap('aesthetics', detail, value)} />)}</div>
+            <SectionNotes id="procedures-observations" value={String(draft.aesthetics.procedimentos_observacoes_adicionais ?? '')} onChange={value => setMap('aesthetics', 'procedimentos_observacoes_adicionais', value)} />
           </Section>
 
           <Section id="skin-review" title="Pele e recomendações">

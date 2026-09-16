@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { Check, ChevronDown, ChevronRight, Loader2, Plus, Search, Sparkles, WalletCards } from 'lucide-react';
 import type { Service } from '../../types';
 import type { PatientEntitlement } from '../../types/packages';
-import { groupActiveTreatmentPlans, treatmentProgressLabel, treatmentSessionLabel } from '../../lib/treatmentExecution';
+import { groupActiveTreatmentPlans, isClinicalExtensionSession, selectableTreatmentSessions, treatmentAdditionalLabel, treatmentProgressLabel, treatmentSessionLabel } from '../../lib/treatmentExecution';
 import './treatment-execution.css';
 
 type Props = {
@@ -41,10 +41,13 @@ export function TreatmentExecutionStep({ catalogServices, loadingServices, selec
     <div className="treatment-plan-list">
       {plans.map(plan => {
         const progressPct = plan.totalSessions > 0 ? Math.min(100, (plan.completedSessions / plan.totalSessions) * 100) : 0;
+        const planProgress = plan.completedSessions <= plan.totalSessions
+          ? `${plan.completedSessions.toLocaleString('pt-BR')} de ${plan.totalSessions.toLocaleString('pt-BR')} sessões realizadas · ${plan.remainingSessions.toLocaleString('pt-BR')} restantes`
+          : `${plan.completedSessions.toLocaleString('pt-BR')} sessões realizadas · ${plan.totalSessions.toLocaleString('pt-BR')} contratadas · +${plan.additionalSessions.toLocaleString('pt-BR')} adicional${plan.additionalSessions === 1 ? '' : 'is'} sem cobrança`;
         return <section className="treatment-plan" key={plan.packageId}>
           <header className="treatment-plan__header">
             <div className="treatment-plan__icon"><WalletCards size={18}/></div>
-            <div className="treatment-plan__title-wrap"><strong>{plan.title}</strong><span>{plan.completedSessions.toLocaleString('pt-BR')} de {plan.totalSessions.toLocaleString('pt-BR')} sessões realizadas · {plan.remainingSessions.toLocaleString('pt-BR')} restantes</span></div>
+            <div className="treatment-plan__title-wrap"><strong>{plan.title}</strong><span>{planProgress}</span></div>
             <span className="treatment-plan__paid">Já pago</span>
           </header>
           <div className="treatment-plan__progress" aria-hidden="true"><span style={{ width: `${progressPct}%` }}/></div>
@@ -52,11 +55,13 @@ export function TreatmentExecutionStep({ catalogServices, loadingServices, selec
             {plan.items.map(item => {
               const service = item.service_id ? servicesById.get(item.service_id) : undefined;
               const selectedHere = Boolean(item.service_id && coverageByService[item.service_id] === item.package_item_id);
-              const selectable = Boolean(service?.active && item.available_balance >= 1);
+              const selectable = Boolean(service?.active && selectableTreatmentSessions(item) >= 1);
+              const additionalLabel = treatmentAdditionalLabel(item);
+              const extensionNext = isClinicalExtensionSession(item);
               return <button key={item.package_item_id} type="button" className={`treatment-session${selectedHere ? ' treatment-session--selected' : ''}`} onClick={() => { if (service && selectable) onTreatmentToggle(service, item); }} disabled={!selectable} aria-pressed={selectedHere}>
                 <span className="treatment-session__check">{selectedHere ? <Check size={15} strokeWidth={3}/> : null}</span>
-                <span className="treatment-session__main"><strong>{item.service_name_snapshot}</strong><span>{treatmentProgressLabel(item)}</span>{!service && <small>Serviço original não está mais disponível no catálogo.</small>}{service && !service.active && <small>Serviço inativo no catálogo.</small>}</span>
-                <span className="treatment-session__next"><small>{selectedHere ? 'Selecionado para hoje' : 'Próxima'}</small><strong>{treatmentSessionLabel(item)}</strong></span>
+                <span className="treatment-session__main"><strong>{item.service_name_snapshot}</strong><span>{treatmentProgressLabel(item)}</span>{additionalLabel && <small>{additionalLabel}</small>}{extensionNext && <small>Próxima sessão adicional sem cobrança.</small>}{!service && <small>Serviço original não está mais disponível no catálogo.</small>}{service && !service.active && <small>Serviço inativo no catálogo.</small>}</span>
+                <span className="treatment-session__next"><small>{selectedHere ? 'Selecionado para hoje' : extensionNext ? 'Sessão adicional' : 'Próxima'}</small><strong>{treatmentSessionLabel(item)}</strong></span>
               </button>;
             })}
           </div>
@@ -64,7 +69,7 @@ export function TreatmentExecutionStep({ catalogServices, loadingServices, selec
       })}
     </div>
   ) : (
-    <div className="treatment-execution__empty"><strong>Nenhum tratamento com sessões disponíveis</strong><span>Selecione abaixo o procedimento avulso realizado hoje.</span></div>
+    <div className="treatment-execution__empty"><strong>Nenhum tratamento em andamento</strong><span>Selecione abaixo o procedimento avulso realizado hoje.</span></div>
   );
 
   const extrasContent = showExtras ? (

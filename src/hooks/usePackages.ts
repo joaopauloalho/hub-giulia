@@ -18,6 +18,8 @@ const numberFields = [
   'redeemed',
   'reversed',
   'adjusted',
+  'contracted_adjusted',
+  'clinical_extension_adjusted',
   'raw_balance',
   'available_balance',
 ] as const;
@@ -184,6 +186,15 @@ export function usePackagesActions() {
     p_reason: reason,
   }), [call]);
 
+  const finalizeProtocol = useCallback((packageId: string, reason?: string | null) => call<void>('finalize_patient_protocol_v1', {
+    p_package_id: packageId,
+    p_reason: reason ?? null,
+  }), [call]);
+
+  const reopenProtocol = useCallback((packageId: string) => call<void>('reopen_patient_protocol_v1', {
+    p_package_id: packageId,
+  }), [call]);
+
   const issueVoucher = useCallback((input: {
     serviceId: string;
     quantity: number;
@@ -220,5 +231,5 @@ export function usePackagesActions() {
     p_payment_entries: entries,
   }), [call]);
 
-  return { loading, createManual, createFromProposal, activate, adjust, voidPackage, issueVoucher, redeemVoucher, voidVoucher, recordSale };
+  return { loading, createManual, createFromProposal, activate, adjust, voidPackage, finalizeProtocol, reopenProtocol, issueVoucher, redeemVoucher, voidVoucher, recordSale };
 }

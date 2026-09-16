@@ -14,6 +14,9 @@ export interface PatientEntitlement {
   valid_from: string | null;
   valid_until: string | null;
   activated_at: string | null;
+  allow_clinical_extensions: boolean;
+  clinically_finalized_at: string | null;
+  clinically_finalized_reason: string | null;
   package_item_id: string;
   service_id: string | null;
   service_name_snapshot: string;
@@ -24,6 +27,8 @@ export interface PatientEntitlement {
   redeemed: number;
   reversed: number;
   adjusted: number;
+  contracted_adjusted: number;
+  clinical_extension_adjusted: number;
   raw_balance: number;
   available_balance: number;
   effective_status: PackageEffectiveStatus;
