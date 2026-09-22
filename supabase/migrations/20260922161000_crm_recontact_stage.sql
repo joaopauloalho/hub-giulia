@@ -17,6 +17,69 @@ create index if not exists deals_user_recontact_on_idx
   on public.deals(user_id, recontact_on)
   where recontact_on is not null;
 
+create or replace function public.set_crm_stage_v1(
+  p_deal_id uuid,
+  p_stage text,
+  p_lost_reason text default null,
+  p_lost_reason_detail text default null
+)
+returns void
+language plpgsql
+security invoker
+set search_path = public, pg_temp
+as $
+declare
+  v_uid uuid := auth.uid();
+  v_recontact_on date;
+begin
+  if v_uid is null then
+    raise exception 'CRM_AUTH_REQUIRED' using errcode = '42501';
+  end if;
+  if p_deal_id is null then
+    raise exception 'CRM_DEAL_REQUIRED' using errcode = '23514';
+  end if;
+  if p_stage is null or p_stage <> all(array[
+    'new'::text,'contacted'::text,'assessment_scheduled'::text,
+    'proposal_sent'::text,'negotiation'::text,'won'::text,'lost'::text
+  ]) then
+    raise exception 'CRM_STAGE_INVALID' using errcode = '23514';
+  end if;
+  if p_stage = 'lost' and p_lost_reason is null then
+    raise exception 'CRM_LOST_REASON_REQUIRED' using errcode = '23514';
+  end if;
+
+  select d.recontact_on
+  into v_recontact_on
+  from public.deals d
+  where d.id = p_deal_id
+    and d.user_id = v_uid
+  for update;
+
+  if not found then
+    raise exception 'CRM_DEAL_NOT_FOUND' using errcode = 'P0001';
+  end if;
+
+  update public.deals
+  set stage = p_stage,
+      lost_reason = case when p_stage = 'lost' then p_lost_reason else null end,
+      lost_reason_detail = case when p_stage = 'lost' then nullif(btrim(p_lost_reason_detail), '') else null end,
+      recontact_on = null,
+      recontact_note = null
+  where id = p_deal_id
+    and user_id = v_uid;
+
+  -- A retomada cria um único follow-up aberto. Ao sair dessa postura,
+  -- cancela esse lembrete para ele não continuar aparecendo em atenção.
+  if v_recontact_on is not null then
+    update public.crm_followups
+    set status = 'cancelled'
+    where user_id = v_uid
+      and deal_id = p_deal_id
+      and status = 'open';
+  end if;
+end;
+$;
+
 create or replace function public.schedule_crm_recontact_v1(
   p_deal_id uuid,
   p_due_on date,
@@ -100,6 +163,8 @@ begin
 end;
 $$;
 
+revoke all on function public.set_crm_stage_v1(uuid,text,text,text) from public, anon;
+grant execute on function public.set_crm_stage_v1(uuid,text,text,text) to authenticated, service_role;
 revoke all on function public.schedule_crm_recontact_v1(uuid,date,text,text) from public, anon;
 grant execute on function public.schedule_crm_recontact_v1(uuid,date,text,text) to authenticated, service_role;
 
