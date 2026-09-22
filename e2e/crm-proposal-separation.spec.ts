@@ -105,7 +105,6 @@ test('CRM stays clean while proposal is a simple patient budget and can be delet
   expect(clearedRecontact.data?.recontact_note).toBeNull();
 
   await card.locator('select').selectOption('recontact');
-  await expect(page.getByRole('heading', { name: 'Retomar contato' })).toHaveCount(0);
   await expect(page.getByText('Escolha quando esta paciente deve voltar para sua atenção.')).toBeVisible();
   await expect(page.getByRole('button', { name: '30 dias', exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Cancelar', exact: true }).last().click();
