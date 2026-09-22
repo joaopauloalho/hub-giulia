@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  CRM_DISPLAY_STAGE_KEYS,
   CRM_LOSS_REASON_LABEL,
   CRM_SOURCE_LABEL,
   CRM_STAGE_LABEL,
@@ -16,6 +17,8 @@ describe('crm domain helpers', () => {
   it('keeps stable stage, source and loss reason labels', () => {
     expect(CRM_STAGE_LABEL.new).toBe('Novo lead');
     expect(CRM_STAGE_LABEL.negotiation).toBe('Negociação');
+    expect(CRM_STAGE_LABEL.recontact).toBe('Retomar contato');
+    expect(CRM_DISPLAY_STAGE_KEYS).toEqual(['contacted', 'assessment_scheduled', 'proposal_sent', 'negotiation', 'recontact', 'won', 'lost']);
     expect(CRM_SOURCE_LABEL.referral).toBe('Indicação');
     expect(CRM_LOSS_REASON_LABEL.clinical_decision).toBe('Decisão clínica');
   });
