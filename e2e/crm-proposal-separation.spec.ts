@@ -103,6 +103,9 @@ test('CRM stays clean while proposal is a simple patient budget and can be delet
   const clearedRecontact = await a.from('deals').select('recontact_on,recontact_note').eq('id', seeded.dealId).single();
   expect(clearedRecontact.data?.recontact_on).toBeNull();
   expect(clearedRecontact.data?.recontact_note).toBeNull();
+  const openAfterLeavingRecontact = await a.from('crm_followups').select('id').eq('deal_id', seeded.dealId).eq('status', 'open');
+  expect(openAfterLeavingRecontact.error).toBeNull();
+  expect(openAfterLeavingRecontact.data).toHaveLength(0);
 
   await card.locator('select').selectOption('recontact');
   await expect(page.getByText('Escolha quando esta paciente deve voltar para sua atenção.')).toBeVisible();
