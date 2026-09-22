@@ -52,7 +52,6 @@ import {
   type CrmDisplayStage,
   type CrmLossReason,
   type CrmSource,
-  type CrmStage,
   type FollowupBucket,
 } from '../../lib/crm';
 import type { Patient } from '../../types';
