@@ -10,7 +10,7 @@ export type CrmPipelineCard = {
   patient_id: string | null; contact_name: string; phone: string | null; email: string | null; instagram: string | null; source: CrmSource | null; source_detail: string | null;
   referred_by_patient_id: string | null; referrer_name: string | null; referrer_patient_name: string | null; contact_archived_at: string | null; patient_name: string | null;
   interests: CrmInterest[]; next_followup_on: string | null; last_activity_at: string | null; is_recurring: boolean; last_visit_at: string | null;
-  recontact_on: string | null; recontact_note: string | null;
+  recontact_on?: string | null; recontact_note?: string | null;
 };
 export type CrmActivity = { id: string; activity_type: 'note'|'contact'|'whatsapp_opened'|'call'|'stage_changed'|'followup_created'|'followup_completed'|'followup_cancelled'|'patient_linked'; channel: CrmChannel | null; note: string | null; from_stage: CrmStage | null; to_stage: CrmStage | null; metadata: Record<string, unknown>; occurred_at: string };
 export type CrmFollowup = { id: string; deal_id: string; due_on: string; status: 'open'|'completed'|'cancelled'; channel: CrmChannel | null; note: string | null; completed_at: string | null; cancelled_at: string | null; created_at: string };
