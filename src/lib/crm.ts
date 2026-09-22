@@ -5,17 +5,21 @@ import { ACQUISITION_SOURCE_KEYS, ACQUISITION_SOURCE_LABEL, type AcquisitionSour
 // Keep persisted keys stable for historical rows/analytics. `new` is legacy and no longer shown in the operational funnel.
 export const CRM_STAGE_KEYS = ['new', 'contacted', 'assessment_scheduled', 'proposal_sent', 'negotiation', 'won', 'lost'] as const;
 export type CrmStage = typeof CRM_STAGE_KEYS[number];
+export type CrmDisplayStage = CrmStage | 'recontact';
 export const CRM_VISIBLE_STAGE_KEYS: CrmStage[] = ['contacted', 'assessment_scheduled', 'proposal_sent', 'negotiation', 'won', 'lost'];
 export const CRM_VISIBLE_OPEN_STAGES: CrmStage[] = ['contacted', 'assessment_scheduled', 'proposal_sent', 'negotiation'];
+export const CRM_DISPLAY_STAGE_KEYS: CrmDisplayStage[] = ['contacted', 'assessment_scheduled', 'proposal_sent', 'negotiation', 'recontact', 'won', 'lost'];
+export const CRM_DISPLAY_OPEN_STAGES: CrmDisplayStage[] = ['contacted', 'assessment_scheduled', 'proposal_sent', 'negotiation', 'recontact'];
 // Stable persisted-data contract. New data no longer enters `new`, but old rows remain a valid open state.
 export const CRM_OPEN_STAGES: CrmStage[] = ['new', ...CRM_VISIBLE_OPEN_STAGES];
 
-export const CRM_STAGE_LABEL: Record<CrmStage, string> = {
+export const CRM_STAGE_LABEL: Record<CrmDisplayStage, string> = {
   new: 'Novo lead',
   contacted: 'Em contato',
   assessment_scheduled: 'Avaliação',
   proposal_sent: 'Proposta enviada',
   negotiation: 'Negociação',
+  recontact: 'Retomar contato',
   won: 'Fechado',
   lost: 'Perdido',
 };
@@ -35,6 +39,7 @@ export const CRM_CHANNEL_LABEL: Record<CrmChannel, string> = { whatsapp: 'WhatsA
 export type FollowupBucket = 'overdue' | 'today' | 'upcoming';
 export function followupBucket(dueOn: string | null, today = clinicDateIso()): FollowupBucket | null { if (!dueOn) return null; if (dueOn < today) return 'overdue'; if (dueOn === today) return 'today'; return 'upcoming'; }
 export function followupShortcut(days: number, today = clinicDateIso()): string { return addIsoDays(today, days); }
+export function crmDisplayStage(stage: CrmStage, recontactOn?: string | null): CrmDisplayStage { return stage === 'negotiation' && Boolean(recontactOn) ? 'recontact' : stage; }
 export function isClosedCrmStage(stage: CrmStage): boolean { return stage === 'won' || stage === 'lost'; }
 export function normalizeCrmPhone(value: string | null): string | null { return normalizePhone(value); }
 export function normalizeCrmEmail(value: string | null): string | null { return value?.trim().toLowerCase() || null; }
