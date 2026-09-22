@@ -27,7 +27,7 @@ returns void
 language plpgsql
 security invoker
 set search_path = public, pg_temp
-as $
+as $crm_stage$
 declare
   v_uid uuid := auth.uid();
   v_recontact_on date;
@@ -78,7 +78,7 @@ begin
       and status = 'open';
   end if;
 end;
-$;
+$crm_stage$;
 
 create or replace function public.schedule_crm_recontact_v1(
   p_deal_id uuid,
