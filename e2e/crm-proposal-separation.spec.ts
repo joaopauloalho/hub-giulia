@@ -63,11 +63,30 @@ test('CRM stays clean while proposal is a simple patient budget and can be delet
   const protectedStage = await a.from('deals').select('stage').eq('id', seeded.dealId).single();
   expect(protectedStage.data?.stage).toBe('negotiation');
 
+  const recontactDue = '2030-11-20';
+  const recontact = await a.rpc('schedule_crm_recontact_v1', {
+    p_deal_id: seeded.dealId,
+    p_due_on: recontactDue,
+    p_channel: 'whatsapp',
+    p_note: 'E2E TEST retomar depois',
+  });
+  expect(recontact.error).toBeNull();
+  const recontactDeal = await a.from('deals').select('stage,recontact_on,recontact_note').eq('id', seeded.dealId).single();
+  expect(recontactDeal.error).toBeNull();
+  expect(recontactDeal.data?.stage).toBe('negotiation');
+  expect(recontactDeal.data?.recontact_on).toBe(recontactDue);
+  expect(recontactDeal.data?.recontact_note).toBe('E2E TEST retomar depois');
+  const recontactFollowup = await a.from('crm_followups').select('id,due_on,status,note').eq('deal_id', seeded.dealId).eq('status', 'open').single();
+  expect(recontactFollowup.error).toBeNull();
+  expect(recontactFollowup.data?.due_on).toBe(recontactDue);
+  expect(recontactFollowup.data?.note).toBe('E2E TEST retomar depois');
+
   await browserLogin(page, 'a');
   await page.goto('/crm');
   const stageNav = page.locator('.crm-stage-segments').first();
   await expect(stageNav.getByRole('button', { name: 'Em contato', exact: true })).toBeVisible();
   await expect(stageNav.getByRole('button', { name: 'Proposta enviada', exact: true })).toBeVisible();
+  await expect(stageNav.getByRole('button', { name: 'Retomar contato', exact: true })).toBeVisible();
   await expect(page.getByText('Novo', { exact: true })).toHaveCount(0);
   await expect(page.getByRole('button', { name: /Novo contato/ })).toBeVisible();
   await expect(page.getByLabel('Filtrar tipo de paciente')).toBeVisible();
@@ -78,6 +97,18 @@ test('CRM stays clean while proposal is a simple patient budget and can be delet
   await expect(card.getByText('E2E TEST Service')).toHaveCount(0);
   await expect(card.getByText(proposalTitle)).toHaveCount(0);
   await expect(card.getByText('R$ 100,00')).toHaveCount(0);
+  await expect(card.getByText('Retomar · 20/11/2030')).toBeVisible();
+  await card.locator('select').selectOption('negotiation');
+  await expect(card.getByText('Retomar · 20/11/2030')).toHaveCount(0);
+  const clearedRecontact = await a.from('deals').select('recontact_on,recontact_note').eq('id', seeded.dealId).single();
+  expect(clearedRecontact.data?.recontact_on).toBeNull();
+  expect(clearedRecontact.data?.recontact_note).toBeNull();
+
+  await card.locator('select').selectOption('recontact');
+  await expect(page.getByRole('heading', { name: 'Retomar contato' })).toHaveCount(0);
+  await expect(page.getByText('Escolha quando esta paciente deve voltar para sua atenção.')).toBeVisible();
+  await expect(page.getByRole('button', { name: '30 dias', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Cancelar', exact: true }).last().click();
 
   await card.getByRole('button').first().click();
   await expect(page.getByRole('button', { name: /Abrir paciente/ })).toBeVisible();
