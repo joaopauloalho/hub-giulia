@@ -9,7 +9,7 @@ export type CrmDisplayStage = CrmStage | 'recontact';
 export const CRM_VISIBLE_STAGE_KEYS: CrmStage[] = ['contacted', 'assessment_scheduled', 'proposal_sent', 'negotiation', 'won', 'lost'];
 export const CRM_VISIBLE_OPEN_STAGES: CrmStage[] = ['contacted', 'assessment_scheduled', 'proposal_sent', 'negotiation'];
 export const CRM_DISPLAY_STAGE_KEYS: CrmDisplayStage[] = ['contacted', 'assessment_scheduled', 'proposal_sent', 'negotiation', 'recontact', 'won', 'lost'];
-export const CRM_DISPLAY_OPEN_STAGES: CrmDisplayStage[] = ['contacted', 'assessment_scheduled', 'proposal_sent', 'negotiation', 'recontact'];
+export const CRM_DISPLAY_OPEN_STAGES: CrmDisplayStage[] = ['new', 'contacted', 'assessment_scheduled', 'proposal_sent', 'negotiation', 'recontact'];
 // Stable persisted-data contract. New data no longer enters `new`, but old rows remain a valid open state.
 export const CRM_OPEN_STAGES: CrmStage[] = ['new', ...CRM_VISIBLE_OPEN_STAGES];
 
