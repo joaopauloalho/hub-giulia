@@ -121,28 +121,99 @@
   margin-bottom: 14px;
 }
 
+.injectables-product-group {
+  display: grid;
+  gap: 7px;
+  padding: 9px;
+  border: 1px solid var(--border);
+  border-radius: 13px;
+  background: var(--bg-2);
+}
+
+.injectables-product-group__header {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.injectables-product-group__header > div { min-width: 0; display: grid; gap: 1px; }
+.injectables-product-group__header strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .79rem; }
+.injectables-product-group__header span { color: var(--text-3); font-size: .67rem; }
+.injectables-product-group__hint { color: var(--text-3); font-size: .62rem; line-height: 1.35; }
+
+.injectables-lot-list { display: grid; gap: 5px; }
+
+.injectables-application-row {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 40px;
+  gap: 5px;
+  align-items: stretch;
+  border-radius: 11px;
+}
+
+.injectables-application-row.is-active {
+  box-shadow: 0 0 0 2px rgba(190, 24, 93, 0.08);
+}
+
 .injectables-application-card {
   width: 100%;
-  min-height: 58px;
+  min-width: 0;
+  min-height: 54px;
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: 8px;
   border: 1.5px solid var(--border);
-  border-radius: 12px;
-  padding: 9px 10px;
-  background: var(--bg-2);
+  border-radius: 10px;
+  padding: 8px 9px;
+  background: var(--bg);
   color: var(--text);
   text-align: left;
   cursor: pointer;
   touch-action: manipulation;
 }
 
-.injectables-application-card.is-active {
+.injectables-application-row.is-active .injectables-application-card {
   border-color: var(--primary-lt);
   background: #fff7fb;
-  box-shadow: 0 0 0 2px rgba(190, 24, 93, 0.06);
 }
+
+.injectables-row-delete {
+  min-width: 40px;
+  min-height: 40px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg);
+  color: var(--text-3);
+  display: inline-grid;
+  place-items: center;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.injectables-row-delete:hover,
+.injectables-row-delete:focus-visible {
+  border-color: #fecaca;
+  color: var(--red);
+  background: #fff7f7;
+  outline: none;
+}
+
+.injectables-remove-confirm {
+  display: grid;
+  gap: 6px;
+  padding: 10px;
+  border: 1px solid #fecaca;
+  border-radius: 11px;
+  background: #fff7f7;
+}
+
+.injectables-remove-confirm strong { font-size: .78rem; }
+.injectables-remove-confirm span { font-size: .68rem; line-height: 1.35; color: var(--text-2); }
+.injectables-remove-confirm > div { display: flex; justify-content: flex-end; gap: 6px; }
 
 .injectables-color-dot {
   width: 11px;
@@ -480,7 +551,7 @@
     padding-bottom: 4px;
   }
 
-  .injectables-application-card { min-width: 245px; }
+  .injectables-product-group { min-width: 275px; }
 
   .injectables-editor-footer {
     position: sticky;
