@@ -20,6 +20,7 @@ import {
   isExpiredDate,
   isPositiveQuantity,
   normalizeQuantityInput,
+  sumDecimalQuantities,
   toLegacyInjectablePoints,
   unitLabel,
   type InjectableApplicationDraftV2,
@@ -539,7 +540,7 @@ export function InjetaveisScreen({ patientId, injectableServices, onDone, onCanc
               )}
               {applicationGroups.map(group => {
                 const product = productById.get(group.productId);
-                const productTotal = group.entries.reduce((sum, application) => sum + applicationTotal(application), 0);
+                const productTotal = sumDecimalQuantities(group.entries.map(application => applicationTotal(application)));
                 const productPointCount = group.entries.reduce((sum, application) => sum + application.points.length, 0);
                 return (
                   <div className="injectables-product-group" key={group.productId}>
