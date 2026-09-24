@@ -20,6 +20,7 @@ import {
   isExpiredDate,
   isPositiveQuantity,
   normalizeQuantityInput,
+  sumDecimalQuantities,
   toLegacyInjectablePoints,
   unitLabel,
   type InjectableApplicationDraftV2,
@@ -103,6 +104,7 @@ export function InjetaveisScreen({ patientId, injectableServices, onDone, onCanc
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [undoStack, setUndoStack] = useState<InjectableApplicationDraftV2[][]>([]);
   const [confirmSkip, setConfirmSkip] = useState(false);
+  const [removePrompt, setRemovePrompt] = useState<{ ids: string[]; label: string; pointCount: number } | null>(null);
 
   const [newServiceId, setNewServiceId] = useState(injectableServices[0]?.id ?? '');
   const [newProductId, setNewProductId] = useState('');
@@ -284,6 +286,17 @@ export function InjetaveisScreen({ patientId, injectableServices, onDone, onCanc
 
   const addApplication = () => {
     if (!newServiceId || !newProductId) return;
+    const existing = applicationsRef.current.find(application =>
+      application.service_id === newServiceId
+      && application.product_id === newProductId
+      && (application.lot_id ?? '') === (newLotId || '')
+    );
+    if (existing) {
+      setActiveApplicationId(existing.id);
+      setSelectedPointId(null);
+      setSaveMessage('Essa combinação de produto e lote já está na lista. Ela foi selecionada para você continuar o registro.');
+      return;
+    }
     pushUndo();
     const application: InjectableApplicationDraftV2 = {
       id: crypto.randomUUID(),
@@ -299,9 +312,26 @@ export function InjetaveisScreen({ patientId, injectableServices, onDone, onCanc
     setSelectedPointId(null);
   };
 
-  const removeApplication = (applicationId: string) => {
+  const removeApplications = (applicationIds: string[]) => {
+    const ids = new Set(applicationIds);
+    if (!ids.size) return;
     pushUndo();
-    setApplications(current => current.filter(application => application.id !== applicationId));
+    setApplications(current => current.filter(application => !ids.has(application.id)));
+    setRemovePrompt(null);
+    setSelectedPointId(null);
+  };
+
+  const requestRemoveApplications = (applicationIds: string[], label: string) => {
+    const ids = new Set(applicationIds);
+    const pointCount = applicationsRef.current.reduce(
+      (count, application) => count + (ids.has(application.id) ? application.points.length : 0),
+      0,
+    );
+    if (pointCount === 0) {
+      removeApplications(applicationIds);
+      return;
+    }
+    setRemovePrompt({ ids: applicationIds, label, pointCount });
   };
 
   const addCoordinate = (x: number, y: number) => {
@@ -397,6 +427,15 @@ export function InjetaveisScreen({ patientId, injectableServices, onDone, onCanc
   const currentProductLots = lots.filter(lot => lot.product_id === newProductId && (lot.active || lot.id === newLotId));
   const activeLot = activeApplication?.lot_id ? lotById.get(activeApplication.lot_id) : null;
   const activeProduct = activeApplication ? productById.get(activeApplication.product_id) : null;
+  const applicationGroups = useMemo(() => {
+    const groups = new Map<string, InjectableApplicationDraftV2[]>();
+    for (const application of applications) {
+      const current = groups.get(application.product_id) ?? [];
+      current.push(application);
+      groups.set(application.product_id, current);
+    }
+    return Array.from(groups.entries()).map(([productId, entries]) => ({ productId, entries }));
+  }, [applications]);
 
   const invalidPointCount = applications.reduce(
     (count, application) => count + application.points.filter(point => !isPositiveQuantity(point.quantity)).length,
@@ -499,28 +538,76 @@ export function InjetaveisScreen({ patientId, injectableServices, onDone, onCanc
               {applications.length === 0 && (
                 <div className="injectables-empty-mini">Adicione a primeira aplicação para começar a marcar o mapa.</div>
               )}
-              {applications.map(application => {
-                const product = productById.get(application.product_id);
-                const lot = application.lot_id ? lotById.get(application.lot_id) : null;
-                const active = application.id === activeApplicationId;
+              {applicationGroups.map(group => {
+                const product = productById.get(group.productId);
+                const productTotal = sumDecimalQuantities(group.entries.map(application => applicationTotal(application)));
+                const productPointCount = group.entries.reduce((sum, application) => sum + application.points.length, 0);
                 return (
-                  <button
-                    type="button"
-                    key={application.id}
-                    className={`injectables-application-card${active ? ' is-active' : ''}`}
-                    onClick={() => { setActiveApplicationId(application.id); setSelectedPointId(null); }}
-                  >
-                    <span className="injectables-color-dot" style={{ background: application.color }} />
-                    <span className="injectables-application-main">
-                      <strong>{product?.name ?? 'Produto indisponível'}</strong>
-                      <span>{serviceNames.get(application.service_id) ?? 'Serviço'}{lot ? ` · lote ${lot.lot_number}` : ''}</span>
-                    </span>
-                    <span className="injectables-application-total">
-                      {applicationTotal(application)} {unitLabel(product?.default_unit)}
-                    </span>
-                  </button>
+                  <div className="injectables-product-group" key={group.productId}>
+                    <div className="injectables-product-group__header">
+                      <div>
+                        <strong>{product?.name ?? 'Produto indisponível'}</strong>
+                        <span>{group.entries.length} {group.entries.length === 1 ? 'registro' : 'registros'} · {productTotal} {unitLabel(product?.default_unit)}</span>
+                      </div>
+                      <button
+                        type="button"
+                        className="injectables-row-delete"
+                        aria-label={`Remover produto ${product?.name ?? 'produto'} do mapa`}
+                        title="Remover produto do mapa"
+                        onClick={() => requestRemoveApplications(group.entries.map(application => application.id), product?.name ?? 'este produto')}
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                    <div className="injectables-lot-list">
+                      {group.entries.map(application => {
+                        const lot = application.lot_id ? lotById.get(application.lot_id) : null;
+                        const active = application.id === activeApplicationId;
+                        const itemLabel = lot ? `Lote ${lot.lot_number}` : 'Sem lote informado';
+                        return (
+                          <div className={`injectables-application-row${active ? ' is-active' : ''}`} key={application.id}>
+                            <button
+                              type="button"
+                              className="injectables-application-card"
+                              onClick={() => { setActiveApplicationId(application.id); setSelectedPointId(null); }}
+                              aria-pressed={active}
+                            >
+                              <span className="injectables-color-dot" style={{ background: application.color }} />
+                              <span className="injectables-application-main">
+                                <strong>{itemLabel}</strong>
+                                <span>{serviceNames.get(application.service_id) ?? 'Serviço'} · {application.points.length} {application.points.length === 1 ? 'ponto' : 'pontos'}</span>
+                              </span>
+                              <span className="injectables-application-total">
+                                {applicationTotal(application)} {unitLabel(product?.default_unit)}
+                              </span>
+                            </button>
+                            <button
+                              type="button"
+                              className="injectables-row-delete"
+                              aria-label={`Remover ${itemLabel.toLowerCase()} de ${product?.name ?? 'produto'}`}
+                              title={lot ? 'Remover este lote do mapa' : 'Remover esta aplicação do mapa'}
+                              onClick={() => requestRemoveApplications([application.id], lot ? `${product?.name ?? 'Produto'} · lote ${lot.lot_number}` : product?.name ?? 'esta aplicação')}
+                            >
+                              <Trash2 size={15} />
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    {productPointCount > 0 && <small className="injectables-product-group__hint">A lixeira do cabeçalho remove o produto inteiro; a lixeira da linha remove só aquele lote.</small>}
+                  </div>
                 );
               })}
+              {removePrompt && (
+                <div className="injectables-remove-confirm" role="alertdialog" aria-modal="false" aria-label="Confirmar remoção">
+                  <strong>Remover {removePrompt.label}?</strong>
+                  <span>{removePrompt.pointCount} {removePrompt.pointCount === 1 ? 'ponto do mapa também será removido' : 'pontos do mapa também serão removidos'}.</span>
+                  <div>
+                    <button type="button" className="btn btn--ghost btn--sm" onClick={() => setRemovePrompt(null)}>Cancelar</button>
+                    <button type="button" className="btn btn--danger btn--sm" onClick={() => removeApplications(removePrompt.ids)}>Remover</button>
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="injectables-form-block">
@@ -609,9 +696,6 @@ export function InjetaveisScreen({ patientId, injectableServices, onDone, onCanc
                   onChange={event => updateApplication(activeApplication.id, application => ({ ...application, dilution_note: event.target.value }))}
                   placeholder="Somente registro do que foi feito"
                 />
-                <button className="injectables-text-danger" onClick={() => removeApplication(activeApplication.id)}>
-                  <Trash2 size={15} /> Remover aplicação
-                </button>
               </div>
             )}
           </aside>

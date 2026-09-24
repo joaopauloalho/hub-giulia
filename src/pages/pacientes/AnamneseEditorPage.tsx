@@ -123,9 +123,10 @@ type BinaryFieldProps = {
   observationPlaceholder?: string;
   observeWhen?: boolean;
   alwaysShowObservation?: boolean;
+  observationBeforeChoice?: boolean;
 };
 
-function BinaryField({ id, label, value, onChange, help, observation, onObservationChange, observationPlaceholder, observeWhen = true, alwaysShowObservation = false }: BinaryFieldProps) {
+function BinaryField({ id, label, value, onChange, help, observation, onObservationChange, observationPlaceholder, observeWhen = true, alwaysShowObservation = false, observationBeforeChoice = false }: BinaryFieldProps) {
   const labelId = `${id}-label`;
   const canObserve = Boolean(onObservationChange);
   const showObservation = canObserve && (alwaysShowObservation || value === observeWhen);
@@ -135,11 +136,20 @@ function BinaryField({ id, label, value, onChange, help, observation, onObservat
         <span className="anamnesis-question__label" id={labelId}>{label}</span>
         {help && <small>{help}</small>}
       </div>
+      {showObservation && observationBeforeChoice && onObservationChange && (
+        <CompactObservation
+          id={`${id}-observation`}
+          label={label}
+          value={observation}
+          onChange={onObservationChange}
+          placeholder={observationPlaceholder ?? 'Observação (opcional)'}
+        />
+      )}
       <div className="anamnesis-choice-group" role="radiogroup" aria-labelledby={labelId} data-focus-target tabIndex={-1}>
         <button type="button" role="radio" aria-checked={value === true} className={value === true ? 'is-selected' : ''} onClick={() => onChange(true)}>Sim</button>
         <button type="button" role="radio" aria-checked={value === false} className={value === false ? 'is-selected' : ''} onClick={() => onChange(false)}>Não</button>
       </div>
-      {showObservation && onObservationChange && (
+      {showObservation && !observationBeforeChoice && onObservationChange && (
         <CompactObservation
           id={`${id}-observation`}
           label={label}
@@ -182,6 +192,7 @@ function ProcedureQuestion({ flag, label, value, note, onFlag, onNote }: { flag:
         onObservationChange={onNote}
         observationPlaceholder="Ex.: há 6 meses, 3 sessões, reação, outra clínica…"
         alwaysShowObservation
+        observationBeforeChoice
       />
     </div>
   );
@@ -308,7 +319,6 @@ export function AnamneseEditorPage() {
               <BinaryField id="q-medications-choice" label="Faz uso contínuo de algum medicamento?" value={draft.medicationsStatus === 'reported' ? true : draft.medicationsStatus === 'none' ? false : undefined} onChange={value => setDraft(previous => ({ ...previous, medicationsStatus: value ? 'reported' : 'none' }))} />
               {draft.medicationsStatus === 'reported' && <div className="field"><MedicationAutocomplete id="detail-medications" value={draft.medications} onChange={medications => setDraft(previous => ({ ...previous, medications }))} /></div>}
             </div>
-            <SectionNotes id="medications-observations" value={String(draft.surgicalHistory.medicamentos_observacoes_adicionais ?? '')} onChange={value => setMap('surgicalHistory', 'medicamentos_observacoes_adicionais', value)} />
           </Section>
 
           <Section id="allergies" title="Alergias">
