@@ -50,8 +50,8 @@ const HISTORY_SIMPLE = [
 
 const FOOD = [
   ['leite_derivados', 'Leite e derivados', 'leite_derivados_frequencia'], ['doces', 'Açúcar / doces', 'doces_frequencia'],
-  ['refrigerante', 'Refrigerante', 'refrigerante_frequencia'], ['fast_food', 'Fast food', 'fast_food_frequencia'],
-  ['frituras', 'Frituras', 'frituras_frequencia'], ['bebidas_alcoolicas', 'Bebidas alcoólicas', 'bebidas_alcoolicas_frequencia'],
+  ['refrigerante', 'Refrigerante', 'refrigerante_frequencia'], ['fast_food', 'Junk food (comida porcaria)', 'fast_food_frequencia'],
+  ['bebidas_alcoolicas', 'Bebidas alcoólicas', 'bebidas_alcoolicas_frequencia'],
 ] as const;
 
 const ROUTINE = [
@@ -192,7 +192,6 @@ function ProcedureQuestion({ flag, label, value, note, onFlag, onNote }: { flag:
         onObservationChange={onNote}
         observationPlaceholder="Ex.: há 6 meses, 3 sessões, reação, outra clínica…"
         alwaysShowObservation
-        observationBeforeChoice
       />
     </div>
   );
@@ -276,6 +275,23 @@ export function AnamneseEditorPage() {
     answered: Object.values(draft.conditions).filter(value => typeof value === 'boolean').length,
     medications: draft.medicationsStatus,
   }), [draft]);
+  const junkFoodValue = draft.habits.fast_food === true || draft.habits.frituras === true
+    ? true
+    : draft.habits.fast_food === false || draft.habits.frituras === false
+      ? false
+      : undefined;
+  const junkFoodObservation = Array.from(new Set([
+    draft.habits.fast_food_frequencia,
+    draft.habits.frituras_frequencia,
+  ].filter((value): value is string => typeof value === 'string' && value.trim().length > 0))).join(' · ');
+  const setJunkFood = (value: boolean) => setDraft(previous => ({
+    ...previous,
+    habits: { ...previous.habits, fast_food: value, frituras: value },
+  }));
+  const setJunkFoodObservation = (value: string) => setDraft(previous => ({
+    ...previous,
+    habits: { ...previous.habits, fast_food_frequencia: value, frituras_frequencia: value },
+  }));
 
   if (!patientId) return <div className="empty-state"><p>Paciente inválida.</p></div>;
   if (loading) return <div className="full-loader">Carregando anamnese...</div>;
@@ -369,7 +385,7 @@ export function AnamneseEditorPage() {
               {(draft.surgicalHistory.gestante === 'sim' || draft.surgicalHistory.gestante === 'tentando') && <CompactObservation id="detail-surgicalHistory-gestante" label="Gestante" value={String(draft.surgicalHistory.gestante_detalhe ?? '')} placeholder="Observação (opcional)" onChange={value => setMap('surgicalHistory', 'gestante_detalhe', value)} />}
             </div>
             {draft.surgicalHistory.gestante === 'sim' && <div className="form-grid"><div className="field"><label className="field-label">Quantas gestações?</label><input className="field-input" value={String(draft.surgicalHistory.quantas_gestacoes ?? '')} onChange={event => setMap('surgicalHistory', 'quantas_gestacoes', event.target.value)} /></div><div className="field"><label className="field-label">Tipo de parto</label><input className="field-input" value={String(draft.surgicalHistory.tipo_parto ?? '')} onChange={event => setMap('surgicalHistory', 'tipo_parto', event.target.value)} /></div></div>}
-            <BinaryField id="q-surgicalHistory-menstruacao_regular" label="Menstruação regular" value={draft.surgicalHistory.menstruacao_regular as boolean | undefined} onChange={value => setMap('surgicalHistory', 'menstruacao_regular', value)} observation={draft.surgicalHistory.menstruacao_regular_detalhe as string | undefined} onObservationChange={value => setMap('surgicalHistory', 'menstruacao_regular_detalhe', value)} observationPlaceholder="Ex.: fluxo, sintomas, irregularidade, última menstruação" />
+            <BinaryField id="q-surgicalHistory-menstruacao_regular" label="Menstruação regular" value={draft.surgicalHistory.menstruacao_regular as boolean | undefined} onChange={value => setMap('surgicalHistory', 'menstruacao_regular', value)} observation={draft.surgicalHistory.menstruacao_regular_detalhe as string | undefined} onObservationChange={value => setMap('surgicalHistory', 'menstruacao_regular_detalhe', value)} observationPlaceholder="Ex.: duração do ciclo, fluxo, sintomas, alterações recentes" alwaysShowObservation />
             <div className="field"><label className="field-label">Método contraceptivo</label><input className="field-input" value={String(draft.surgicalHistory.metodo_contraceptivo ?? '')} onChange={event => setMap('surgicalHistory', 'metodo_contraceptivo', event.target.value)} /></div>
             <BinaryField id="q-surgicalHistory-colica_menstrual" label="Tem cólica menstrual?" value={draft.surgicalHistory.colica_menstrual as boolean | undefined} onChange={value => setMap('surgicalHistory', 'colica_menstrual', value)} observation={draft.surgicalHistory.colica_menstrual_detalhe as string | undefined} onObservationChange={value => setMap('surgicalHistory', 'colica_menstrual_detalhe', value)} observationPlaceholder="Descreva intensidade/contexto" />
             <SectionNotes id="womens-health-observations" value={String(draft.surgicalHistory.saude_feminina_observacoes_adicionais ?? '')} onChange={value => setMap('surgicalHistory', 'saude_feminina_observacoes_adicionais', value)} />
@@ -377,7 +393,9 @@ export function AnamneseEditorPage() {
 
           <Section id="food" title="Alimentação">
             <p className="anamnesis-section-help">Quando a resposta for Sim, você pode detalhar frequência ou contexto. Respostas Não ficam compactas.</p>
-            {FOOD.map(([flag, label, detail]) => <DetailQuestion key={flag} area="habits" flag={flag} label={label} value={draft.habits[flag] as boolean | undefined} detail={draft.habits[detail] as string | undefined} setFlag={value => setMap('habits', flag, value)} setDetail={value => setMap('habits', detail, value)} placeholder="Frequência / observação" />)}
+            {FOOD.map(([flag, label, detail]) => flag === 'fast_food'
+              ? <DetailQuestion key={flag} area="habits" flag={flag} label={label} value={junkFoodValue} detail={junkFoodObservation} setFlag={setJunkFood} setDetail={setJunkFoodObservation} placeholder="Frequência / observação" />
+              : <DetailQuestion key={flag} area="habits" flag={flag} label={label} value={draft.habits[flag] as boolean | undefined} detail={draft.habits[detail] as string | undefined} setFlag={value => setMap('habits', flag, value)} setDetail={value => setMap('habits', detail, value)} placeholder="Frequência / observação" />)}
             <BinaryField id="q-habits-cigarros" label="Cigarros" value={draft.habits.cigarros as boolean | undefined} onChange={value => setMap('habits', 'cigarros', value)} observation={draft.habits.cigarros_observacao as string | undefined} onObservationChange={value => setMap('habits', 'cigarros_observacao', value)} />
             <div className="field"><label className="field-label">Quantidade de água por dia</label><input className="field-input" value={String(draft.habits.quantidade_agua ?? '')} placeholder="Ex.: 2 litros" onChange={event => setMap('habits', 'quantidade_agua', event.target.value)} /></div>
             <SectionNotes id="food-observations" value={String(draft.habits.alimentacao_observacoes_adicionais ?? '')} onChange={value => setMap('habits', 'alimentacao_observacoes_adicionais', value)} />
