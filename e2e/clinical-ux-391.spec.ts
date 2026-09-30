@@ -5,7 +5,7 @@ import { browserLogin } from './helpers';
 type E2EState={patientId:string};
 const readState=async()=>JSON.parse(await fs.readFile('.e2e-state.json','utf8')) as E2EState;
 
-test('clinical binary UX shows regular notes only after Sim and keeps procedure notes always open',async({page})=>{
+test('clinical binary UX keeps contextual notes clear and compacts procedure cards',async({page})=>{
  const seeded=await readState();await browserLogin(page);await page.goto(`/pacientes/${seeded.patientId}/anamnese`);await expect(page.getByText('Condições de Saúde')).toBeVisible();
  await expect(page.getByText('Não resp.',{exact:true})).toHaveCount(0);await expect(page.getByText('Não respondido',{exact:true})).toHaveCount(0);
 
@@ -14,7 +14,11 @@ test('clinical binary UX shows regular notes only after Sim and keeps procedure 
 
  const intestine=page.locator('#q-surgicalHistory-intestino_regular');const intestineYes=intestine.getByRole('radio',{name:'Sim'});const intestineNo=intestine.getByRole('radio',{name:'Não'});await intestineNo.click();await expect(intestine.locator('textarea')).toHaveCount(0);await intestineYes.click();await expect(intestine.locator('textarea')).toBeVisible();await intestineNo.click();await expect(intestine.locator('textarea')).toHaveCount(0);await expect(page.locator('#history-observations')).toBeVisible();
 
- const procedures=page.locator('#procedures');const limpeza=page.locator('#q-aesthetics-limpeza_pele');const limpezaYes=limpeza.getByRole('radio',{name:'Sim'});const limpezaNo=limpeza.getByRole('radio',{name:'Não'});const limpezaNote=limpeza.locator('textarea');await expect(procedures.getByText('Limpeza de pele',{exact:true})).toBeVisible();await expect(limpezaNote).toBeVisible();await limpezaNote.fill('Algumas vezes, faz mais de ano');await limpezaNo.click();await expect(limpezaNote).toBeVisible();await expect(limpezaNote).toHaveValue('Algumas vezes, faz mais de ano');await limpezaYes.click();await expect(limpezaNote).toBeVisible();await expect(procedures.locator('input[type="date"]')).toHaveCount(0);await expect(page.locator('#procedures-observations')).toBeVisible();
+ const cycle=page.locator('#q-surgicalHistory-menstruacao_regular');const cycleNote=cycle.locator('textarea');await expect(cycleNote).toBeVisible();await cycle.getByRole('radio',{name:'Não'}).click();await expect(cycleNote).toBeVisible();await cycleNote.fill('Fluxo irregular nos últimos meses');await cycle.getByRole('radio',{name:'Sim'}).click();await expect(cycleNote).toHaveValue('Fluxo irregular nos últimos meses');
+
+ const food=page.locator('#food');await expect(food.getByText('Junk food (comida porcaria)',{exact:true})).toBeVisible();await expect(food.getByText('Frituras',{exact:true})).toHaveCount(0);const junkFood=page.locator('#q-habits-fast_food');await junkFood.getByRole('radio',{name:'Sim'}).click();await expect(junkFood.locator('textarea')).toBeVisible();await junkFood.locator('textarea').fill('2x na semana');
+
+ const procedures=page.locator('#procedures');const limpeza=page.locator('#q-aesthetics-limpeza_pele');const limpezaYes=limpeza.getByRole('radio',{name:'Sim'});const limpezaNo=limpeza.getByRole('radio',{name:'Não'});const limpezaNote=limpeza.locator('textarea');await expect(procedures.getByText('Limpeza de pele',{exact:true})).toBeVisible();await expect(limpezaNote).toBeVisible();const procedureOrder=await limpeza.locator('.anamnesis-question').evaluate(node=>Array.from(node.children).map(child=>String(child.className)));expect(procedureOrder[0]).toContain('anamnesis-question__copy');expect(procedureOrder[1]).toContain('anamnesis-choice-group');expect(procedureOrder[2]).toContain('anamnesis-inline-observation');await limpezaNote.fill('Algumas vezes, faz mais de ano');await limpezaNo.click();await expect(limpezaNote).toBeVisible();await expect(limpezaNote).toHaveValue('Algumas vezes, faz mais de ano');await limpezaYes.click();await expect(limpezaNote).toBeVisible();await expect(procedures.locator('input[type="date"]')).toHaveCount(0);await expect(page.locator('#procedures-observations')).toBeVisible();
  await expect(page.getByLabel('Pele da paciente')).toBeVisible();await expect(page.getByLabel('Observações gerais')).toBeVisible();await expect(page.getByLabel('Minhas recomendações')).toBeVisible();
 });
 
