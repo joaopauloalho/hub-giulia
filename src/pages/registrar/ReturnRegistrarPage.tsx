@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { format } from 'date-fns';
-import { ArrowLeft, Camera, Check, Clock3, Loader2, MapPin } from 'lucide-react';
+import { ArrowLeft, Camera, Check, Loader2, MapPin } from 'lucide-react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import { POSTGREST_SELECT } from '../../lib/postgrestRelationshipHints';
@@ -21,14 +21,6 @@ type ParentProcedure = Procedure & {
   attendance_type?: 'procedure' | 'return';
   parent_procedure_id?: string | null;
 };
-
-function clinicalTimeLabel(minutes: number) {
-  if (!minutes) return 'Sem tempo informado';
-  const hours = Math.floor(minutes / 60);
-  const rest = minutes % 60;
-  if (!hours) return `${rest} min`;
-  return rest ? `${hours}h${String(rest).padStart(2, '0')}` : `${hours}h`;
-}
 
 export function ReturnRegistrarPage() {
   const navigate = useNavigate();
@@ -178,10 +170,7 @@ export function ReturnRegistrarPage() {
       </section>
 
       <section className="card" style={{ padding: 16 }}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(220px,1fr))', gap: 12 }}>
-          <div><label className="field-label">Data do retorno</label><input className="field-input" type="date" max={TODAY} value={performedDate} onChange={event => setPerformedDate(event.target.value)}/></div>
-          <div><label className="field-label">Tempo clínico</label><div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>{[0, 15, 20, 30, 45, 60].map(value => <button key={value} type="button" className={`btn btn--sm ${clinicalMinutes === value ? 'btn--primary' : 'btn--ghost'}`} onClick={() => setClinicalMinutes(value)}>{value === 0 ? 'Não informar' : `${value} min`}</button>)}</div><small className="page-sub"><Clock3 size={11}/> {clinicalTimeLabel(clinicalMinutes)}</small></div>
-        </div>
+        <div style={{ maxWidth: 360 }}><label className="field-label">Data do retorno</label><input className="field-input" type="date" max={TODAY} value={performedDate} onChange={event => setPerformedDate(event.target.value)}/></div>
         <div style={{ marginTop: 12 }}><label className="field-label">Resumo / observações do retorno</label><textarea className="field-input" rows={3} value={notes} onChange={event => setNotes(event.target.value)} placeholder="Ex.: reavaliação, movimento residual, anestesia, intercorrências, orientação…"/></div>
       </section>
 
@@ -199,7 +188,7 @@ export function ReturnRegistrarPage() {
 
       {hasInjectables && <section className="card" style={{ padding: 16, display: 'flex', gap: 12, alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap' }}><div><strong>Novo mapa de injetáveis</strong><div className="page-sub">Começa vazio. Registre novamente pontos, quantidade, lote, validade, etiqueta e resumo.</div></div><button type="button" className={`btn btn--md ${injectablesDone ? 'btn--secondary' : 'btn--primary'}`} onClick={() => setInjectablesOpen(true)}><MapPin size={16}/> {injectablesDone ? 'Editar mapa do retorno' : 'Registrar mapa do retorno'}</button></section>}
 
-      <section className="card" style={{ padding: 16 }}><MaterialsStep selected={materials} onChange={setMaterials}/></section>
+      <section className="card" style={{ padding: 16 }}><MaterialsStep selected={materials} onChange={setMaterials} clinicalMinutes={clinicalMinutes} onClinicalMinutesChange={setClinicalMinutes}/></section>
 
       <section className="card" style={{ padding: 16 }}><div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}><div><strong>Financeiro</strong><div className="page-sub">Retorno incluído no atendimento original. Custos adicionais afetam apenas o custo interno, nunca a cobrança.</div></div><div style={{ textAlign: 'right' }}><strong style={{ color: '#166534' }}>R$ 0,00</strong><div className="page-sub">sem nova cobrança</div></div></div></section>
 

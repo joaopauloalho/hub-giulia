@@ -60,7 +60,7 @@ export function useInjectablesV2(patientId?: string) {
         .from('injectable_product_lots')
         .select('*')
         .order('active', { ascending: false })
-        .order('expires_on', { ascending: true, nullsFirst: false }),
+        .order('updated_at', { ascending: false }),
     ]);
 
     if (productsResult.error) throw productsResult.error;
@@ -237,8 +237,42 @@ export function useInjectablesV2(patientId?: string) {
       .single();
     if (createError) throw createError;
     const lot = data as InjectableLotV2;
-    setLots(current => [...current, lot]);
+    setLots(current => [lot, ...current]);
     return lot;
+  }, []);
+
+  const deactivateLot = useCallback(async (lotId: string) => {
+    const { data, error: updateError } = await supabase
+      .from('injectable_product_lots')
+      .update({ active: false })
+      .eq('id', lotId)
+      .select('*')
+      .single();
+    if (updateError) throw updateError;
+    const lot = data as InjectableLotV2;
+    setLots(current => current.map(item => item.id === lot.id ? lot : item));
+    return lot;
+  }, []);
+
+  const deactivateProduct = useCallback(async (productId: string) => {
+    const { data, error: updateError } = await supabase
+      .from('injectable_products')
+      .update({ active: false })
+      .eq('id', productId)
+      .select('*')
+      .single();
+    if (updateError) throw updateError;
+    const product = data as InjectableProductV2;
+
+    const { error: lotsError } = await supabase
+      .from('injectable_product_lots')
+      .update({ active: false })
+      .eq('product_id', productId);
+    if (lotsError) throw lotsError;
+
+    setProducts(current => current.map(item => item.id === product.id ? product : item));
+    setLots(current => current.map(item => item.product_id === productId ? { ...item, active: false } : item));
+    return product;
   }, []);
 
   return {
@@ -255,5 +289,7 @@ export function useInjectablesV2(patientId?: string) {
     loadCatalog,
     createProduct,
     createLot,
+    deactivateProduct,
+    deactivateLot,
   };
 }

@@ -49,6 +49,8 @@ interface CreateProcedureInput {
   item_costs?: Array<{ service_id: string; cost: number }>;
   clinical_minutes?: number;
   parent_procedure_id?: string | null;
+  barter_value?: number;
+  barter_description?: string | null;
 }
 
 type AttendanceServiceRow = {
@@ -120,7 +122,8 @@ export function useProcedures(patientId?: string) {
         const coverageEntries = isReturn ? [] : (input.coverage_entries ?? []);
         const materialEntries = input.material_entries ?? [];
         const paymentInput = isReturn ? [] : (input.payment_entries ?? []);
-        if (!isReturn && input.total_value > 0.02 && paymentInput.length === 0) throw new Error('ATTENDANCE_PAYMENTS_REQUIRED');
+        const barterValue = isReturn ? 0 : Math.max(0, Number(input.barter_value ?? 0));
+        if (!isReturn && input.total_value - barterValue > 0.02 && paymentInput.length === 0) throw new Error('ATTENDANCE_PAYMENTS_REQUIRED');
 
         const { data: serviceRows, error: servicesError } = await supabase
           .from('services')
@@ -191,6 +194,8 @@ export function useProcedures(patientId?: string) {
           injectable_draft_revision: injectableDraft?.revision ?? null,
           parent_procedure_id: input.parent_procedure_id ?? null,
           notes: input.notes ?? null,
+          barter_value: barterValue,
+          barter_description: input.barter_description ?? null,
         });
 
         let finalizedProcedure = procedure;

@@ -66,7 +66,7 @@ export function usePatientTimeline(patientId: string, pageSize = 20) {
     if (append) setLoadingMore(true); else setLoading(true); setError(null);
     try {
       const cursor = append ? getTimelineCursor(events) : null;
-      const { data, error: rpcError } = await supabase.rpc('list_patient_timeline_v5', { p_patient_id: patientId, p_limit: pageSize, p_cursor_at: cursor?.at ?? null, p_cursor_key: cursor?.key ?? null });
+      const { data, error: rpcError } = await supabase.rpc('list_patient_timeline_v6', { p_patient_id: patientId, p_limit: pageSize, p_cursor_at: cursor?.at ?? null, p_cursor_key: cursor?.key ?? null });
       if (rpcError) throw rpcError;
       const mapped = ((data ?? []) as TimelineRow[]).map<PatientTimelineEvent>(row => ({ eventKey: row.event_key, eventType: row.event_type, occurredAt: row.occurred_at, title: row.title, subtitle: row.subtitle, sourceId: row.source_id, metadata: row.metadata ?? {} }));
       setEvents(current => append ? mergeTimelineEvents(current, mapped) : mapped);

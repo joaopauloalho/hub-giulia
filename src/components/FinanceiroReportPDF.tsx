@@ -47,6 +47,7 @@ export function FinanceiroReportPDF({ month, summary, procedures, services }: {
   const cards: [string, number][] = [
     ['Vendas', summary.vendas],
     ['Pago', summary.pago],
+    ['Permutas', summary.permuta],
     ['Taxas pagas', summary.taxas],
     ['Liquido pago', summary.liquido],
     ['Pendente', summary.pendente],

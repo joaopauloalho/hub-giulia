@@ -19,11 +19,12 @@ const timeLabel = (minutes: number) => {
   return rest ? `${hours}h${String(rest).padStart(2, '0')}` : `${hours}h`;
 };
 
-export function MaterialsStep({ selected, onChange }: { selected: SelectedAttendanceMaterial[]; onChange: (value: SelectedAttendanceMaterial[]) => void }) {
+export function MaterialsStep({ selected, onChange, clinicalMinutes: controlledClinicalMinutes, onClinicalMinutesChange }: { selected: SelectedAttendanceMaterial[]; onChange: (value: SelectedAttendanceMaterial[]) => void; clinicalMinutes?: number; onClinicalMinutesChange?: (value: number) => void }) {
   const { materials, loading, error } = useMaterials({ activeOnly: true });
   const clinicCost = useClinicCostConfig();
   const [search, setSearch] = useState('');
-  const [clinicalMinutes, setClinicalMinutes] = useState(() => getClinicalMinutes());
+  const [internalClinicalMinutes, setInternalClinicalMinutes] = useState(() => getClinicalMinutes());
+  const clinicalMinutes = controlledClinicalMinutes ?? internalClinicalMinutes;
   const [editingRate, setEditingRate] = useState(false);
   const [rateInput, setRateInput] = useState('');
   const [rateSaved, setRateSaved] = useState(false);
@@ -36,7 +37,8 @@ export function MaterialsStep({ selected, onChange }: { selected: SelectedAttend
 
   const updateClinicalMinutes = (value: number) => {
     const next = persistClinicalMinutes(value);
-    setClinicalMinutes(next);
+    if (onClinicalMinutesChange) onClinicalMinutesChange(next);
+    else setInternalClinicalMinutes(next);
   };
 
   const saveHourlyRate = async () => {
@@ -72,7 +74,7 @@ export function MaterialsStep({ selected, onChange }: { selected: SelectedAttend
 
       <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', marginTop: 13 }}>
         {[30, 45, 60, 90].map(minutes => <button key={minutes} type="button" className={`btn btn--sm ${clinicalMinutes === minutes ? 'btn--primary' : 'btn--ghost'}`} style={{ minHeight: 42, minWidth: 66 }} onClick={() => updateClinicalMinutes(minutes)}>{timeLabel(minutes)}</button>)}
-        <button type="button" className={`btn btn--sm ${clinicalMinutes === 0 ? 'btn--primary' : 'btn--ghost'}`} style={{ minHeight: 42 }} onClick={() => updateClinicalMinutes(0)}>Sem tempo</button>
+        <button type="button" className={`btn btn--sm ${clinicalMinutes === 0 ? 'btn--primary' : 'btn--ghost'}`} style={{ minHeight: 42 }} onClick={() => updateClinicalMinutes(0)}>Não informar</button>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(150px,220px) 1fr', gap: 12, alignItems: 'end', marginTop: 12 }}>

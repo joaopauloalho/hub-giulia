@@ -3,6 +3,7 @@ import type { Procedure, Service } from '../types';
 export interface ProcedureFinancials {
   venda: number;
   pago: number;
+  permuta: number;
   taxas: number;
   liquido: number;
   pendente: number;
@@ -13,6 +14,7 @@ export interface ProcedureFinancials {
 export interface FinanceiroSummary {
   vendas: number;
   pago: number;
+  permuta: number;
   taxas: number;
   liquido: number;
   pendente: number;
@@ -56,10 +58,12 @@ export function getProcedureFinancials(proc: Procedure): ProcedureFinancials {
   }
 
   const custo = money(proc.total_cost);
+  const permuta = money(proc.barter_value);
 
   return {
     venda: money(proc.total_value),
     pago,
+    permuta,
     taxas,
     liquido,
     pendente,
@@ -73,6 +77,7 @@ export function summarizeFinance(procedures: Procedure[]): FinanceiroSummary {
     const values = getProcedureFinancials(proc);
     summary.vendas += values.venda;
     summary.pago += values.pago;
+    summary.permuta += values.permuta;
     summary.taxas += values.taxas;
     summary.liquido += values.liquido;
     summary.pendente += values.pendente;
@@ -82,6 +87,7 @@ export function summarizeFinance(procedures: Procedure[]): FinanceiroSummary {
   }, {
     vendas: 0,
     pago: 0,
+    permuta: 0,
     taxas: 0,
     liquido: 0,
     pendente: 0,
@@ -106,6 +112,9 @@ export function procedureServiceNames(proc: Procedure, services: Service[] = [])
 
 export function procedurePaymentLabel(proc: Procedure, labels: Record<string, string>) {
   const payments = proc.payments ?? [];
+  const barter = money(proc.barter_value);
+  if (barter > 0 && payments.length === 0) return 'Permuta';
+  if (barter > 0) return 'Permuta + pagamento';
   if (payments.length > 1 || proc.payment_method === 'split') return 'Pagamento dividido';
   const method = payments[0]?.method ?? proc.payment_method;
   return labels[method] ?? method;

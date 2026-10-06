@@ -5,12 +5,14 @@ import {
   Eye,
   EyeOff,
   Loader2,
+  MoreHorizontal,
   PackagePlus,
   Plus,
   Save,
   Trash2,
   Undo2,
   WifiOff,
+  X,
 } from 'lucide-react';
 import { InjetaveisFaceMap, type FaceMapPoint } from '../../components/InjetaveisFaceMap';
 import { useInjectablesV2 } from '../../hooks/useInjectablesV2';
@@ -94,6 +96,8 @@ export function InjetaveisScreen({ patientId, injectableServices, onDone, onCanc
     discardDraft,
     createProduct,
     createLot,
+    deactivateProduct,
+    deactivateLot,
   } = useInjectablesV2(patientId);
 
   const [ready, setReady] = useState(false);
@@ -117,6 +121,9 @@ export function InjetaveisScreen({ patientId, injectableServices, onDone, onCanc
   const [lotNumber, setLotNumber] = useState('');
   const [lotExpiry, setLotExpiry] = useState('');
   const [catalogSaving, setCatalogSaving] = useState(false);
+  const [catalogManager, setCatalogManager] = useState<'product' | 'lots' | null>(null);
+  const [lotMenuId, setLotMenuId] = useState<string | null>(null);
+  const [catalogDeletePrompt, setCatalogDeletePrompt] = useState<{ type: 'product' | 'lot'; id: string; label: string } | null>(null);
 
   const revisionRef = useRef<number>(1);
   const applicationsRef = useRef<InjectableApplicationDraftV2[]>([]);
@@ -424,7 +431,34 @@ export function InjetaveisScreen({ patientId, injectableServices, onDone, onCanc
     }
   };
 
-  const currentProductLots = lots.filter(lot => lot.product_id === newProductId && (lot.active || lot.id === newLotId));
+  const removeCatalogItem = async () => {
+    if (!catalogDeletePrompt) return;
+    setCatalogSaving(true);
+    setSaveMessage(null);
+    try {
+      if (catalogDeletePrompt.type === 'lot') {
+        await deactivateLot(catalogDeletePrompt.id);
+        if (newLotId === catalogDeletePrompt.id) setNewLotId('');
+        setLotMenuId(null);
+      } else {
+        await deactivateProduct(catalogDeletePrompt.id);
+        if (newProductId === catalogDeletePrompt.id) {
+          const nextProduct = products.find(product => product.active && product.id !== catalogDeletePrompt.id);
+          setNewProductId(nextProduct?.id ?? '');
+          setNewLotId('');
+        }
+        setCatalogManager(null);
+      }
+      setCatalogDeletePrompt(null);
+    } catch (cause) {
+      setSaveMessage(cause instanceof Error ? cause.message : 'Não foi possível excluir este item.');
+    } finally {
+      setCatalogSaving(false);
+    }
+  };
+
+  const currentProductLots = lots.filter(lot => lot.product_id === newProductId && lot.active);
+  const selectedCatalogProduct = newProductId ? productById.get(newProductId) ?? null : null;
   const activeLot = activeApplication?.lot_id ? lotById.get(activeApplication.lot_id) : null;
   const activeProduct = activeApplication ? productById.get(activeApplication.product_id) : null;
   const applicationGroups = useMemo(() => {
@@ -616,17 +650,20 @@ export function InjetaveisScreen({ patientId, injectableServices, onDone, onCanc
                 {injectableServices.map(service => <option key={service.id} value={service.id}>{service.name}</option>)}
               </select>
 
-              <label>Produto / substância</label>
+              <div className="injectables-field-heading">
+                <label>Produto / substância</label>
+                {newProductId && <button type="button" className="injectables-manage-link" onClick={() => setCatalogManager('product')}>Gerenciar</button>}
+              </div>
               <div className="injectables-inline-field">
                 <select value={newProductId} onChange={event => { setNewProductId(event.target.value); setNewLotId(''); }}>
                   <option value="">Selecione</option>
-                  {products.map(product => (
-                    <option key={product.id} value={product.id} disabled={!product.active}>
-                      {product.name} · {product.default_unit}{!product.active ? ' (inativo)' : ''}
+                  {products.filter(product => product.active).map(product => (
+                    <option key={product.id} value={product.id}>
+                      {product.name} · {product.default_unit}
                     </option>
                   ))}
                 </select>
-                <button className="injectables-mini-button" onClick={() => setShowProductForm(value => !value)} aria-label="Novo produto"><PackagePlus size={17} /></button>
+                <button type="button" className="injectables-mini-button" onClick={() => setShowProductForm(value => !value)} aria-label="Novo produto"><PackagePlus size={17} /></button>
               </div>
 
               {showProductForm && (
@@ -640,7 +677,10 @@ export function InjetaveisScreen({ patientId, injectableServices, onDone, onCanc
                 </div>
               )}
 
-              <label>Lote (opcional)</label>
+              <div className="injectables-field-heading">
+                <label>Lote (opcional)</label>
+                {newProductId && currentProductLots.length > 0 && <button type="button" className="injectables-manage-link" onClick={() => { setLotMenuId(null); setCatalogManager('lots'); }}>Gerenciar lotes</button>}
+              </div>
               <div className="injectables-inline-field">
                 <select value={newLotId} onChange={event => setNewLotId(event.target.value)} disabled={!newProductId}>
                   <option value="">Sem lote informado</option>
@@ -650,7 +690,7 @@ export function InjetaveisScreen({ patientId, injectableServices, onDone, onCanc
                     </option>
                   ))}
                 </select>
-                <button className="injectables-mini-button" onClick={() => setShowLotForm(value => !value)} disabled={!newProductId} aria-label="Novo lote"><Plus size={17} /></button>
+                <button type="button" className="injectables-mini-button" onClick={() => setShowLotForm(value => !value)} disabled={!newProductId} aria-label="Novo lote"><Plus size={17} /></button>
               </div>
 
               {showLotForm && newProductId && (
@@ -669,6 +709,53 @@ export function InjetaveisScreen({ patientId, injectableServices, onDone, onCanc
                   <button className="btn btn--primary btn--sm" onClick={() => void createCatalogLot()} disabled={catalogSaving || !lotNumber.trim()}>
                     Criar lote
                   </button>
+                </div>
+              )}
+
+              {catalogManager && (
+                <div className="injectables-catalog-manager" role="dialog" aria-modal="false" aria-label={catalogManager === 'product' ? 'Gerenciar produto' : 'Gerenciar lotes'}>
+                  <div className="injectables-catalog-manager__header">
+                    <div>
+                      <strong>{catalogManager === 'product' ? (selectedCatalogProduct?.name ?? 'Produto') : `Lotes de ${selectedCatalogProduct?.name ?? 'produto'}`}</strong>
+                      <span>{catalogManager === 'product' ? 'As aplicações antigas continuam preservadas.' : 'Lotes excluídos somem apenas das próximas aplicações.'}</span>
+                    </div>
+                    <button type="button" className="icon-btn" onClick={() => { setCatalogManager(null); setLotMenuId(null); }} aria-label="Fechar gerenciamento"><X size={16}/></button>
+                  </div>
+
+                  {catalogManager === 'lots' && (
+                    <div className="injectables-catalog-list">
+                      {currentProductLots.map(lot => (
+                        <div key={lot.id} className="injectables-catalog-list__row">
+                          <div>
+                            <strong>{lot.lot_number}</strong>
+                            {lot.expires_on && <span>Val. {lot.expires_on.split('-').reverse().join('/')}</span>}
+                          </div>
+                          <div className="injectables-catalog-menu">
+                            <button type="button" className="icon-btn" onClick={() => setLotMenuId(current => current === lot.id ? null : lot.id)} aria-label={`Ações do lote ${lot.lot_number}`}><MoreHorizontal size={17}/></button>
+                            {lotMenuId === lot.id && <button type="button" className="btn btn--danger btn--sm" onClick={() => setCatalogDeletePrompt({ type: 'lot', id: lot.id, label: lot.lot_number })}>Excluir lote</button>}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {catalogManager === 'product' && selectedCatalogProduct && (
+                    <div className="injectables-catalog-danger">
+                      <span>Use somente se não quiser mais ver este produto em novos atendimentos.</span>
+                      <button type="button" className="btn btn--danger btn--sm" onClick={() => setCatalogDeletePrompt({ type: 'product', id: selectedCatalogProduct.id, label: selectedCatalogProduct.name })}>Excluir produto</button>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {catalogDeletePrompt && (
+                <div className="injectables-remove-confirm injectables-catalog-confirm" role="alertdialog" aria-modal="false" aria-label="Confirmar exclusão do catálogo">
+                  <strong>Excluir {catalogDeletePrompt.type === 'product' ? 'produto' : 'lote'} “{catalogDeletePrompt.label}”?</strong>
+                  <span>Ele não aparecerá em novos atendimentos. O histórico já registrado será preservado.</span>
+                  <div>
+                    <button type="button" className="btn btn--ghost btn--sm" onClick={() => setCatalogDeletePrompt(null)} disabled={catalogSaving}>Cancelar</button>
+                    <button type="button" className="btn btn--danger btn--sm" onClick={() => void removeCatalogItem()} disabled={catalogSaving}>{catalogSaving ? 'Excluindo…' : 'Confirmar exclusão'}</button>
+                  </div>
                 </div>
               )}
 
