@@ -30,6 +30,8 @@ export interface CreateAtomicAttendanceInput {
   injectable_draft_revision?: number | null;
   parent_procedure_id?: string | null;
   notes: string | null;
+  barter_value?: number;
+  barter_description?: string | null;
 }
 
 export function useAtomicAttendance() {
@@ -41,7 +43,7 @@ export function useAtomicAttendance() {
     const clinicalMinutes = Math.max(0, Math.min(1440, Math.round(input.clinical_minutes ?? getClinicalMinutes())));
 
     if (hasStructuredDraft) {
-      const rpc = isReturn ? 'create_clinical_return_with_injectable_draft_v1' : 'create_procedure_with_injectable_draft_v5';
+      const rpc = isReturn ? 'create_clinical_return_with_injectable_draft_v1' : 'create_procedure_with_injectable_draft_v6';
       const args = isReturn ? {
         p_idempotency_key: input.idempotency_key,
         p_parent_procedure_id: input.parent_procedure_id,
@@ -67,6 +69,8 @@ export function useAtomicAttendance() {
         p_notes: input.notes,
         p_draft_id: input.injectable_draft_id,
         p_draft_revision: input.injectable_draft_revision,
+        p_barter_value: Math.max(0, Number(input.barter_value ?? 0)),
+        p_barter_description: input.barter_description ?? null,
       };
       const { data, error } = await supabase.rpc(rpc, args);
 
@@ -76,7 +80,7 @@ export function useAtomicAttendance() {
       return data as Procedure;
     }
 
-    const rpc = isReturn ? 'create_clinical_return_v1' : 'create_procedure_v5';
+    const rpc = isReturn ? 'create_clinical_return_v1' : 'create_procedure_v6';
     const args = isReturn ? {
       p_idempotency_key: input.idempotency_key,
       p_parent_procedure_id: input.parent_procedure_id,
@@ -100,6 +104,8 @@ export function useAtomicAttendance() {
       p_materials: materials,
       p_clinical_minutes: clinicalMinutes,
       p_notes: input.notes,
+      p_barter_value: Math.max(0, Number(input.barter_value ?? 0)),
+      p_barter_description: input.barter_description ?? null,
     };
     const { data, error } = await supabase.rpc(rpc, args);
 
