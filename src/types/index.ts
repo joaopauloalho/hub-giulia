@@ -401,6 +401,8 @@ export interface Procedure {
   card_fee_pct: number | null;
   card_fee_value: number | null;
   net_value: number;
+  barter_value?: number;
+  barter_description?: string | null;
   notes: string | null;
   created_at: string;
   patient?: Pick<Patient, 'id' | 'name'>;
