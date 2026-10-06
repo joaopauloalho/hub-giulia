@@ -575,3 +575,103 @@
   .injectables-editor-footer { gap: 6px; padding: 8px; }
   .injectables-editor-footer .btn { padding-left: 10px; padding-right: 10px; font-size: 0.82rem; }
 }
+
+
+.injectables-field-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.injectables-field-heading label { margin: 0; }
+
+.injectables-manage-link {
+  border: 0;
+  background: transparent;
+  color: var(--text-3);
+  font: inherit;
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 4px 2px;
+  cursor: pointer;
+}
+
+.injectables-manage-link:hover,
+.injectables-manage-link:focus-visible {
+  color: var(--primary);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.injectables-catalog-manager {
+  display: grid;
+  gap: 10px;
+  padding: 11px;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  background: var(--bg);
+}
+
+.injectables-catalog-manager__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.injectables-catalog-manager__header > div {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.injectables-catalog-manager__header strong { font-size: 0.78rem; }
+.injectables-catalog-manager__header span,
+.injectables-catalog-danger > span,
+.injectables-catalog-list__row span {
+  color: var(--text-3);
+  font-size: 0.66rem;
+  line-height: 1.35;
+}
+
+.injectables-catalog-list { display: grid; gap: 6px; }
+
+.injectables-catalog-list__row {
+  min-height: 44px;
+  padding: 7px 8px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--bg-2);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.injectables-catalog-list__row > div:first-child {
+  min-width: 0;
+  display: grid;
+  gap: 1px;
+}
+
+.injectables-catalog-list__row strong { font-size: 0.76rem; }
+
+.injectables-catalog-menu {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.injectables-catalog-danger {
+  display: grid;
+  gap: 8px;
+  padding-top: 9px;
+  border-top: 1px solid var(--border);
+}
+
+.injectables-catalog-danger .btn { justify-self: start; }
+
+.injectables-catalog-confirm {
+  margin-top: 2px;
+}
