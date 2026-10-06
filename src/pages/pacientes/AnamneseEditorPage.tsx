@@ -45,7 +45,7 @@ const HISTORY = [
 ] as const;
 
 const HISTORY_SIMPLE = [
-  ['ansioso', 'Ansiedade'], ['estressado', 'Estresse elevado'], ['enxaqueca', 'Enxaqueca'], ['intestino_regular', 'Intestino regular'],
+  ['enxaqueca', 'Enxaqueca'],
 ] as const;
 
 const FOOD = [
@@ -181,18 +181,61 @@ function DetailQuestion(props: { area: string; flag: string; label: string; valu
 }
 
 function ProcedureQuestion({ flag, label, value, note, onFlag, onNote }: { flag: string; label: string; value?: boolean; note?: string; onFlag: (value: boolean) => void; onNote: (value: string) => void }) {
+  const id = `q-aesthetics-${flag}`;
+  const labelId = `${id}-label`;
   return (
-    <div className="anamnesis-procedure-card">
-      <BinaryField
-        id={`q-aesthetics-${flag}`}
+    <div className="anamnesis-procedure-card" id={id} tabIndex={-1}>
+      <div className="anamnesis-procedure-card__header">
+        <span className="anamnesis-question__label" id={labelId}>{label}</span>
+        <div className="anamnesis-choice-group" role="radiogroup" aria-labelledby={labelId} data-focus-target tabIndex={-1}>
+          <button type="button" role="radio" aria-checked={value === true} className={value === true ? 'is-selected' : ''} onClick={() => onFlag(true)}>Sim</button>
+          <button type="button" role="radio" aria-checked={value === false} className={value === false ? 'is-selected' : ''} onClick={() => onFlag(false)}>Não</button>
+        </div>
+      </div>
+      <CompactObservation
+        id={`${id}-observation`}
         label={label}
-        value={value}
-        onChange={onFlag}
-        observation={note}
-        onObservationChange={onNote}
-        observationPlaceholder="Ex.: há 6 meses, 3 sessões, reação, outra clínica…"
-        alwaysShowObservation
+        value={note}
+        onChange={onNote}
+        placeholder="Ex.: há 6 meses, 3 sessões, reação, outra clínica…"
       />
+    </div>
+  );
+}
+
+type FoodFrequency = 'daily' | 'weekly' | 'occasional' | 'never';
+
+const FOOD_FREQUENCIES: Array<{ value: FoodFrequency; label: string }> = [
+  { value: 'daily', label: 'Diário' },
+  { value: 'weekly', label: 'Semanal' },
+  { value: 'occasional', label: 'Ocasional' },
+  { value: 'never', label: 'Nunca' },
+];
+
+function foodFrequencyFromLegacy(enabled?: boolean, detail?: string): FoodFrequency | undefined {
+  if (enabled === false) return 'never';
+  if (enabled !== true) return undefined;
+  const normalized = (detail ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase();
+  if (!normalized) return undefined;
+  if (normalized.includes('diari') || normalized.includes('todo dia') || normalized.includes('todos os dias')) return 'daily';
+  if (normalized.includes('seman') || normalized === 'fds' || normalized.includes('fim de semana') || normalized.includes('final de semana')) return 'weekly';
+  if (normalized.includes('ocas') || normalized.includes('as vezes')) return 'occasional';
+  return undefined;
+}
+
+function FrequencyField({ id, label, enabled, detail, onChange }: { id: string; label: string; enabled?: boolean; detail?: string; onChange: (frequency: FoodFrequency) => void }) {
+  const labelId = `${id}-label`;
+  const selected = foodFrequencyFromLegacy(enabled, detail);
+  return (
+    <div className="anamnesis-frequency-row" id={id} tabIndex={-1}>
+      <span className="anamnesis-question__label" id={labelId}>{label}</span>
+      <div className="anamnesis-choice-group anamnesis-frequency-options" role="radiogroup" aria-labelledby={labelId} data-focus-target tabIndex={-1}>
+        {FOOD_FREQUENCIES.map(option => (
+          <button key={option.value} type="button" role="radio" aria-checked={selected === option.value} className={selected === option.value ? 'is-selected' : ''} onClick={() => onChange(option.value)}>
+            {option.label}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }
@@ -275,23 +318,19 @@ export function AnamneseEditorPage() {
     answered: Object.values(draft.conditions).filter(value => typeof value === 'boolean').length,
     medications: draft.medicationsStatus,
   }), [draft]);
-  const junkFoodValue = draft.habits.fast_food === true || draft.habits.frituras === true
-    ? true
-    : draft.habits.fast_food === false || draft.habits.frituras === false
-      ? false
-      : undefined;
-  const junkFoodObservation = Array.from(new Set([
-    draft.habits.fast_food_frequencia,
-    draft.habits.frituras_frequencia,
-  ].filter((value): value is string => typeof value === 'string' && value.trim().length > 0))).join(' · ');
-  const setJunkFood = (value: boolean) => setDraft(previous => ({
-    ...previous,
-    habits: { ...previous.habits, fast_food: value, frituras: value },
-  }));
-  const setJunkFoodObservation = (value: string) => setDraft(previous => ({
-    ...previous,
-    habits: { ...previous.habits, fast_food_frequencia: value, frituras_frequencia: value },
-  }));
+  const setFoodFrequency = (flag: string, detail: string, frequency: FoodFrequency) => {
+    const enabled = frequency !== 'never';
+    const label = frequency === 'daily' ? 'Diário' : frequency === 'weekly' ? 'Semanal' : frequency === 'occasional' ? 'Ocasional' : '';
+    setDraft(previous => ({
+      ...previous,
+      habits: {
+        ...previous.habits,
+        [flag]: enabled,
+        [detail]: label,
+        ...(flag === 'fast_food' ? { frituras: enabled, frituras_frequencia: label } : {}),
+      },
+    }));
+  };
 
   if (!patientId) return <div className="empty-state"><p>Paciente inválida.</p></div>;
   if (loading) return <div className="full-loader">Carregando anamnese...</div>;
@@ -392,11 +431,30 @@ export function AnamneseEditorPage() {
           </Section>
 
           <Section id="food" title="Alimentação">
-            <p className="anamnesis-section-help">Quando a resposta for Sim, você pode detalhar frequência ou contexto. Respostas Não ficam compactas.</p>
-            {FOOD.map(([flag, label, detail]) => flag === 'fast_food'
-              ? <DetailQuestion key={flag} area="habits" flag={flag} label={label} value={junkFoodValue} detail={junkFoodObservation} setFlag={setJunkFood} setDetail={setJunkFoodObservation} placeholder="Frequência / observação" />
-              : <DetailQuestion key={flag} area="habits" flag={flag} label={label} value={draft.habits[flag] as boolean | undefined} detail={draft.habits[detail] as string | undefined} setFlag={value => setMap('habits', flag, value)} setDetail={value => setMap('habits', detail, value)} placeholder="Frequência / observação" />)}
-            <BinaryField id="q-habits-cigarros" label="Cigarros" value={draft.habits.cigarros as boolean | undefined} onChange={value => setMap('habits', 'cigarros', value)} observation={draft.habits.cigarros_observacao as string | undefined} onObservationChange={value => setMap('habits', 'cigarros_observacao', value)} />
+            <p className="anamnesis-section-help">Marque a frequência diretamente. Se precisar registrar algum contexto, use a observação geral no final da seção.</p>
+            <div className="anamnesis-frequency-list">
+              {FOOD.map(([flag, label, detail]) => (
+                <FrequencyField
+                  key={flag}
+                  id={`q-habits-${flag}`}
+                  label={label}
+                  enabled={flag === 'fast_food'
+                    ? (draft.habits.fast_food === true || draft.habits.frituras === true ? true : draft.habits.fast_food === false || draft.habits.frituras === false ? false : undefined)
+                    : draft.habits[flag] as boolean | undefined}
+                  detail={flag === 'fast_food'
+                    ? String(draft.habits.fast_food_frequencia ?? draft.habits.frituras_frequencia ?? '')
+                    : draft.habits[detail] as string | undefined}
+                  onChange={frequency => setFoodFrequency(flag, detail, frequency)}
+                />
+              ))}
+              <FrequencyField
+                id="q-habits-cigarros"
+                label="Cigarros"
+                enabled={draft.habits.cigarros as boolean | undefined}
+                detail={draft.habits.cigarros_observacao as string | undefined}
+                onChange={frequency => setFoodFrequency('cigarros', 'cigarros_observacao', frequency)}
+              />
+            </div>
             <div className="field"><label className="field-label">Quantidade de água por dia</label><input className="field-input" value={String(draft.habits.quantidade_agua ?? '')} placeholder="Ex.: 2 litros" onChange={event => setMap('habits', 'quantidade_agua', event.target.value)} /></div>
             <SectionNotes id="food-observations" value={String(draft.habits.alimentacao_observacoes_adicionais ?? '')} onChange={value => setMap('habits', 'alimentacao_observacoes_adicionais', value)} />
           </Section>
