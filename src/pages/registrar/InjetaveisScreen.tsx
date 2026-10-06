@@ -12,6 +12,7 @@ import {
   Trash2,
   Undo2,
   WifiOff,
+  X,
 } from 'lucide-react';
 import { InjetaveisFaceMap, type FaceMapPoint } from '../../components/InjetaveisFaceMap';
 import { useInjectablesV2 } from '../../hooks/useInjectablesV2';
