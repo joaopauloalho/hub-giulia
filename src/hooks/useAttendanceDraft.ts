@@ -11,6 +11,7 @@ export type AttendanceDraftPayload = {
   quantityByService?: Record<string, number>;
   costByService?: Record<string, number>;
   courtesyByService?: Record<string, boolean>;
+  barterByService?: Record<string, { active: boolean; amount: number; description: string }>;
   materials?: unknown[];
   clinicalMinutes?: number;
   paymentTiming?: 'today' | 'past' | 'later';
