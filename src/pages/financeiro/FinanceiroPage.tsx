@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { addMonths, format, isPast, isToday, parseISO, subMonths } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import {
+  ArrowLeftRight,
   CheckCircle,
   ChevronLeft,
   ChevronRight,
@@ -46,6 +47,7 @@ function SummaryCards({ summary }: { summary: FinanceiroSummary }) {
   const cards = [
     { label: 'Vendas', value: summary.vendas, icon: ReceiptText, color: 'var(--primary)', bg: 'var(--bg-2)', border: 'var(--border)' },
     { label: 'Pago', value: summary.pago, icon: CheckCircle, color: 'var(--green)', bg: '#f0fdf4', border: '#bbf7d0' },
+    { label: 'Permutas', value: summary.permuta, icon: ArrowLeftRight, color: 'var(--primary)', bg: '#fff7fb', border: '#f5b8d1' },
     { label: 'Taxas pagas', value: summary.taxas, icon: TrendingDown, color: 'var(--red)', bg: '#fef2f2', border: '#fecaca' },
     { label: 'Líquido pago', value: summary.liquido, icon: Wallet, color: 'var(--primary)', bg: 'var(--bg-2)', border: 'var(--border)' },
     { label: 'Pendente', value: summary.pendente, icon: Clock, color: 'var(--amber)', bg: '#fffbf0', border: '#fde68a' },
@@ -170,6 +172,7 @@ function ProcedureRow({ proc, services, onRemove }: { proc: Procedure; services:
   const details = [
     { label: 'Venda', value: currency(values.venda) },
     { label: 'Pago', value: currency(values.pago) },
+    ...(values.permuta > .009 ? [{ label: 'Permuta', value: currency(values.permuta) }] : []),
     { label: 'Taxas pagas', value: `-${currency(values.taxas)}` },
     { label: 'Líquido pago', value: currency(values.liquido) },
     ...(values.pendente > 0 ? [{ label: 'Pendente', value: currency(values.pendente) }] : []),
@@ -282,7 +285,7 @@ export function FinanceiroPage() {
         ) : loading ? (
           <div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(132px, 1fr))', gap: 10, marginBottom: 28 }}>
-              {Array.from({ length: 7 }, (_, index) => <div className="card" key={index}><Skeleton height={54} /></div>)}
+              {Array.from({ length: 8 }, (_, index) => <div className="card" key={index}><Skeleton height={54} /></div>)}
             </div>
             <div style={{ textAlign: 'center', padding: 16 }}><Loader2 size={24} className="spin" style={{ color: 'var(--primary)' }} /></div>
           </div>
