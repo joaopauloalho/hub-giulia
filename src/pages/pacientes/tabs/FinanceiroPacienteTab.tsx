@@ -6,7 +6,7 @@ import { useReceivables, type OpenReceivable } from '../../../hooks/useReceivabl
 import { formatPatientMoney } from '../../../lib/patient360';
 
 export function FinanceiroPacienteTab({ patientId }: { patientId: string }) {
-  const { overview, loading, error } = usePatient360Overview(patientId);
+  const { overview, loading, error, refresh: refreshOverview } = usePatient360Overview(patientId);
   const receivables = useReceivables(patientId);
   const [selected, setSelected] = useState<OpenReceivable | null>(null);
 
@@ -14,6 +14,11 @@ export function FinanceiroPacienteTab({ patientId }: { patientId: string }) {
   if (error || !overview) return <div className="empty-state"><p>{error ?? 'Não foi possível carregar o financeiro.'}</p></div>;
 
   const finance = overview.financialSummary;
+  const registerReceipt = async (input: Parameters<typeof receivables.registerReceipt>[0]) => {
+    await receivables.registerReceipt(input);
+    await refreshOverview();
+  };
+
   return <div style={{ display: 'grid', gap: 12 }}>
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))', gap: 10 }}>
       <div className="card" style={{ padding: 14 }}><div className="page-sub">Total vendido</div><strong>{formatPatientMoney(finance.total)}</strong></div>
@@ -63,7 +68,7 @@ export function FinanceiroPacienteTab({ patientId }: { patientId: string }) {
     {selected && <ReceivablePaymentModal
       receivable={selected}
       onClose={() => setSelected(null)}
-      onSubmit={receivables.registerReceipt}
+      onSubmit={registerReceipt}
     />}
   </div>;
 }
