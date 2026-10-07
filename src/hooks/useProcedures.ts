@@ -175,6 +175,7 @@ export function useProcedures(patientId?: string) {
           net_amount: entry.net_amount,
           absorve_taxa: entry.absorve_taxa,
           scheduled_date: entry.scheduled_date,
+          is_immediate: entry.is_immediate,
         }));
 
         const injectableDraft = getAttendanceInjectableDraft();

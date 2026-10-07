@@ -155,3 +155,94 @@ test('editing the procedure discount after visiting finance recalculates the pay
   await expect(page.getByRole('button', { name: /Continuar/ })).toBeEnabled();
   await expect(page.getByText('R$ 80,00', { exact: true })).toBeVisible();
 });
+
+
+test('partial receipt keeps an unscheduled open balance and accepts later payments in pieces', async () => {
+  const seeded = await readState();
+  const a = await signedInClient('a');
+  const today = saoPauloDatePlus(0);
+
+  const created = await a.rpc('create_procedure_v7', {
+    p_idempotency_key: randomUUID(),
+    p_patient_id: seeded.patientId,
+    p_appointment_id: null,
+    p_performed_at: `${today}T15:00:00-03:00`,
+    p_items: [{ service_id: seeded.serviceId, qty: 1, final_price: 100 }],
+    p_payment_entries: [
+      {
+        method: 'pix',
+        base_amount: 40,
+        amount: 40,
+        card_brand: null,
+        installments: 1,
+        fee_pct: null,
+        fee_value: null,
+        net_amount: 40,
+        absorve_taxa: true,
+        scheduled_date: null,
+        is_immediate: true,
+      },
+      {
+        method: 'pix',
+        base_amount: 60,
+        amount: 60,
+        card_brand: null,
+        installments: 1,
+        fee_pct: null,
+        fee_value: null,
+        net_amount: 60,
+        absorve_taxa: true,
+        scheduled_date: null,
+        is_immediate: false,
+      },
+    ],
+    p_injectable_maps: [],
+    p_coverages: [],
+    p_materials: [],
+    p_clinical_minutes: 0,
+    p_notes: 'E2E TEST partial receivable',
+    p_barter_value: 0,
+    p_barter_description: null,
+  });
+  expect(created.error).toBeNull();
+  const procedure = Array.isArray(created.data) ? created.data[0] : created.data;
+  expect(procedure?.id).toBeTruthy();
+
+  const afterCreate = await a.from('procedures').select('paid_amount,pending_amount').eq('id', procedure!.id).single();
+  expect(afterCreate.error).toBeNull();
+  expect(Number(afterCreate.data?.paid_amount)).toBe(40);
+  expect(Number(afterCreate.data?.pending_amount)).toBe(60);
+
+  const openBefore = await a.from('procedure_payments').select('amount,scheduled_date,paid_at').eq('procedure_id', procedure!.id).is('paid_at', null).single();
+  expect(openBefore.error).toBeNull();
+  expect(Number(openBefore.data?.amount)).toBe(60);
+  expect(openBefore.data?.scheduled_date).toBeNull();
+
+  const receipt = await a.rpc('register_procedure_receipt_v1', {
+    p_procedure_id: procedure!.id,
+    p_amount: 25,
+    p_method: 'pix',
+    p_paid_on: today,
+    p_card_brand: null,
+    p_installments: 1,
+    p_absorve_taxa: true,
+    p_fee_pct: 0,
+  });
+  expect(receipt.error).toBeNull();
+
+  const afterReceipt = await a.from('procedures').select('paid_amount,pending_amount').eq('id', procedure!.id).single();
+  expect(afterReceipt.error).toBeNull();
+  expect(Number(afterReceipt.data?.paid_amount)).toBe(65);
+  expect(Number(afterReceipt.data?.pending_amount)).toBe(35);
+
+  const openAfter = await a.from('procedure_payments').select('amount,scheduled_date,paid_at').eq('procedure_id', procedure!.id).is('paid_at', null).single();
+  expect(openAfter.error).toBeNull();
+  expect(Number(openAfter.data?.amount)).toBe(35);
+  expect(openAfter.data?.scheduled_date).toBeNull();
+
+  const receivables = await a.rpc('list_open_receivables_v1', { p_patient_id: seeded.patientId });
+  expect(receivables.error).toBeNull();
+  const row = (receivables.data ?? []).find((item: { procedure_id?: string }) => item.procedure_id === procedure!.id);
+  expect(row).toBeTruthy();
+  expect(Number(row?.pending_amount)).toBe(35);
+});
