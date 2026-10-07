@@ -144,7 +144,7 @@ function ServiceCostAdjustments({ services, costs, quantities, setCost }: { serv
 function PaymentCard({ entry, timing, rates, canRemove, onChange, onRemove }: { entry: PaymentEntryUI; timing: PaymentTiming; rates: MaquininhaRates; canRemove: boolean; onChange: (entry: PaymentEntryUI) => void; onRemove: () => void }) {
   const amounts = paymentAmounts(entry, rates);
   const card = entry.method === 'cartao_credito' || entry.method === 'cartao_debito';
-  const dateLabel = timing === 'later' ? 'Previsão de recebimento' : 'Data do pagamento';
+  const dateLabel = timing === 'later' ? 'Previsão de recebimento · opcional' : 'Data do pagamento';
   return <div style={{ padding: 14, border: '1px solid var(--border)', borderRadius: 12, background: 'var(--bg-2)', display: 'grid', gap: 11 }}>
     <div style={{ display: 'flex', justifyContent: 'space-between' }}><strong>{timing === 'later' ? 'Recebimento combinado' : timing === 'past' ? 'Pagamento já realizado' : 'Pagamento'}</strong>{canRemove && <button type="button" className="icon-btn" onClick={onRemove} aria-label="Remover forma"><Trash2 size={15}/></button>}</div>
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,minmax(0,1fr))', gap: 6 }}>{(Object.entries(METHOD_LABELS) as [SimplePaymentMethod, string][]).map(([method, label]) => <button key={method} type="button" className={`btn btn--sm ${entry.method === method ? 'btn--primary' : 'btn--ghost'}`} style={{ minHeight: 42 }} onClick={() => onChange({ ...entry, method, installments: 1 })}>{label}</button>)}</div>
@@ -155,7 +155,7 @@ function PaymentCard({ entry, timing, rates, canRemove, onChange, onRemove }: { 
     <div>
       <label className="field-label">{dateLabel}</label>
       <input className="field-input" type="date" min={timing === 'later' ? TOMORROW : undefined} max={timing === 'later' ? undefined : TODAY} value={entry.scheduledDate} disabled={timing === 'today'} onChange={event => onChange({ ...entry, scheduledDate: event.target.value })}/>
-      <small className="page-sub">{timing === 'later' ? 'Ficará em A receber até o pagamento ser confirmado.' : timing === 'past' ? 'Informe o dia exato em que esta forma de pagamento foi realmente recebida.' : 'Pagamento registrado na data de hoje.'}</small>
+      <small className="page-sub">{timing === 'later' ? 'Pode deixar sem data. O valor continuará em A receber até você registrar cada recebimento.' : timing === 'past' ? 'Informe o dia exato em que esta forma de pagamento foi realmente recebida.' : 'Pagamento registrado na data de hoje.'}</small>
     </div>
   </div>;
 }
@@ -177,12 +177,17 @@ function FinancialStep({ amount, entries, setEntries, rates, timing, setTiming, 
       <button type="button" aria-pressed={timing === 'later'} onClick={() => choose('later')} style={{ minHeight: 92, padding: 13, borderRadius: 13, border: `2px solid ${timing === 'later' ? '#d97706' : 'var(--border)'}`, background: timing === 'later' ? '#fffbeb' : 'var(--bg)', color: 'inherit', textAlign: 'left' }}><Clock3 size={20} style={{ color: '#b45309' }}/><strong style={{ display: 'block' }}>Receber depois</strong><small className="page-sub">Cria um valor em A receber.</small></button>
     </div>
     <div style={{ padding: 12, marginBottom: 8, borderRadius: 10, background: timing === 'later' ? '#fffbeb' : timing === 'past' ? '#f5f3ff' : '#fdf2f8', display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}><span>{timing === 'later' ? 'Total a receber' : timing === 'past' ? 'Total já recebido' : 'Total a pagar'}</span><strong>{money(amount)}</strong></div>
-    {timing === 'past' && <div style={{ marginBottom: 12, padding: 10, borderRadius: 9, background: '#faf5ff', color: '#6d28d9', fontSize: 13 }}><strong>Histórico financeiro</strong><div>Cada forma abaixo tem sua própria data. Esses valores serão registrados no dia informado, sem entrar como recebimento de hoje.</div></div>}
-    <div style={{ marginBottom: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}><small className="page-sub">Para dar desconto, altere o <strong>Valor cobrado</strong> do procedimento. Abaixo você apenas divide como esse total foi ou será pago.</small><button type="button" className="btn btn--ghost btn--sm" onClick={onEditAmount}><Tag size={14}/> Alterar valor / desconto</button></div>
+    {timing === 'past' && <div style={{ marginBottom: 12, padding: 10, borderRadius: 9, background: '#faf5ff', color: '#6d28d9', fontSize: 13 }}><strong>Histórico financeiro</strong><div>Cada forma abaixo tem sua própria data. Se tiver recebido só uma parte, o restante ficará automaticamente em A receber.</div></div>}
+    {timing === 'today' && <div style={{ marginBottom: 12, padding: 10, borderRadius: 9, background: '#fff7fb', color: '#9d174d', fontSize: 13 }}><strong>Pode receber só uma parte</strong><div>Digite apenas o que entrou hoje. O restante vira saldo em aberto automaticamente, sem exigir uma data.</div></div>}
+    {timing === 'later' && <div style={{ marginBottom: 12, padding: 10, borderRadius: 9, background: '#fffbeb', color: '#92400e', fontSize: 13 }}><strong>Data opcional</strong><div>Se você ainda não sabe quando a paciente vai pagar, deixe a previsão em branco.</div></div>}
+    <div style={{ marginBottom: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}><small className="page-sub">Para dar desconto, altere o <strong>Valor cobrado</strong> do procedimento. Aqui você registra somente o que realmente entrou ou ficou combinado.</small><button type="button" className="btn btn--ghost btn--sm" onClick={onEditAmount}><Tag size={14}/> Alterar valor / desconto</button></div>
     <div style={{ display: 'grid', gap: 10 }}>{entries.map(entry => <PaymentCard key={entry.tempId} entry={entry} timing={timing} rates={rates} canRemove={entries.length > 1} onChange={updated => setEntries(entries.map(item => item.tempId === entry.tempId ? updated : item))} onRemove={() => setEntries(entries.filter(item => item.tempId !== entry.tempId))}/>)}</div>
     <button type="button" className="btn btn--secondary btn--md" style={{ marginTop: 10 }} onClick={() => setEntries([...entries, newPayment(Math.max(0, remaining), timing, performedDate)])}><Plus size={15}/> Adicionar outra forma</button>
-    <div style={{ marginTop: 10, padding: 10, textAlign: 'center', borderRadius: 9, background: Math.abs(remaining) < .01 ? '#f0fdf4' : '#fffbeb', color: Math.abs(remaining) < .01 ? '#166534' : '#b45309', fontWeight: 700 }}>{Math.abs(remaining) < .01 ? '✓ Valor alocado' : remaining > 0 ? `Falta ${money(remaining)}` : `Excede ${money(Math.abs(remaining))}`}</div>
-    {Math.abs(remaining) >= .01 && <small className="page-sub" style={{ display: 'block', textAlign: 'center', marginTop: 5 }}>Se essa diferença for desconto, use “Alterar valor / desconto” acima em vez de diminuir o valor da forma de pagamento.</small>}
+    <div style={{ marginTop: 10, padding: 10, textAlign: 'center', borderRadius: 9, background: remaining < -.009 ? '#fef2f2' : Math.abs(remaining) < .01 ? '#f0fdf4' : '#fffbeb', color: remaining < -.009 ? '#b91c1c' : Math.abs(remaining) < .01 ? '#166534' : '#b45309', fontWeight: 700 }}>
+      {remaining < -.009 ? `Excede ${money(Math.abs(remaining))}` : Math.abs(remaining) < .01 ? (timing === 'later' ? '✓ Valor em A receber' : '✓ Valor total registrado') : timing === 'later' ? `Falta alocar ${money(remaining)}` : `${money(remaining)} ficará em A receber`}
+    </div>
+    {remaining < -.009 && <small className="page-sub" style={{ display: 'block', textAlign: 'center', marginTop: 5 }}>O total informado não pode ultrapassar o valor cobrado.</small>}
+    {remaining > .009 && timing === 'later' && <small className="page-sub" style={{ display: 'block', textAlign: 'center', marginTop: 5 }}>Distribua todo o valor entre as formas combinadas. A data pode ficar em branco.</small>}
   </div>;
 }
 
@@ -314,9 +319,17 @@ export function TreatmentRegistrarPageV2() {
   const goBack = () => step === 4 && !hasPayment ? setStep(2) : setStep(current => Math.max(0, current - 1));
   const continueFlow = () => { if (step === 1 && hasInjectables && !injectablesDone) { setInjectablesOpen(true); return; } if (step === 2 && !hasPayment) { setStep(4); return; } setStep(current => current + 1); };
   const allocated = payments.reduce((sum, entry) => sum + entry.baseValue, 0);
-  const balanced = Math.abs(amountDue - allocated) < .01;
-  const paymentDatesValid = payments.every(entry => timing === 'today' ? entry.scheduledDate === TODAY : timing === 'past' ? Boolean(entry.scheduledDate) && entry.scheduledDate <= TODAY : Boolean(entry.scheduledDate) && entry.scheduledDate > TODAY);
-  const canContinue = step === 0 ? Boolean(patient) : step === 1 ? services.length > 0 && performedDate <= TODAY : step === 3 ? !loadingMachine && !machineError && payments.length > 0 && balanced && paymentDatesValid : true;
+  const remainingBalance = +(amountDue - allocated).toFixed(2);
+  const allocationValid = timing === 'later'
+    ? Math.abs(remainingBalance) < .01
+    : allocated > .009 && remainingBalance >= -.01;
+  const paymentDatesValid = payments.every(entry => timing === 'today'
+    ? entry.scheduledDate === TODAY
+    : timing === 'past'
+      ? Boolean(entry.scheduledDate) && entry.scheduledDate <= TODAY
+      : !entry.scheduledDate || entry.scheduledDate > TODAY);
+  const openBalance = timing === 'later' ? amountDue : Math.max(0, remainingBalance);
+  const canContinue = step === 0 ? Boolean(patient) : step === 1 ? services.length > 0 && performedDate <= TODAY : step === 3 ? !loadingMachine && !machineError && payments.length > 0 && allocationValid && paymentDatesValid : true;
 
   const saveDraftNow = async () => {
     if (!patient) return;
@@ -325,7 +338,7 @@ export function TreatmentRegistrarPageV2() {
   };
 
   const confirmAttendance = async () => {
-    if (!patient || !services.length || (hasPayment && (!balanced || !paymentDatesValid))) return;
+    if (!patient || !services.length || (hasPayment && (!allocationValid || !paymentDatesValid))) return;
     setSaving(true);
     try {
       const computed = payments.map(payment => ({ payment, ...paymentAmounts(payment, machine.rates) }));
@@ -355,18 +368,32 @@ export function TreatmentRegistrarPageV2() {
         notes: persistedNotes || null,
         barter_value: barterTotal,
         barter_description: barterDescription || null,
-        payment_entries: hasPayment ? computed.map(({ payment, clientPays, feePct, feeValue, netAmount }) => ({
-          method: payment.method,
-          amount: clientPays,
-          card_brand: payment.method === 'cartao_credito' || payment.method === 'cartao_debito' ? payment.cardBrand : null,
-          installments: payment.method === 'cartao_credito' ? payment.installments : 1,
-          fee_pct: feePct || null,
-          fee_value: feeValue || null,
-          net_amount: netAmount,
-          absorve_taxa: payment.absorveTaxa,
-          scheduled_date: timing === 'today' ? null : payment.scheduledDate,
-          is_immediate: timing !== 'later',
-        })) : [],
+        payment_entries: hasPayment ? [
+          ...computed.map(({ payment, clientPays, feePct, feeValue, netAmount }) => ({
+            method: payment.method,
+            amount: clientPays,
+            card_brand: payment.method === 'cartao_credito' || payment.method === 'cartao_debito' ? payment.cardBrand : null,
+            installments: payment.method === 'cartao_credito' ? payment.installments : 1,
+            fee_pct: feePct || null,
+            fee_value: feeValue || null,
+            net_amount: netAmount,
+            absorve_taxa: payment.absorveTaxa,
+            scheduled_date: timing === 'today' ? null : payment.scheduledDate || null,
+            is_immediate: timing !== 'later',
+          })),
+          ...(timing !== 'later' && openBalance > .009 ? [{
+            method: 'pix',
+            amount: openBalance,
+            card_brand: null,
+            installments: 1,
+            fee_pct: null,
+            fee_value: null,
+            net_amount: openBalance,
+            absorve_taxa: true,
+            scheduled_date: null,
+            is_immediate: false,
+          }] : []),
+        ] : [],
         coverage_entries: services.flatMap(service => coverage[service.id] ? [{ service_id: service.id, package_item_id: coverage[service.id]!, quantity: 1 }] : []),
         material_entries: materials.map(item => ({ material_id: item.material_id, quantity: item.quantity })),
         item_values: services.map(service => {
@@ -390,15 +417,16 @@ export function TreatmentRegistrarPageV2() {
 
   const reset = () => { clearAttendanceInjectableDraft(); clearAttendanceInjectablePoints(); restoredRef.current = null; setStep(0); setPatient(null); setServices([]); setMaterials([]); setAppointmentId(null); setCoverage({}); setPrices({}); setQuantities({}); setCosts({}); setCourtesy({}); setBarter({}); setPerformedDate(TODAY); setNotes(''); setTiming('today'); setPayments([]); setInjectablePoints([]); setInjectablesOpen(false); setInjectablesDone(false); setDone(false); };
 
-  if (done) return <div className="page"><div style={{ minHeight: '62vh', display: 'grid', placeItems: 'center', padding: 30 }}><div style={{ maxWidth: 520, textAlign: 'center' }}><div style={{ width: 68, height: 68, margin: '0 auto 14px', borderRadius: '50%', background: '#dcfce7', color: '#166534', display: 'grid', placeItems: 'center' }}><Check size={34}/></div><h2>Atendimento registrado</h2><p className="page-sub">{patient?.name} · {new Date(`${performedDate}T12:00:00`).toLocaleDateString('pt-BR')}</p>{hasPayment && timing === 'later' && <div style={{ margin: '14px 0', padding: 12, border: '1px solid #fde68a', borderRadius: 10, background: '#fffbeb', color: '#92400e' }}><strong>Pagamento em A receber</strong><div>O atendimento foi concluído sem marcar o valor como recebido.</div></div>}{hasPayment && timing === 'past' && <div style={{ margin: '14px 0', padding: 12, border: '1px solid #ddd6fe', borderRadius: 10, background: '#f5f3ff', color: '#6d28d9' }}><strong>Pagamento histórico registrado</strong><div>As datas informadas foram preservadas e não entram como recebimento de hoje.</div></div>}<div style={{ display: 'flex', justifyContent: 'center', gap: 8, marginTop: 16, flexWrap: 'wrap' }}><button type="button" className="btn btn--secondary btn--md" onClick={() => patient ? navigate(`/pacientes/${patient.id}`) : navigate('/pacientes')}>Voltar à paciente</button><button type="button" className="btn-primary" style={{ padding: '12px 24px' }} onClick={reset}>Novo atendimento</button></div></div></div></div>;
+  if (done) return <div className="page"><div style={{ minHeight: '62vh', display: 'grid', placeItems: 'center', padding: 30 }}><div style={{ maxWidth: 520, textAlign: 'center' }}><div style={{ width: 68, height: 68, margin: '0 auto 14px', borderRadius: '50%', background: '#dcfce7', color: '#166534', display: 'grid', placeItems: 'center' }}><Check size={34}/></div><h2>Atendimento registrado</h2><p className="page-sub">{patient?.name} · {new Date(`${performedDate}T12:00:00`).toLocaleDateString('pt-BR')}</p>{hasPayment && openBalance > .009 && <div style={{ margin: '14px 0', padding: 12, border: '1px solid #fde68a', borderRadius: 10, background: '#fffbeb', color: '#92400e' }}><strong>Saldo em A receber: {money(openBalance)}</strong><div>Você pode registrar novos recebimentos pelo Financeiro ou pela ficha da paciente.</div></div>}{hasPayment && timing === 'past' && <div style={{ margin: '14px 0', padding: 12, border: '1px solid #ddd6fe', borderRadius: 10, background: '#f5f3ff', color: '#6d28d9' }}><strong>Pagamento histórico registrado</strong><div>As datas informadas foram preservadas e não entram como recebimento de hoje.</div></div>}<div style={{ display: 'flex', justifyContent: 'center', gap: 8, marginTop: 16, flexWrap: 'wrap' }}><button type="button" className="btn btn--secondary btn--md" onClick={() => patient ? navigate(`/pacientes/${patient.id}`) : navigate('/pacientes')}>Voltar à paciente</button><button type="button" className="btn-primary" style={{ padding: '12px 24px' }} onClick={reset}>Novo atendimento</button></div></div></div></div>;
 
   const financialSummaryLabel = timing === 'later' ? 'A receber' : timing === 'past' ? 'Pago anteriormente' : 'Recebido hoje';
+  const financialSummaryValue = timing === 'later' ? amountDue : allocated;
   const financialSummaryColor = timing === 'later' ? '#b45309' : timing === 'past' ? '#6d28d9' : 'var(--primary)';
   const serviceCostTotal = services.reduce((sum, service) => sum + Number(costs[service.id] ?? service.cost_per_unit ?? 0) * serviceQuantity(service, quantities), 0);
 
   return <div className="page"><div className="page-header"><div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>{step > 0 && <button type="button" className="icon-btn" onClick={goBack} aria-label="Voltar"><ChevronLeft size={21}/></button>}<div><h1 className="page-title">Registrar atendimento</h1>{patient && step > 0 && <p className="page-sub">{patient.name}</p>}</div></div>{patient && step > 0 && <div style={{ display: 'flex', gap: 6 }}><button type="button" className="btn btn--ghost btn--sm" onClick={() => void saveDraftNow()} disabled={draft.saving}><Save size={15}/> {draft.saving ? 'Salvando…' : 'Salvar rascunho'}</button><button type="button" className="icon-btn" onClick={reset} aria-label="Cancelar"><X size={19}/></button></div>}</div>{injectablesOpen && patient && <Suspense fallback={<div className="full-loader">Carregando mapa…</div>}><InjetaveisScreen patientId={patient.id} injectableServices={services.filter(service => service.is_injectable)} onDone={points => { setInjectablePoints(points); setInjectablesDone(true); setInjectablesOpen(false); setStep(2); }} onCancel={() => { setInjectablesDone(false); setInjectablesOpen(false); setStep(1); }} onSkip={() => { setInjectablePoints([]); setInjectablesDone(true); setInjectablesOpen(false); setStep(2); }}/></Suspense>}<div style={{ padding: '0 16px 110px' }}><StepBar step={step} hasInjectables={hasInjectables} hasPayment={hasPayment}/>{step === 0 && <PatientStep onSelect={selected => { setPatient(selected); setStep(1); }}/>} {step === 1 && <><section style={{ padding: 14, marginBottom: 18, border: '1px solid var(--border)', borderRadius: 13, background: 'var(--bg-2)' }}><div style={{ display: 'flex', gap: 8, marginBottom: 12 }}><CalendarDays size={17} style={{ color: 'var(--primary)' }}/><div><strong>Dados do atendimento</strong><div className="page-sub">Pode preencher depois e informar a data real.</div></div></div><div style={{ maxWidth: 360 }}><label className="field-label">Data do atendimento</label><input className="field-input" type="date" max={TODAY} value={performedDate} onChange={event => setPerformedDate(event.target.value)}/></div></section><TreatmentExecutionStep catalogServices={servicos} loadingServices={loadingServices} selected={services} entitlements={entitlements} loadingEntitlements={loadingEntitlements} coverageByService={coverage} onTreatmentToggle={toggleTreatment} onExtraToggle={toggleExtra}/><ServiceAdjustments services={services} coverage={coverage} prices={prices} quantities={quantities} courtesy={courtesy} barter={barter} setPrice={(id, value) => { invalidatePaymentAllocation(); setPrices(current => ({ ...current, [id]: value })); setCourtesy(current => ({ ...current, [id]: false })); }} setQuantity={(service, value) => { invalidatePaymentAllocation(); const next = Math.max(1, Math.min(99, Math.trunc(value))); setQuantities(current => ({ ...current, [service.id]: next })); setPrices(current => ({ ...current, [service.id]: Number(service.price) * next })); setBarter(current => { const entry = current[service.id]; if (!entry?.active) return current; return { ...current, [service.id]: { ...entry, amount: Math.min(entry.amount, Number(service.price) * next) } }; }); }} setCourtesy={(service, value) => { invalidatePaymentAllocation(); setCourtesy(current => ({ ...current, [service.id]: value })); if (value) setBarter(current => { const next = { ...current }; delete next[service.id]; return next; }); if (!value) setPrices(current => ({ ...current, [service.id]: current[service.id] ?? Number(service.price) * serviceQuantity(service, quantities) })); }} setBarter={(id, value) => { invalidatePaymentAllocation(); setBarter(current => ({ ...current, [id]: value })); }}/><ServiceCostAdjustments services={services} costs={costs} quantities={quantities} setCost={(id, value) => setCosts(current => ({ ...current, [id]: value }))}/></>} {step === 2 && <MaterialsStep selected={materials} onChange={setMaterials}/>} {step === 3 && hasPayment && <><FinancialStep amount={amountDue} entries={payments} setEntries={setPayments} rates={machine.rates} timing={timing} setTiming={setTiming} performedDate={performedDate} onEditAmount={() => setStep(1)}/>{machineError && <div className="empty-state" style={{ marginTop: 10 }}>{machineError}</div>}</>} {step === 4 && patient && <div><h2 style={{ fontSize: '1.15rem' }}>Confirmar atendimento</h2><p className="page-sub">{new Date(`${performedDate}T12:00:00`).toLocaleDateString('pt-BR')} · {services.length} item(ns)</p><div style={{ margin: '14px 0', padding: 14, border: '1px solid var(--border)', borderRadius: 12, background: 'var(--bg-2)', display: 'grid', gap: 8 }}>{services.map(service => { const entitlement = entitlements.find(item => item.package_item_id === coverage[service.id]); return <div key={service.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}><span><strong>{service.name}</strong>{!coverage[service.id] && usesMlQuantity(service) && <small className="page-sub" style={{ display: 'block' }}>{serviceQuantity(service, quantities)} ml</small>}{coverage[service.id] && <small style={{ display: 'block', color: '#166534' }}>JÁ PAGO · {entitlement ? treatmentSessionLabel(entitlement) : 'tratamento'}</small>}{courtesy[service.id] && <small style={{ display: 'block', color: '#9d174d' }}>BRINDE / CORTESIA</small>}<small className="page-sub" style={{ display: 'block' }}>Custo interno: {money(Number(costs[service.id] ?? service.cost_per_unit ?? 0) * serviceQuantity(service, quantities))}</small></span><strong>{coverage[service.id] ? 'Já pago' : courtesy[service.id] ? 'R$ 0,00' : money(prices[service.id] ?? Number(service.price) * serviceQuantity(service, quantities))}</strong></div>; })}<div style={{ paddingTop: 9, borderTop: '1px solid var(--border)', display: 'grid', gap: 6 }}>
   <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Valor cobrado</span><strong>{money(chargedTotal)}</strong></div>
   {barterTotal > .009 && <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--primary)' }}><span>Permuta</span><strong>{money(barterTotal)}</strong></div>}
-  <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>{hasPayment ? financialSummaryLabel : barterTotal > .009 ? 'Restante a pagar' : 'Nova cobrança'}</span><strong style={{ color: financialSummaryColor }}>{money(amountDue)}</strong></div>
+  <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>{hasPayment ? financialSummaryLabel : barterTotal > .009 ? 'Restante a pagar' : 'Nova cobrança'}</span><strong style={{ color: financialSummaryColor }}>{money(hasPayment ? financialSummaryValue : amountDue)}</strong></div>{hasPayment && timing !== 'later' && openBalance > .009 && <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>A receber</span><strong style={{ color: '#b45309' }}>{money(openBalance)}</strong></div>}
 </div><div style={{ display: 'flex', justifyContent: 'space-between' }}><span className="page-sub">Custo interno dos procedimentos</span><strong>{money(serviceCostTotal)}</strong></div>{hasPayment && timing === 'past' && <div style={{ paddingTop: 6, display: 'grid', gap: 3 }}>{payments.map(payment => <small key={payment.tempId} className="page-sub">{METHOD_LABELS[payment.method]} · {money(payment.baseValue)} · pago em {new Date(`${payment.scheduledDate}T12:00:00`).toLocaleDateString('pt-BR')}</small>)}</div>}</div><section style={{ marginBottom: 14, padding: 14, border: '1px solid var(--border)', borderRadius: 12, background: 'var(--bg-2)' }}><label className="field-label">Resumo do atendimento <span className="page-sub">· Opcional</span></label><textarea className="field-input" rows={3} value={notes} onChange={event => setNotes(event.target.value)} placeholder="Ex.: peeling realizado, técnica utilizada, resposta da paciente ou orientação importante…" style={{ resize: 'vertical', minHeight: 88 }}/></section><button type="button" className="btn-primary" style={{ width: '100%', minHeight: 52, display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 8 }} disabled={saving} onClick={() => void confirmAttendance()}>{saving ? <Loader2 className="spin" size={19}/> : <Check size={19}/>} {saving ? 'Finalizando…' : 'Finalizar atendimento'}</button></div>} {step < 4 && <button type="button" className="btn-primary" style={{ position: 'fixed', zIndex: 20, bottom: 'calc(var(--tab-h) + 16px)', left: '50%', transform: 'translateX(-50%)', width: 'calc(100% - 32px)', maxWidth: 640, minHeight: 52, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7, opacity: canContinue ? 1 : .45, pointerEvents: canContinue ? 'auto' : 'none' }} disabled={!canContinue} onClick={continueFlow}>Continuar <ChevronRight size={18}/></button>}</div></div>;
 }
