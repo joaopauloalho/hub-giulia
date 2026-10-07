@@ -2,9 +2,10 @@ import { useState } from 'react';
 import { FinanceiroPage } from './FinanceiroPage';
 import { PackageFinancePanel } from './PackageFinancePanel';
 import { ServiceFinancialPage } from './ServiceFinancialPage';
+import { ReceivablesPage } from './ReceivablesPage';
 
 export function FinanceiroIntegratedPage() {
-  const [tab, setTab] = useState<'overview' | 'services'>('overview');
+  const [tab, setTab] = useState<'overview' | 'receivables' | 'services'>('overview');
 
   return (
     <>
@@ -17,6 +18,15 @@ export function FinanceiroIntegratedPage() {
           style={{ border: 0, borderRadius: 9, padding: '8px 13px', cursor: 'pointer', font: 'inherit', fontSize: '0.82rem', fontWeight: 600, background: tab === 'overview' ? 'var(--bg)' : 'transparent', color: tab === 'overview' ? 'var(--text)' : 'var(--text-3)', boxShadow: tab === 'overview' ? '0 1px 3px rgba(15, 23, 42, .08)' : 'none' }}
         >
           Visão geral
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === 'receivables'}
+          onClick={() => setTab('receivables')}
+          style={{ border: 0, borderRadius: 9, padding: '8px 13px', cursor: 'pointer', font: 'inherit', fontSize: '0.82rem', fontWeight: 600, background: tab === 'receivables' ? 'var(--bg)' : 'transparent', color: tab === 'receivables' ? 'var(--text)' : 'var(--text-3)', boxShadow: tab === 'receivables' ? '0 1px 3px rgba(15, 23, 42, .08)' : 'none' }}
+        >
+          A receber
         </button>
         <button
           type="button"
@@ -34,7 +44,7 @@ export function FinanceiroIntegratedPage() {
           <FinanceiroPage />
           <PackageFinancePanel />
         </>
-      ) : <ServiceFinancialPage />}
+      ) : tab === 'receivables' ? <ReceivablesPage /> : <ServiceFinancialPage />}
     </>
   );
 }
