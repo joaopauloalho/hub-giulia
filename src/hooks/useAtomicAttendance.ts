@@ -21,6 +21,7 @@ export interface CreateAtomicAttendanceInput {
     net_amount: number;
     absorve_taxa: boolean;
     scheduled_date: string | null;
+    is_immediate?: boolean;
   }>;
   coverages?: PackageCoverageSelection[];
   materials?: ProcedureMaterialInput[];
@@ -43,7 +44,7 @@ export function useAtomicAttendance() {
     const clinicalMinutes = Math.max(0, Math.min(1440, Math.round(input.clinical_minutes ?? getClinicalMinutes())));
 
     if (hasStructuredDraft) {
-      const rpc = isReturn ? 'create_clinical_return_with_injectable_draft_v1' : 'create_procedure_with_injectable_draft_v6';
+      const rpc = isReturn ? 'create_clinical_return_with_injectable_draft_v1' : 'create_procedure_with_injectable_draft_v7';
       const args = isReturn ? {
         p_idempotency_key: input.idempotency_key,
         p_parent_procedure_id: input.parent_procedure_id,
@@ -80,7 +81,7 @@ export function useAtomicAttendance() {
       return data as Procedure;
     }
 
-    const rpc = isReturn ? 'create_clinical_return_v1' : 'create_procedure_v6';
+    const rpc = isReturn ? 'create_clinical_return_v1' : 'create_procedure_v7';
     const args = isReturn ? {
       p_idempotency_key: input.idempotency_key,
       p_parent_procedure_id: input.parent_procedure_id,
