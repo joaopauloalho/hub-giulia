@@ -80,8 +80,8 @@ function paymentAmounts(entry: PaymentEntryUI, rates: MaquininhaRates) {
 }
 
 function StepBar({ step, hasInjectables, hasPayment }: { step: number; hasInjectables: boolean; hasPayment: boolean }) {
-  const labels = ['Paciente', 'Atendimento', ...(hasInjectables ? ['Injetáveis'] : []), 'Materiais', ...(hasPayment ? ['Financeiro'] : []), 'Confirmar'];
-  const active = step === 0 ? 0 : step === 1 ? 1 : step === 2 ? 2 + (hasInjectables ? 1 : 0) : step === 3 ? 3 + (hasInjectables ? 1 : 0) : labels.length - 1;
+  const labels = ['Paciente', 'Atendimento', ...(hasInjectables ? ['Injetáveis'] : []), 'Materiais', ...(hasPayment ? ['Financeiro'] : []), 'Confirmar', 'Resumo'];
+  const active = step === 0 ? 0 : step === 1 ? 1 : step === 2 ? 2 + (hasInjectables ? 1 : 0) : step === 3 ? 3 + (hasInjectables ? 1 : 0) : step === 4 ? labels.length - 2 : labels.length - 1;
   return <div aria-label="Etapas do atendimento" style={{ display: 'flex', gap: 4, marginBottom: 22 }}>{labels.map((label, index) => <div key={label} style={{ flex: 1, minWidth: 0, textAlign: 'center' }}><div style={{ height: 4, borderRadius: 999, background: index <= active ? 'var(--primary)' : 'var(--border)' }}/><span style={{ display: 'block', marginTop: 4, fontSize: '.61rem', whiteSpace: 'nowrap', color: index === active ? 'var(--primary)' : 'var(--text-3)', fontWeight: index === active ? 700 : 400 }}>{label}</span></div>)}</div>;
 }
 
@@ -309,6 +309,8 @@ export function TreatmentRegistrarPageV2() {
 
   useEffect(() => { if (!hasInjectables) { clearAttendanceInjectableDraft(); clearAttendanceInjectablePoints(); setInjectablePoints([]); setInjectablesDone(false); } }, [hasInjectables]);
 
+  useEffect(() => { if (step === 5) window.scrollTo(0, 0); }, [step]);
+
   const invalidatePaymentAllocation = () => setPayments([]);
   const toggleTreatment = (service: Service, entitlement: PatientEntitlement) => {
     invalidatePaymentAllocation();
@@ -340,7 +342,7 @@ export function TreatmentRegistrarPageV2() {
     try { await draft.save(payload, appointmentId); toast.success('Rascunho salvo. Você pode continuar depois.'); } catch (error) { console.error('[attendance-draft:save]', error); toast.error('Não foi possível salvar o rascunho.'); }
   };
 
-  const confirmAttendance = async () => {
+  const confirmAttendance = async (skipSummary = false) => {
     if (!patient || !services.length || (hasPayment && (!allocationValid || !paymentDatesValid))) return;
     setSaving(true);
     try {
@@ -356,7 +358,7 @@ export function TreatmentRegistrarPageV2() {
         if (value <= .009) return [];
         return [entry.description.trim() ? `${service.name}: ${entry.description.trim()}` : service.name];
       }).join(' · ');
-      const persistedNotes = [notes.trim(), giftNames.length ? `Brinde/cortesia: ${giftNames.join(', ')}.` : ''].filter(Boolean).join('\n');
+      const persistedNotes = [skipSummary ? '' : notes.trim(), giftNames.length ? `Brinde/cortesia: ${giftNames.join(', ')}.` : ''].filter(Boolean).join('\n');
       const procedure = await create({
         patient_id: patient.id,
         appointment_id: appointmentId,
@@ -441,7 +443,7 @@ export function TreatmentRegistrarPageV2() {
   <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Valor cobrado</span><strong>{money(chargedTotal)}</strong></div>
   {barterTotal > .009 && <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--primary)' }}><span>Permuta</span><strong>{money(barterTotal)}</strong></div>}
   <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>{hasPayment ? financialSummaryLabel : barterTotal > .009 ? 'Restante a pagar' : 'Nova cobrança'}</span><strong style={{ color: financialSummaryColor }}>{money(hasPayment ? financialSummaryValue : amountDue)}</strong></div>{hasPayment && timing !== 'later' && openBalance > .009 && <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>A receber</span><strong style={{ color: '#b45309' }}>{money(openBalance)}</strong></div>}
-</div><div style={{ display: 'flex', justifyContent: 'space-between' }}><span className="page-sub">Custo interno dos procedimentos</span><strong>{money(serviceCostTotal)}</strong></div>{hasPayment && timing === 'past' && <div style={{ paddingTop: 6, display: 'grid', gap: 3 }}>{payments.map(payment => <small key={payment.tempId} className="page-sub">{METHOD_LABELS[payment.method]} · {money(payment.baseValue)} · pago em {new Date(`${payment.scheduledDate}T12:00:00`).toLocaleDateString('pt-BR')}</small>)}</div>}</div><section style={{ marginBottom: 14, padding: 14, border: '1px solid var(--border)', borderRadius: 12, background: 'var(--bg-2)' }}><label className="field-label">Resumo do atendimento <span className="page-sub">· Opcional</span></label><textarea className="field-input" rows={3} value={notes} onChange={event => setNotes(event.target.value)} placeholder="Ex.: peeling realizado, técnica utilizada, resposta da paciente ou orientação importante…" style={{ resize: 'vertical', minHeight: 88 }}/></section><section style={{ marginBottom:14,padding:14,border:'1px solid var(--border)',borderRadius:12,background:'var(--bg-2)' }}>
+</div><div style={{ display: 'flex', justifyContent: 'space-between' }}><span className="page-sub">Custo interno dos procedimentos</span><strong>{money(serviceCostTotal)}</strong></div>{hasPayment && timing === 'past' && <div style={{ paddingTop: 6, display: 'grid', gap: 3 }}>{payments.map(payment => <small key={payment.tempId} className="page-sub">{METHOD_LABELS[payment.method]} · {money(payment.baseValue)} · pago em {new Date(`${payment.scheduledDate}T12:00:00`).toLocaleDateString('pt-BR')}</small>)}</div>}</div><section style={{ marginBottom:14,padding:14,border:'1px solid var(--border)',borderRadius:12,background:'var(--bg-2)' }}>
   <strong>Contato futuro <span className="page-sub">· Opcional</span></strong>
   <p className="page-sub" style={{margin:'5px 0 12px'}}>Quer sugerir uma mensagem daqui a alguns meses? Nenhuma opção é obrigatória.</p>
   {services.map(service => <div key={service.id} style={{display:'flex',flexWrap:'wrap',alignItems:'center',gap:10,padding:'8px 0',borderTop:'1px solid var(--border)'}}>
@@ -458,5 +460,5 @@ export function TreatmentRegistrarPageV2() {
       </select>
     </label>}
   </div>)}
-</section><button type="button" className="btn-primary" style={{ width: '100%', minHeight: 52, display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 8 }} disabled={saving} onClick={() => void confirmAttendance()}>{saving ? <Loader2 className="spin" size={19}/> : <Check size={19}/>} {saving ? 'Finalizando…' : 'Finalizar atendimento'}</button></div>} {step < 4 && <button type="button" className="btn-primary" style={{ position: 'fixed', zIndex: 20, bottom: 'calc(var(--tab-h) + 16px)', left: '50%', transform: 'translateX(-50%)', width: 'calc(100% - 32px)', maxWidth: 640, minHeight: 52, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7, opacity: canContinue ? 1 : .45, pointerEvents: canContinue ? 'auto' : 'none' }} disabled={!canContinue} onClick={continueFlow}>Continuar <ChevronRight size={18}/></button>}</div></div>;
+</section></div>} {step === 5 && patient && <section style={{ padding: 18, border: '1px solid var(--border)', borderRadius: 14, background: 'var(--bg-2)' }}><h2 style={{ fontSize: '1.2rem', marginBottom: 6 }}>Resumo do atendimento</h2><p className="page-sub" style={{ marginBottom: 18 }}>Última etapa, opcional. Registre orientações, técnicas ou observações importantes, se desejar.</p><label className="field-label" htmlFor="attendance-final-summary">Observações do atendimento · Opcional</label><textarea id="attendance-final-summary" className="field-input" rows={6} value={notes} onChange={event => setNotes(event.target.value)} placeholder="Ex.: peeling realizado, técnica utilizada, resposta da paciente ou orientação importante…" style={{ resize: 'vertical', minHeight: 160 }}/><div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(185px, 1fr))', gap: 10, marginTop: 20 }}><button type="button" className="btn btn--secondary btn--md" style={{ minHeight: 52 }} disabled={saving} onClick={() => void confirmAttendance(true)}>Pular e finalizar</button><button type="button" className="btn-primary" style={{ minHeight: 52, display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 8 }} disabled={saving} onClick={() => void confirmAttendance()}>{saving ? <Loader2 className="spin" size={19}/> : <Check size={19}/>} {saving ? 'Finalizando…' : 'Finalizar atendimento'}</button></div></section>} {step < 5 && <button type="button" className="btn-primary" style={{ position: 'fixed', zIndex: 20, bottom: 'calc(var(--tab-h) + 16px)', left: '50%', transform: 'translateX(-50%)', width: 'calc(100% - 32px)', maxWidth: 640, minHeight: 52, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7, opacity: canContinue ? 1 : .45, pointerEvents: canContinue ? 'auto' : 'none' }} disabled={!canContinue} onClick={continueFlow}>Continuar <ChevronRight size={18}/></button>}</div></div>;
 }
