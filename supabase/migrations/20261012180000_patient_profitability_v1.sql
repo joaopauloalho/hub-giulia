@@ -29,8 +29,8 @@ begin
   end if;
   if (p_date_from is not null and p_date_to is not null and p_date_to < p_date_from)
     or (p_date_from is not null and p_date_to is not null and p_date_to - p_date_from > 366)
-    or p_limit not between 1 and 50
-    or p_offset < 0 then
+    or p_limit is null or p_limit not between 1 and 50
+    or p_offset is null or p_offset < 0 then
     raise exception using errcode = '22023', message = 'INVALID_PROFITABILITY_FILTER';
   end if;
 
@@ -47,6 +47,7 @@ begin
       count(*) as entries,
       coalesce(sum(pp.amount) filter (where pp.paid_at is not null),0)::numeric as received,
       coalesce(sum(pp.amount) filter (where pp.paid_at is null),0)::numeric as pending,
+      coalesce(sum(coalesce(pp.fee_value, greatest(pp.amount - pp.net_amount,0))) filter (where pp.paid_at is not null),0)::numeric as paid_fees,
       coalesce(sum(coalesce(pp.fee_value, greatest(pp.amount - pp.net_amount,0))),0)::numeric as fees,
       bool_and(pp.fee_value is not null or abs(pp.amount - pp.net_amount) <= 0.02) as fees_known
     from public.procedure_payments pp
@@ -74,6 +75,7 @@ begin
         then greatest(coalesce(p.total_value,0) - coalesce(p.barter_value,0),0)
         else coalesce(pp.pending,0) end::numeric as pending,
       coalesce(p.barter_value,0)::numeric as barter,
+      coalesce(pp.paid_fees,0)::numeric as paid_fees,
       coalesce(pp.fees,0)::numeric as fees,
       coalesce(p.total_cost,0)::numeric as costs,
       coalesce(p.clinical_time_cost,0)::numeric as time_cost,
@@ -101,6 +103,7 @@ begin
       count(*) as entries,
       coalesce(sum(pp.amount) filter (where pp.paid_at is not null),0)::numeric as received,
       coalesce(sum(pp.amount) filter (where pp.paid_at is null),0)::numeric as pending,
+      coalesce(sum(coalesce(pp.fee_value, greatest(pp.amount - pp.net_amount,0))) filter (where pp.paid_at is not null),0)::numeric as paid_fees,
       coalesce(sum(coalesce(pp.fee_value, greatest(pp.amount - pp.net_amount,0))),0)::numeric as fees,
       bool_and(pp.fee_value is not null or abs(pp.amount - pp.net_amount) <= 0.02) as fees_known
     from public.package_payments pp
@@ -115,7 +118,7 @@ begin
       false, null::uuid,
       pkg.commercial_total_snapshot::numeric, coalesce(pp.received,0)::numeric,
       (case when coalesce(pp.entries,0)=0 then pkg.commercial_total_snapshot else coalesce(pp.pending,0) end)::numeric,
-      0::numeric, coalesce(pp.fees,0)::numeric, 0::numeric, 0::numeric, 0::integer,
+      0::numeric, coalesce(pp.paid_fees,0)::numeric, coalesce(pp.fees,0)::numeric, 0::numeric, 0::numeric, 0::integer,
       true, coalesce(pp.fees_known,true)
     from scope_packages pkg
     left join package_payments pp on pp.package_id = pkg.id
@@ -130,6 +133,7 @@ begin
       coalesce(sum(received),0)::numeric as received,
       coalesce(sum(pending),0)::numeric as pending,
       coalesce(sum(barter),0)::numeric as barter,
+      coalesce(sum(paid_fees),0)::numeric as paid_fees,
       coalesce(sum(fees),0)::numeric as fees,
       coalesce(sum(costs),0)::numeric as costs,
       coalesce(sum(time_cost),0)::numeric as time_cost,
@@ -147,13 +151,13 @@ begin
       'package_sales',t.package_sales,'total_rows',t.total_rows,
       'sales',round(t.sales,2),'received',round(t.received,2),
       'pending',round(t.pending,2),'barter',round(t.barter,2),
-      'fees',round(t.fees,2),'costs',round(t.costs,2),
+      'fees',round(t.fees,2),'paid_fees',round(t.paid_fees,2),'costs',round(t.costs,2),
       'materials_and_procedures_cost',round(t.costs-t.time_cost,2),
       'clinical_time_cost',round(t.time_cost,2),
       'clinical_minutes',t.clinical_minutes,
       'contribution',case when t.incomplete_rows=0 then round(t.sales-t.fees-t.costs,2) end,
       'margin_pct',case when t.incomplete_rows=0 and t.sales>0 then round((t.sales-t.fees-t.costs)*100/t.sales,2) end,
-      'cash_result',case when t.incomplete_rows=0 then round(t.received-t.fees-t.costs,2) end,
+      'cash_result',case when t.incomplete_rows=0 then round(t.received-t.paid_fees-t.costs,2) end,
       'complete',t.incomplete_rows=0,'incomplete_rows',t.incomplete_rows
     ),
     'rows',coalesce((select jsonb_agg(jsonb_build_object(
