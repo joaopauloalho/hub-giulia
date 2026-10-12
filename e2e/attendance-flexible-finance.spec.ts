@@ -157,6 +157,38 @@ test('editing the procedure discount after visiting finance recalculates the pay
 });
 
 
+
+test('final summary is the last optional step without changing the financial confirmation', async ({ page }) => {
+  const seeded = await readState();
+  await browserLogin(page, 'a');
+  await page.goto(`/registrar?patient_id=${seeded.patientId}&service_id=${seeded.serviceId}`);
+
+  const continueButton = page.getByRole('button', { name: /Continuar/ });
+  await expect(page.getByText('Valor realizado')).toBeVisible();
+  await continueButton.click();
+  await expect(page.getByRole('dialog', { name: 'Mapa de Injetáveis' })).toBeVisible();
+  await page.getByRole('button', { name: 'Pular mapa' }).click();
+  await continueButton.click();
+  await expect(page.getByText('Total a pagar')).toBeVisible();
+  await continueButton.click();
+
+  await expect(page.getByRole('heading', { name: 'Confirmar atendimento' })).toBeVisible();
+  await expect(page.getByText('Contato futuro')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Resumo do atendimento' })).toHaveCount(0);
+  await continueButton.click();
+
+  const summary = page.getByRole('textbox', { name: 'Observações do atendimento · Opcional' });
+  await expect(page.getByRole('heading', { name: 'Resumo do atendimento' })).toBeVisible();
+  await expect(summary).toBeEmpty();
+  await expect(page.getByRole('button', { name: 'Pular e finalizar' })).toBeEnabled();
+  await expect(page.getByRole('button', { name: 'Finalizar atendimento' })).toBeEnabled();
+  await summary.fill('Teste de observação opcional');
+  await page.getByRole('button', { name: 'Voltar' }).click();
+  await expect(page.getByRole('heading', { name: 'Confirmar atendimento' })).toBeVisible();
+  await continueButton.click();
+  await expect(summary).toHaveValue('Teste de observação opcional');
+});
+
 test('partial receipt keeps an unscheduled open balance and accepts later payments in pieces', async () => {
   const seeded = await readState();
   const a = await signedInClient('a');
