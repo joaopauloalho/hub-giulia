@@ -15,6 +15,7 @@ import {
   type InjectableSide,
 } from '../../lib/injectablesV2';
 import { brazilianDateToIso, normalizeBrazilianDateInput } from '../../lib/dateInput';
+import { compatibleInjectableProducts } from '../../lib/injectableProductCategory';
 import '../registrar/injectables-v2.css';
 
 type ServiceOption = { id: string; name: string; is_injectable: boolean };
@@ -132,7 +133,7 @@ export function FinalizedInjectableEditor({ mapId, patientId, onClose, onSaved }
         setServices((serviceResult.data ?? []) as ServiceOption[]);
         setActiveApplicationId(restored[0]?.id ?? null);
         setNewServiceId(((serviceResult.data ?? []) as ServiceOption[])[0]?.id ?? '');
-        setNewProductId(((productResult.data ?? []) as InjectableProductV2[]).find(product => product.active)?.id ?? '');
+        setNewProductId('');
       } catch (error) {
         if (alive) setMessage(error instanceof Error ? error.message : 'Não foi possível abrir o registro.');
       } finally {
@@ -146,6 +147,18 @@ export function FinalizedInjectableEditor({ mapId, patientId, onClose, onSaved }
   const productById = useMemo(() => new Map(products.map(product => [product.id, product])), [products]);
   const lotById = useMemo(() => new Map(lots.map(lot => [lot.id, lot])), [lots]);
   const serviceById = useMemo(() => new Map(services.map(service => [service.id, service])), [services]);
+  const selectedServiceName = serviceById.get(newServiceId)?.name ?? '';
+  const compatibleProducts = useMemo(
+    () => compatibleInjectableProducts(products, selectedServiceName),
+    [products, selectedServiceName],
+  );
+  const selectedProductValid = compatibleProducts.some(product => product.id === newProductId);
+
+  useEffect(() => {
+    setNewProductId(current => compatibleProducts.some(product => product.id === current)
+      ? current
+      : (compatibleProducts[0]?.id ?? ''));
+  }, [compatibleProducts]);
   const activeApplication = applications.find(application => application.id === activeApplicationId) ?? null;
   const selectedPoint = useMemo(() => {
     for (const application of applications) {
@@ -208,7 +221,7 @@ export function FinalizedInjectableEditor({ mapId, patientId, onClose, onSaved }
   };
 
   const addApplication = () => {
-    if (!newServiceId || !newProductId) return;
+    if (!newServiceId || !newProductId || !selectedProductValid) return;
     const application: ApplicationWithPhoto = {
       id: crypto.randomUUID(), service_id: newServiceId, product_id: newProductId, lot_id: newLotId || null,
       color: COLORS[applications.length % COLORS.length], dilution_note: '', points: [],
@@ -309,7 +322,7 @@ export function FinalizedInjectableEditor({ mapId, patientId, onClose, onSaved }
     } finally { setSaving(false); }
   };
 
-  const availableLots = lots.filter(lot => lot.product_id === newProductId && lot.active);
+  const availableLots = lots.filter(lot => selectedProductValid && lot.product_id === newProductId && lot.active);
 
   return (
     <div className="injectables-editor-overlay" role="dialog" aria-modal="true" aria-label="Editar registro de injetáveis">
@@ -338,9 +351,10 @@ export function FinalizedInjectableEditor({ mapId, patientId, onClose, onSaved }
 
               <div className="injectables-form-block">
                 <label>Serviço</label>
-                <select value={newServiceId} onChange={event => setNewServiceId(event.target.value)}>{services.map(service => <option key={service.id} value={service.id}>{service.name}</option>)}</select>
+                <select value={newServiceId} onChange={event => { setNewServiceId(event.target.value); setNewProductId(''); setNewLotId(''); }}>{services.map(service => <option key={service.id} value={service.id}>{service.name}</option>)}</select>
                 <label>Produto</label>
-                <select value={newProductId} onChange={event => { setNewProductId(event.target.value); setNewLotId(''); }}>{products.filter(product => product.active).map(product => <option key={product.id} value={product.id}>{product.name}</option>)}</select>
+                <select value={selectedProductValid ? newProductId : ''} onChange={event => { setNewProductId(event.target.value); setNewLotId(''); }}><option value="">Selecione</option>{compatibleProducts.map(product => <option key={product.id} value={product.id}>{product.name}</option>)}</select>
+                {compatibleProducts.length === 0 && <small className="injectables-product-filter-empty">Nenhum produto desta categoria cadastrado. Cadastre ou organize os produtos no mapa de um novo atendimento.</small>}
                 <label>Lote / validade (opcional)</label>
                 <div className="injectables-inline-field">
                   <select value={newLotId} onChange={event => setNewLotId(event.target.value)}><option value="">Sem lote</option>{availableLots.map(lot => <option key={lot.id} value={lot.id}>{lot.lot_number}{lot.expires_on ? ` · ${lot.expires_on.split('-').reverse().join('/')}` : ''}</option>)}</select>
@@ -351,7 +365,7 @@ export function FinalizedInjectableEditor({ mapId, patientId, onClose, onSaved }
                   <input value={newLotExpiry} inputMode="numeric" onChange={event => setNewLotExpiry(normalizeBrazilianDateInput(event.target.value))} placeholder="Validade DD/MM/AAAA" maxLength={10} />
                   <button className="btn btn--primary btn--sm" onClick={() => void createLot()} disabled={!newLotNumber.trim()}>Criar lote</button>
                 </div>}
-                <button className="btn btn--primary btn--md w-full" onClick={addApplication} disabled={!newServiceId || !newProductId}><Plus size={17} /> Adicionar aplicação</button>
+                <button className="btn btn--primary btn--md w-full" onClick={addApplication} disabled={!newServiceId || !selectedProductValid}><Plus size={17} /> Adicionar aplicação</button>
               </div>
 
               {activeApplication && <div className="injectables-active-meta">
