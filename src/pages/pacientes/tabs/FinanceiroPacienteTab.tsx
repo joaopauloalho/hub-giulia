@@ -4,6 +4,7 @@ import { ReceivablePaymentModal } from '../../../components/ReceivablePaymentMod
 import { usePatient360Overview } from '../../../hooks/usePatient360';
 import { useReceivables, type OpenReceivable } from '../../../hooks/useReceivables';
 import { formatPatientMoney } from '../../../lib/patient360';
+import { PatientProfitabilityPanel } from './PatientProfitabilityPanel';
 
 export function FinanceiroPacienteTab({ patientId }: { patientId: string }) {
   const { overview, loading, error, refresh: refreshOverview } = usePatient360Overview(patientId);
@@ -35,6 +36,8 @@ export function FinanceiroPacienteTab({ patientId }: { patientId: string }) {
     </div>
 
     {finance.lastPaymentAt && <div className="page-sub">Último pagamento recebido em {new Date(finance.lastPaymentAt).toLocaleString('pt-BR')}.</div>}
+
+    <PatientProfitabilityPanel patientId={patientId} />
 
     <section style={{ marginTop: 4 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 8 }}>
