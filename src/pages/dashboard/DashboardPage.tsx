@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Activity, CalendarDays, CheckCircle, ChevronRight, FileText, Package, RefreshCw, RotateCcw, TrendingUp, Users, Wallet } from 'lucide-react';
 import { Skeleton } from '../../components/ui/Skeleton';
 import { OperationalHomeSection } from '../../components/operational/OperationalHomeSection';
+import { ContactCalendarHome } from '../../components/operational/ContactCalendarHome';
 import { useDashboard } from '../../hooks/useDashboard';
 import { clinicTodayIso, compareMetric, decimal, getDashboardPeriod, money, percent, periodEndInclusive, type DashboardPeriodPreset } from '../../lib/dashboardMetrics';
 import './dashboard.css';
@@ -41,6 +42,7 @@ export function DashboardPage() {
   return <div className="page dashboard-page">
     <header className="dashboard-header"><div><h1 className="page-title">Hoje</h1><p className="page-sub">Resumo operacional primeiro; desempenho e gestão abaixo.</p></div><div className="dashboard-header__actions"><button type="button" className="btn btn--secondary btn--sm dashboard-refresh" onClick={() => void refresh()} disabled={isRefreshing}><RefreshCw size={16} className={isRefreshing ? 'spin' : undefined} /><span>Atualizar desempenho</span></button></div></header>
     <OperationalHomeSection today={today} />
+    <ContactCalendarHome/>
     {error && <div className="dashboard-error" role="alert"><strong>Não foi possível atualizar o desempenho.</strong> {error instanceof Error ? error.message : 'Tente novamente.'}</div>}
 
     <section className="dashboard-section" aria-labelledby="dashboard-performance-title"><div className="dashboard-section__heading"><div><h2 id="dashboard-performance-title" className="dashboard-section__title">Desempenho</h2><p className="dashboard-section__sub">Fluxos respeitam o período · snapshots continuam marcados como “Agora”</p></div><strong style={{ color: 'var(--text-2)', fontSize: '0.78rem' }}>{periodLabel}</strong></div>
