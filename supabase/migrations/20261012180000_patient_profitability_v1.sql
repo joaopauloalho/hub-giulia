@@ -47,9 +47,9 @@ begin
       count(*) as entries,
       coalesce(sum(pp.amount) filter (where pp.paid_at is not null),0)::numeric as received,
       coalesce(sum(pp.amount) filter (where pp.paid_at is null),0)::numeric as pending,
-      coalesce(sum(coalesce(pp.fee_value, greatest(pp.amount - pp.net_amount,0))) filter (where pp.paid_at is not null),0)::numeric as paid_fees,
-      coalesce(sum(coalesce(pp.fee_value, greatest(pp.amount - pp.net_amount,0))),0)::numeric as fees,
-      bool_and(pp.fee_value is not null or abs(pp.amount - pp.net_amount) <= 0.02) as fees_known
+      coalesce(sum(case when pp.absorve_taxa then coalesce(pp.fee_value, greatest(pp.amount - pp.net_amount,0)) else 0 end) filter (where pp.paid_at is not null),0)::numeric as paid_fees,
+      coalesce(sum(case when pp.absorve_taxa then coalesce(pp.fee_value, greatest(pp.amount - pp.net_amount,0)) else 0 end),0)::numeric as fees,
+      bool_and(not pp.absorve_taxa or pp.fee_value is not null or abs(pp.amount - pp.net_amount) <= 0.02) as fees_known
     from public.procedure_payments pp
     join scope_procedures p on p.id = pp.procedure_id
     where pp.user_id = v_uid
@@ -103,9 +103,9 @@ begin
       count(*) as entries,
       coalesce(sum(pp.amount) filter (where pp.paid_at is not null),0)::numeric as received,
       coalesce(sum(pp.amount) filter (where pp.paid_at is null),0)::numeric as pending,
-      coalesce(sum(coalesce(pp.fee_value, greatest(pp.amount - pp.net_amount,0))) filter (where pp.paid_at is not null),0)::numeric as paid_fees,
-      coalesce(sum(coalesce(pp.fee_value, greatest(pp.amount - pp.net_amount,0))),0)::numeric as fees,
-      bool_and(pp.fee_value is not null or abs(pp.amount - pp.net_amount) <= 0.02) as fees_known
+      coalesce(sum(case when pp.absorve_taxa then coalesce(pp.fee_value, greatest(pp.amount - pp.net_amount,0)) else 0 end) filter (where pp.paid_at is not null),0)::numeric as paid_fees,
+      coalesce(sum(case when pp.absorve_taxa then coalesce(pp.fee_value, greatest(pp.amount - pp.net_amount,0)) else 0 end),0)::numeric as fees,
+      bool_and(not pp.absorve_taxa or pp.fee_value is not null or abs(pp.amount - pp.net_amount) <= 0.02) as fees_known
     from public.package_payments pp
     join scope_packages pkg on pkg.id = pp.package_id
     where pp.user_id = v_uid
@@ -180,4 +180,4 @@ $function$;
 revoke all on function public.get_patient_profitability_v1(uuid,date,date,integer,integer) from public, anon;
 grant execute on function public.get_patient_profitability_v1(uuid,date,date,integer,integer) to authenticated;
 comment on function public.get_patient_profitability_v1(uuid,date,date,integer,integer) is
-  'Patient managerial LTV: completed attendance and independent package sales; cash separated from sales, returns costed, incomplete cost snapshots block margin.';
+  'Patient managerial LTV: completed attendance and independent package sales; cash separated from sales, returns costed, clinic-borne card fees only, incomplete cost snapshots block margin.';
