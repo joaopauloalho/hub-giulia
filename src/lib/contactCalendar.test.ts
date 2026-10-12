@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+vi.mock('./supabase', () => ({ supabase: {} }));
 import { addMonthsClamped, shiftDate, suggestedContactMonths, weekMonday } from './contactCalendar';
 describe('contact calendar date rules', () => {
   it('keeps each suggestion on its week and day', () => {
