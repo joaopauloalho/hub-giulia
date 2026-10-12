@@ -10,6 +10,7 @@ import { getFeePct, useMaquininhaConfig } from '../../hooks/useMaquininhaConfig'
 import { usePatientEntitlements } from '../../hooks/usePackages';
 import { useToast } from '../../hooks/useToast';
 import { useAttendanceDraft, type AttendanceDraftPayload } from '../../hooks/useAttendanceDraft';
+import { saveContactReminders, suggestedContactMonths } from '../../lib/contactCalendar';
 import { clearAttendanceInjectableDraft, clearAttendanceInjectablePoints } from '../../lib/attendanceRuntime';
 import { treatmentSessionLabel } from '../../lib/treatmentExecution';
 import type { CardBrand, InjectablePoint, MaquininhaRates, Patient, PaymentEntryUI, PaymentMethod, Service, SimplePaymentMethod } from '../../types';
@@ -214,6 +215,7 @@ export function TreatmentRegistrarPageV2() {
   const [barter, setBarter] = useState<BarterByService>({});
   const [performedDate, setPerformedDate] = useState(TODAY);
   const [notes, setNotes] = useState('');
+  const [contactMonths, setContactMonths] = useState<Record<string, number>>({});
   const [timing, setTiming] = useState<PaymentTiming>('today');
   const [payments, setPayments] = useState<PaymentEntryUI[]>([]);
   const [saving, setSaving] = useState(false);
@@ -284,6 +286,7 @@ export function TreatmentRegistrarPageV2() {
       if (restoredServices.length) setServices(restoredServices);
       if (payload.performedDate) setPerformedDate(payload.performedDate);
       if (typeof payload.notes === 'string') setNotes(payload.notes);
+      if (payload.contactMonthsByService) setContactMonths(payload.contactMonthsByService);
       if (payload.coverageByService) setCoverage(payload.coverageByService);
       if (payload.finalPriceByService) setPrices(payload.finalPriceByService);
       if (payload.quantityByService) setQuantities(payload.quantityByService);
@@ -333,7 +336,7 @@ export function TreatmentRegistrarPageV2() {
 
   const saveDraftNow = async () => {
     if (!patient) return;
-    const payload: AttendanceDraftPayload = { performedDate, notes, serviceIds: services.map(service => service.id), coverageByService: coverage, finalPriceByService: prices, quantityByService: quantities, costByService: costs, courtesyByService: courtesy, barterByService: barter, materials, paymentTiming: timing, payments };
+    const payload: AttendanceDraftPayload = { performedDate, notes, contactMonthsByService: contactMonths, serviceIds: services.map(service => service.id), coverageByService: coverage, finalPriceByService: prices, quantityByService: quantities, costByService: costs, courtesyByService: courtesy, barterByService: barter, materials, paymentTiming: timing, payments };
     try { await draft.save(payload, appointmentId); toast.success('Rascunho salvo. Você pode continuar depois.'); } catch (error) { console.error('[attendance-draft:save]', error); toast.error('Não foi possível salvar o rascunho.'); }
   };
 
@@ -404,6 +407,16 @@ export function TreatmentRegistrarPageV2() {
         item_costs: services.map(service => ({ service_id: service.id, cost: Number(costs[service.id] ?? service.cost_per_unit ?? 0) })),
       });
       if (injectablePoints.length) await saveInjectables(patient.id, injectablePoints, procedure.id);
+      const reminders = services.filter(service => Number(contactMonths[service.id]) >= 1 && Number(contactMonths[service.id]) <= 24)
+        .map(service => ({ service_id: service.id, service_name: service.name, months_after: contactMonths[service.id] }));
+      if (reminders.length) {
+        try {
+          await saveContactReminders(patient.id, procedure.id, procedure.performed_at ?? new Date(performedDate + 'T12:00:00').toISOString(), reminders);
+        } catch (contactError) {
+          console.error('[contact-calendar:save]', contactError);
+          toast.error('Atendimento salvo, mas não foi possível salvar a sugestão de contato.');
+        }
+      }
       try { await draft.remove(); } catch (cleanupError) { console.warn('[attendance-draft:cleanup]', cleanupError); }
       setDone(true);
     } catch (error) {
@@ -415,7 +428,7 @@ export function TreatmentRegistrarPageV2() {
     } finally { setSaving(false); }
   };
 
-  const reset = () => { clearAttendanceInjectableDraft(); clearAttendanceInjectablePoints(); restoredRef.current = null; setStep(0); setPatient(null); setServices([]); setMaterials([]); setAppointmentId(null); setCoverage({}); setPrices({}); setQuantities({}); setCosts({}); setCourtesy({}); setBarter({}); setPerformedDate(TODAY); setNotes(''); setTiming('today'); setPayments([]); setInjectablePoints([]); setInjectablesOpen(false); setInjectablesDone(false); setDone(false); };
+  const reset = () => { clearAttendanceInjectableDraft(); clearAttendanceInjectablePoints(); restoredRef.current = null; setStep(0); setPatient(null); setServices([]); setMaterials([]); setAppointmentId(null); setCoverage({}); setPrices({}); setQuantities({}); setCosts({}); setCourtesy({}); setBarter({}); setPerformedDate(TODAY); setNotes(''); setContactMonths({}); setTiming('today'); setPayments([]); setInjectablePoints([]); setInjectablesOpen(false); setInjectablesDone(false); setDone(false); };
 
   if (done) return <div className="page"><div style={{ minHeight: '62vh', display: 'grid', placeItems: 'center', padding: 30 }}><div style={{ maxWidth: 520, textAlign: 'center' }}><div style={{ width: 68, height: 68, margin: '0 auto 14px', borderRadius: '50%', background: '#dcfce7', color: '#166534', display: 'grid', placeItems: 'center' }}><Check size={34}/></div><h2>Atendimento registrado</h2><p className="page-sub">{patient?.name} · {new Date(`${performedDate}T12:00:00`).toLocaleDateString('pt-BR')}</p>{hasPayment && openBalance > .009 && <div style={{ margin: '14px 0', padding: 12, border: '1px solid #fde68a', borderRadius: 10, background: '#fffbeb', color: '#92400e' }}><strong>Saldo em A receber: {money(openBalance)}</strong><div>Você pode registrar novos recebimentos pelo Financeiro ou pela ficha da paciente.</div></div>}{hasPayment && timing === 'past' && <div style={{ margin: '14px 0', padding: 12, border: '1px solid #ddd6fe', borderRadius: 10, background: '#f5f3ff', color: '#6d28d9' }}><strong>Pagamento histórico registrado</strong><div>As datas informadas foram preservadas e não entram como recebimento de hoje.</div></div>}<div style={{ display: 'flex', justifyContent: 'center', gap: 8, marginTop: 16, flexWrap: 'wrap' }}><button type="button" className="btn btn--secondary btn--md" onClick={() => patient ? navigate(`/pacientes/${patient.id}`) : navigate('/pacientes')}>Voltar à paciente</button><button type="button" className="btn-primary" style={{ padding: '12px 24px' }} onClick={reset}>Novo atendimento</button></div></div></div></div>;
 
@@ -428,5 +441,22 @@ export function TreatmentRegistrarPageV2() {
   <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Valor cobrado</span><strong>{money(chargedTotal)}</strong></div>
   {barterTotal > .009 && <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--primary)' }}><span>Permuta</span><strong>{money(barterTotal)}</strong></div>}
   <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>{hasPayment ? financialSummaryLabel : barterTotal > .009 ? 'Restante a pagar' : 'Nova cobrança'}</span><strong style={{ color: financialSummaryColor }}>{money(hasPayment ? financialSummaryValue : amountDue)}</strong></div>{hasPayment && timing !== 'later' && openBalance > .009 && <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>A receber</span><strong style={{ color: '#b45309' }}>{money(openBalance)}</strong></div>}
-</div><div style={{ display: 'flex', justifyContent: 'space-between' }}><span className="page-sub">Custo interno dos procedimentos</span><strong>{money(serviceCostTotal)}</strong></div>{hasPayment && timing === 'past' && <div style={{ paddingTop: 6, display: 'grid', gap: 3 }}>{payments.map(payment => <small key={payment.tempId} className="page-sub">{METHOD_LABELS[payment.method]} · {money(payment.baseValue)} · pago em {new Date(`${payment.scheduledDate}T12:00:00`).toLocaleDateString('pt-BR')}</small>)}</div>}</div><section style={{ marginBottom: 14, padding: 14, border: '1px solid var(--border)', borderRadius: 12, background: 'var(--bg-2)' }}><label className="field-label">Resumo do atendimento <span className="page-sub">· Opcional</span></label><textarea className="field-input" rows={3} value={notes} onChange={event => setNotes(event.target.value)} placeholder="Ex.: peeling realizado, técnica utilizada, resposta da paciente ou orientação importante…" style={{ resize: 'vertical', minHeight: 88 }}/></section><button type="button" className="btn-primary" style={{ width: '100%', minHeight: 52, display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 8 }} disabled={saving} onClick={() => void confirmAttendance()}>{saving ? <Loader2 className="spin" size={19}/> : <Check size={19}/>} {saving ? 'Finalizando…' : 'Finalizar atendimento'}</button></div>} {step < 4 && <button type="button" className="btn-primary" style={{ position: 'fixed', zIndex: 20, bottom: 'calc(var(--tab-h) + 16px)', left: '50%', transform: 'translateX(-50%)', width: 'calc(100% - 32px)', maxWidth: 640, minHeight: 52, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7, opacity: canContinue ? 1 : .45, pointerEvents: canContinue ? 'auto' : 'none' }} disabled={!canContinue} onClick={continueFlow}>Continuar <ChevronRight size={18}/></button>}</div></div>;
+</div><div style={{ display: 'flex', justifyContent: 'space-between' }}><span className="page-sub">Custo interno dos procedimentos</span><strong>{money(serviceCostTotal)}</strong></div>{hasPayment && timing === 'past' && <div style={{ paddingTop: 6, display: 'grid', gap: 3 }}>{payments.map(payment => <small key={payment.tempId} className="page-sub">{METHOD_LABELS[payment.method]} · {money(payment.baseValue)} · pago em {new Date(`${payment.scheduledDate}T12:00:00`).toLocaleDateString('pt-BR')}</small>)}</div>}</div><section style={{ marginBottom: 14, padding: 14, border: '1px solid var(--border)', borderRadius: 12, background: 'var(--bg-2)' }}><label className="field-label">Resumo do atendimento <span className="page-sub">· Opcional</span></label><textarea className="field-input" rows={3} value={notes} onChange={event => setNotes(event.target.value)} placeholder="Ex.: peeling realizado, técnica utilizada, resposta da paciente ou orientação importante…" style={{ resize: 'vertical', minHeight: 88 }}/></section><section style={{ marginBottom:14,padding:14,border:'1px solid var(--border)',borderRadius:12,background:'var(--bg-2)' }}>
+  <strong>Contato futuro <span className="page-sub">· Opcional</span></strong>
+  <p className="page-sub" style={{margin:'5px 0 12px'}}>Quer sugerir uma mensagem daqui a alguns meses? Nenhuma opção é obrigatória.</p>
+  {services.map(service => <div key={service.id} style={{display:'flex',flexWrap:'wrap',alignItems:'center',gap:10,padding:'8px 0',borderTop:'1px solid var(--border)'}}>
+    <label style={{display:'flex',alignItems:'center',gap:8,flex:1,minWidth:180,cursor:'pointer'}}>
+      <input type="checkbox" checked={Boolean(contactMonths[service.id])}
+        onChange={event => setContactMonths(old => { const next = { ...old }; if (event.target.checked) next[service.id] = suggestedContactMonths(service.name); else delete next[service.id]; return next; })}/>
+      <span>{service.name}</span>
+    </label>
+    {contactMonths[service.id] && <label style={{display:'flex',alignItems:'center',gap:7}}>
+      <span className="page-sub">Sugerir em</span>
+      <select className="field-select" style={{width:'auto'}} value={contactMonths[service.id]}
+        onChange={event => setContactMonths(old => ({...old,[service.id]:Number(event.target.value)}))}>
+        {[1,2,3,4,5,6,9,12,18,24].map(months => <option key={months} value={months}>{months} {months===1?'mês':'meses'}</option>)}
+      </select>
+    </label>}
+  </div>)}
+</section><button type="button" className="btn-primary" style={{ width: '100%', minHeight: 52, display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 8 }} disabled={saving} onClick={() => void confirmAttendance()}>{saving ? <Loader2 className="spin" size={19}/> : <Check size={19}/>} {saving ? 'Finalizando…' : 'Finalizar atendimento'}</button></div>} {step < 4 && <button type="button" className="btn-primary" style={{ position: 'fixed', zIndex: 20, bottom: 'calc(var(--tab-h) + 16px)', left: '50%', transform: 'translateX(-50%)', width: 'calc(100% - 32px)', maxWidth: 640, minHeight: 52, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7, opacity: canContinue ? 1 : .45, pointerEvents: canContinue ? 'auto' : 'none' }} disabled={!canContinue} onClick={continueFlow}>Continuar <ChevronRight size={18}/></button>}</div></div>;
 }

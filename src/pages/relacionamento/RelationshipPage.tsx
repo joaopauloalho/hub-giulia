@@ -8,6 +8,7 @@ import { RELATIONSHIP_TYPE_LABEL, relationshipCreditSummary, relationshipDate, r
 import { appendReturnTo } from '../../lib/operational';
 import { useToast } from '../../hooks/useToast';
 import './relationship.css';
+import { ContactCalendarPage } from './ContactCalendarPage';
 
 const FILTERS: Array<{ key: RelationshipOpportunityType | null; label: string }> = [
   { key: null, label: 'Todas' },
@@ -129,7 +130,7 @@ function SnoozeDialog({ person, onClose, onSave }: { person: RelationshipPerson;
   return <div className="relationship-modal-backdrop" onMouseDown={event => event.target === event.currentTarget && onClose()}><section className="relationship-modal relationship-modal--small" role="dialog" aria-modal="true" aria-label="Lembrar depois"><div className="relationship-modal-head"><div><span className="page-sub">Lembrar depois</span><h3>{person.display_name}</h3></div><button type="button" className="icon-btn" onClick={onClose}><X size={18} /></button></div><div className="relationship-snooze-presets"><button className="btn btn--ghost btn--sm" onClick={() => setDate(addDaysIso(1))}>Amanhã</button><button className="btn btn--ghost btn--sm" onClick={() => setDate(addDaysIso(7))}>7 dias</button><button className="btn btn--ghost btn--sm" onClick={() => setDate(addDaysIso(30))}>30 dias</button></div><label className="relationship-field"><span>Reaparecer em</span><input type="date" min={localToday()} value={date} onChange={event => setDate(event.target.value)} /></label><button type="button" className="btn btn--primary btn--sm" disabled={!date || saving} onClick={() => void save()}>{saving ? 'Salvando...' : 'Lembrar nesta data'}</button></section></div>;
 }
 
-export function RelationshipPage() {
+function RelationshipOpportunities() {
   const { toast } = useToast();
   const [params, setParams] = useSearchParams();
   const initialCategory = params.get('category') as RelationshipOpportunityType | null;
@@ -222,5 +223,21 @@ export function RelationshipPage() {
     {reasonPerson && <ReasonPicker person={reasonPerson} onPick={opportunity => beginMessage(reasonPerson,opportunity)} onClose={() => setReasonPerson(null)} />}
     {compose && <ContactComposer person={compose.person} opportunity={compose.opportunity} clinicName={hub.clinicName} body={messageBody} onBody={setMessageBody} onClose={() => setCompose(null)} onRecord={(recipient,body) => hub.recordManualContact(compose.person,compose.opportunity,recipient,body)} />}
     {snoozePerson && <SnoozeDialog person={snoozePerson} onClose={() => setSnoozePerson(null)} onSave={async date => { const until = new Date(`${date}T09:00:00-03:00`); await hub.snoozePerson(snoozePerson,until); }} />}
+  </div>;
+}
+export function RelationshipPage() {
+  const [params, setParams] = useSearchParams();
+  const calendar = params.get('view') === 'calendar';
+  const change = (next: boolean) => {
+    const value = new URLSearchParams(params);
+    if (next) value.set('view','calendar'); else value.delete('view');
+    setParams(value);
+  };
+  return <div>
+    <nav aria-label="Seções do relacionamento" style={{ display:'flex',gap:8,flexWrap:'wrap',marginBottom:12 }}>
+      <button type="button" className={'btn btn--sm ' + (!calendar ? 'btn--primary' : 'btn--secondary')} onClick={() => change(false)}>Oportunidades</button>
+      <button type="button" className={'btn btn--sm ' + (calendar ? 'btn--primary' : 'btn--secondary')} onClick={() => change(true)}>Agenda de contatos</button>
+    </nav>
+    {calendar ? <ContactCalendarPage/> : <RelationshipOpportunities/>}
   </div>;
 }

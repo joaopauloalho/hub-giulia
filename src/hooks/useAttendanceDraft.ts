@@ -5,6 +5,7 @@ import { clearClinicalMinutes, getClinicalMinutes, setClinicalMinutes } from '..
 export type AttendanceDraftPayload = {
   performedDate?: string;
   notes?: string;
+  contactMonthsByService?: Record<string, number>;
   serviceIds?: string[];
   coverageByService?: Record<string, string | undefined>;
   finalPriceByService?: Record<string, number>;
