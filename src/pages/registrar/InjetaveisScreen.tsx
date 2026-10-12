@@ -16,6 +16,13 @@ import {
 } from 'lucide-react';
 import { InjetaveisFaceMap, type FaceMapPoint } from '../../components/InjetaveisFaceMap';
 import { useInjectablesV2 } from '../../hooks/useInjectablesV2';
+import {
+  compatibleInjectableProducts,
+  injectableProductCategory,
+  injectableServiceCategory,
+  INJECTABLE_PRODUCT_CATEGORIES,
+  type InjectableProductCategory,
+} from '../../lib/injectableProductCategory';
 import type { InjectablePoint, Service } from '../../types';
 import {
   applicationTotal,
@@ -95,6 +102,7 @@ export function InjetaveisScreen({ patientId, injectableServices, onDone, onCanc
     saveDraft,
     discardDraft,
     createProduct,
+    updateProductCategory,
     createLot,
     deactivateProduct,
     deactivateLot,
@@ -121,7 +129,7 @@ export function InjetaveisScreen({ patientId, injectableServices, onDone, onCanc
   const [lotNumber, setLotNumber] = useState('');
   const [lotExpiry, setLotExpiry] = useState('');
   const [catalogSaving, setCatalogSaving] = useState(false);
-  const [catalogManager, setCatalogManager] = useState<'product' | 'lots' | null>(null);
+  const [catalogManager, setCatalogManager] = useState<'product' | 'lots' | 'categories' | null>(null);
   const [lotMenuId, setLotMenuId] = useState<string | null>(null);
   const [catalogDeletePrompt, setCatalogDeletePrompt] = useState<{ type: 'product' | 'lot'; id: string; label: string } | null>(null);
 
@@ -161,12 +169,18 @@ export function InjetaveisScreen({ patientId, injectableServices, onDone, onCanc
     }
   }, [activeApplicationId, applications, selectedPointId]);
 
+  const selectedServiceName = injectableServices.find(service => service.id === newServiceId)?.name ?? '';
+  const compatibleProducts = useMemo(
+    () => compatibleInjectableProducts(products, selectedServiceName),
+    [products, selectedServiceName],
+  );
+  const selectedProductValid = compatibleProducts.some(product => product.id === newProductId);
+
   useEffect(() => {
-    if (!newProductId && products.length > 0) {
-      const firstActive = products.find(product => product.active) ?? products[0];
-      setNewProductId(firstActive?.id ?? '');
-    }
-  }, [newProductId, products]);
+    setNewProductId(current => compatibleProducts.some(product => product.id === current)
+      ? current
+      : (compatibleProducts[0]?.id ?? ''));
+  }, [compatibleProducts]);
 
   useEffect(() => {
     const productLots = lots.filter(lot => lot.product_id === newProductId && lot.active);
@@ -292,7 +306,7 @@ export function InjetaveisScreen({ patientId, injectableServices, onDone, onCanc
   };
 
   const addApplication = () => {
-    if (!newServiceId || !newProductId) return;
+    if (!newServiceId || !newProductId || !selectedProductValid) return;
     const existing = applicationsRef.current.find(application =>
       application.service_id === newServiceId
       && application.product_id === newProductId
@@ -390,6 +404,7 @@ export function InjetaveisScreen({ patientId, injectableServices, onDone, onCanc
       const product = await createProduct({
         name: productName,
         default_unit: productUnit,
+        category: injectableServiceCategory(selectedServiceName),
         presentation: productPresentation,
       });
       setNewProductId(product.id);
@@ -399,6 +414,18 @@ export function InjetaveisScreen({ patientId, injectableServices, onDone, onCanc
       setShowProductForm(false);
     } catch (cause) {
       setSaveMessage(cause instanceof Error ? cause.message : 'Não foi possível criar o produto.');
+    } finally {
+      setCatalogSaving(false);
+    }
+  };
+
+  const changeProductCategory = async (productId: string, category: InjectableProductCategory | null) => {
+    setCatalogSaving(true);
+    setSaveMessage(null);
+    try {
+      await updateProductCategory(productId, category);
+    } catch (cause) {
+      setSaveMessage(cause instanceof Error ? cause.message : 'Não foi possível alterar a categoria do produto.');
     } finally {
       setCatalogSaving(false);
     }
@@ -443,7 +470,7 @@ export function InjetaveisScreen({ patientId, injectableServices, onDone, onCanc
       } else {
         await deactivateProduct(catalogDeletePrompt.id);
         if (newProductId === catalogDeletePrompt.id) {
-          const nextProduct = products.find(product => product.active && product.id !== catalogDeletePrompt.id);
+          const nextProduct = compatibleProducts.find(product => product.id !== catalogDeletePrompt.id);
           setNewProductId(nextProduct?.id ?? '');
           setNewLotId('');
         }
@@ -457,7 +484,7 @@ export function InjetaveisScreen({ patientId, injectableServices, onDone, onCanc
     }
   };
 
-  const currentProductLots = lots.filter(lot => lot.product_id === newProductId && lot.active);
+  const currentProductLots = lots.filter(lot => selectedProductValid && lot.product_id === newProductId && lot.active);
   const selectedCatalogProduct = newProductId ? productById.get(newProductId) ?? null : null;
   const activeLot = activeApplication?.lot_id ? lotById.get(activeApplication.lot_id) : null;
   const activeProduct = activeApplication ? productById.get(activeApplication.product_id) : null;
@@ -646,18 +673,21 @@ export function InjetaveisScreen({ patientId, injectableServices, onDone, onCanc
 
             <div className="injectables-form-block">
               <label>Serviço injetável</label>
-              <select value={newServiceId} onChange={event => setNewServiceId(event.target.value)}>
+              <select value={newServiceId} onChange={event => { setNewServiceId(event.target.value); setNewProductId(''); setNewLotId(''); setCatalogManager(null); }}>
                 {injectableServices.map(service => <option key={service.id} value={service.id}>{service.name}</option>)}
               </select>
 
               <div className="injectables-field-heading">
                 <label>Produto / substância</label>
-                {newProductId && <button type="button" className="injectables-manage-link" onClick={() => setCatalogManager('product')}>Gerenciar</button>}
+                <div className="injectables-field-actions">
+                  {selectedProductValid && <button type="button" className="injectables-manage-link" onClick={() => setCatalogManager('product')}>Gerenciar</button>}
+                  <button type="button" className="injectables-manage-link" onClick={() => setCatalogManager('categories')}>Organizar</button>
+                </div>
               </div>
               <div className="injectables-inline-field">
-                <select value={newProductId} onChange={event => { setNewProductId(event.target.value); setNewLotId(''); }}>
+                <select value={selectedProductValid ? newProductId : ''} onChange={event => { setNewProductId(event.target.value); setNewLotId(''); }}>
                   <option value="">Selecione</option>
-                  {products.filter(product => product.active).map(product => (
+                  {compatibleProducts.map(product => (
                     <option key={product.id} value={product.id}>
                       {product.name} · {product.default_unit}
                     </option>
@@ -665,6 +695,12 @@ export function InjetaveisScreen({ patientId, injectableServices, onDone, onCanc
                 </select>
                 <button type="button" className="injectables-mini-button" onClick={() => setShowProductForm(value => !value)} aria-label="Novo produto"><PackagePlus size={17} /></button>
               </div>
+
+              {compatibleProducts.length === 0 && (
+                <small className="injectables-product-filter-empty">
+                  Nenhum produto dessa categoria cadastrado. Use + para cadastrar ou Organizar para classificar um produto existente.
+                </small>
+              )}
 
               {showProductForm && (
                 <div className="injectables-subform">
@@ -713,14 +749,35 @@ export function InjetaveisScreen({ patientId, injectableServices, onDone, onCanc
               )}
 
               {catalogManager && (
-                <div className="injectables-catalog-manager" role="dialog" aria-modal="false" aria-label={catalogManager === 'product' ? 'Gerenciar produto' : 'Gerenciar lotes'}>
+                <div className="injectables-catalog-manager" role="dialog" aria-modal="false" aria-label={catalogManager === 'product' ? 'Gerenciar produto' : catalogManager === 'categories' ? 'Organizar produtos' : 'Gerenciar lotes'}>
                   <div className="injectables-catalog-manager__header">
                     <div>
-                      <strong>{catalogManager === 'product' ? (selectedCatalogProduct?.name ?? 'Produto') : `Lotes de ${selectedCatalogProduct?.name ?? 'produto'}`}</strong>
-                      <span>{catalogManager === 'product' ? 'As aplicações antigas continuam preservadas.' : 'Lotes excluídos somem apenas das próximas aplicações.'}</span>
+                      <strong>{catalogManager === 'categories' ? 'Categorias dos produtos' : catalogManager === 'product' ? (selectedCatalogProduct?.name ?? 'Produto') : `Lotes de ${selectedCatalogProduct?.name ?? 'produto'}`}</strong>
+                      <span>{catalogManager === 'categories' ? 'Defina onde cada produto aparece. O histórico não será alterado.' : catalogManager === 'product' ? 'As aplicações antigas continuam preservadas.' : 'Lotes excluídos somem apenas das próximas aplicações.'}</span>
                     </div>
                     <button type="button" className="icon-btn" onClick={() => { setCatalogManager(null); setLotMenuId(null); }} aria-label="Fechar gerenciamento"><X size={16}/></button>
                   </div>
+
+                  {catalogManager === 'categories' && (
+                    <div className="injectables-catalog-list">
+                      {products.filter(product => product.active).map(product => (
+                        <div key={product.id} className="injectables-catalog-list__row">
+                          <strong>{product.name}</strong>
+                          <select
+                            aria-label={`Categoria de ${product.name}`}
+                            value={injectableProductCategory(product) ?? ''}
+                            onChange={event => void changeProductCategory(product.id, (event.target.value || null) as InjectableProductCategory | null)}
+                            disabled={catalogSaving}
+                          >
+                            <option value="">Não classificado</option>
+                            {INJECTABLE_PRODUCT_CATEGORIES.map(category => (
+                              <option key={category.value} value={category.value}>{category.label}</option>
+                            ))}
+                          </select>
+                        </div>
+                      ))}
+                    </div>
+                  )}
 
                   {catalogManager === 'lots' && (
                     <div className="injectables-catalog-list">
@@ -759,7 +816,7 @@ export function InjetaveisScreen({ patientId, injectableServices, onDone, onCanc
                 </div>
               )}
 
-              <button className="btn btn--primary btn--md w-full" onClick={addApplication} disabled={!newServiceId || !newProductId}>
+              <button className="btn btn--primary btn--md w-full" onClick={addApplication} disabled={!newServiceId || !selectedProductValid}>
                 <Plus size={17} /> Adicionar aplicação
               </button>
             </div>
