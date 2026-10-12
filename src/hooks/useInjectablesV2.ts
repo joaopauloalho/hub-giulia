@@ -221,6 +221,19 @@ export function useInjectablesV2(patientId?: string) {
     return product;
   }, []);
 
+  const updateProductCategory = useCallback(async (productId: string, category: string | null) => {
+    const { data, error: updateError } = await supabase
+      .from('injectable_products')
+      .update({ category })
+      .eq('id', productId)
+      .select('*')
+      .single();
+    if (updateError) throw updateError;
+    const product = data as InjectableProductV2;
+    setProducts(current => current.map(item => item.id === product.id ? product : item));
+    return product;
+  }, []);
+
   const createLot = useCallback(async (input: {
     product_id: string;
     lot_number: string;
@@ -288,6 +301,7 @@ export function useInjectablesV2(patientId?: string) {
     discardDraft,
     loadCatalog,
     createProduct,
+    updateProductCategory,
     createLot,
     deactivateProduct,
     deactivateLot,

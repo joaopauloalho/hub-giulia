@@ -675,3 +675,31 @@
 .injectables-catalog-confirm {
   margin-top: 2px;
 }
+
+/* Serviço selecionado define os produtos disponíveis no mapa. */
+.injectables-field-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 9px;
+}
+
+.injectables-product-filter-empty {
+  display: block;
+  color: var(--text-3);
+  font-size: 0.73rem;
+  line-height: 1.4;
+}
+
+.injectables-catalog-list__row > strong {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.injectables-catalog-list__row > select {
+  width: min(48%, 175px);
+  min-width: 115px;
+  font-size: 0.72rem;
+}
