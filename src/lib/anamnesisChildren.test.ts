@@ -7,7 +7,7 @@ import {
   updateAnamnesisChild,
 } from './anamnesisChildren';
 
-describe('optional children data in women's health anamnesis', () => {
+describe("optional children data in women's health anamnesis", () => {
   it('does not interpret corrupted or absent data as children', () => {
     expect(parseAnamnesisChildren(undefined)).toEqual([]);
     expect(parseAnamnesisChildren('not-json')).toEqual([]);
