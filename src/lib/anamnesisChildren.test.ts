@@ -30,7 +30,7 @@ describe("optional children data in women's health anamnesis", () => {
   });
 
   it('limits the number of records and ignores out-of-range updates', () => {
-    let serialized = resizeAnamnesisChildren('', MAX_ANAMNESIS_CHILDREN + 10);
+    const serialized = resizeAnamnesisChildren('', MAX_ANAMNESIS_CHILDREN + 10);
     expect(parseAnamnesisChildren(serialized)).toHaveLength(MAX_ANAMNESIS_CHILDREN);
     const unchanged = updateAnamnesisChild(serialized, MAX_ANAMNESIS_CHILDREN, 50, 'nome', 'Invalid');
     expect(unchanged).toEqual(serialized);
