@@ -11,6 +11,7 @@ import {
   type AnamnesisSignatureRow,
 } from '../../../lib/anamnesisSignature';
 import type { AnamnesisCurrentRow, AnamnesisVersion } from '../../../lib/anamnesisV2';
+import { summarizeAnamnesisChildren } from '../../../lib/anamnesisChildren';
 import { useToast } from '../../../hooks/useToast';
 import { Modal } from '../../../components/ui/Modal';
 import '../anamnese-signature-flow.css';
@@ -21,9 +22,13 @@ type SchemaSection = { key?: string; title?: string; fields?: SchemaField[] };
 type GeneratedLink = { url: string; mode: Exclude<AnamnesisSignatureDeliveryMode, 'legacy'>; expiresAt: string };
 
 const dateTime = (value: string | null | undefined) => value ? new Date(value).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : '—';
-const LONG_SUMMARY_FIELDS = new Set(['observacoes_adicionais', 'cuidados_diarios', 'produtos_em_uso', 'produto_com_acido_detalhe', 'alteracoes_recentes_detalhe', 'pele_paciente', 'observacoes_gerais', 'minhas_recomendacoes']);
+const LONG_SUMMARY_FIELDS = new Set(['observacoes_adicionais', 'cuidados_diarios', 'produtos_em_uso', 'produto_com_acido_detalhe', 'alteracoes_recentes_detalhe', 'pele_paciente', 'observacoes_gerais', 'minhas_recomendacoes', 'filhos_detalhes']);
 const CONDITIONS_SUMMARY_SUPPLEMENTS: SchemaField[] = [
   { key: 'observacoes_adicionais', label: 'Observações adicionais', type: 'text' },
+];
+const WOMENS_SUMMARY_SUPPLEMENTS: SchemaField[] = [
+  { key: 'filhos_detalhes', label: 'Informações dos filhos', type: 'children_list' },
+  { key: 'amamentando', label: 'Está amamentando?', type: 'boolean' },
 ];
 const SKIN_SUMMARY_SUPPLEMENTS: SchemaField[] = [
   { key: 'cuidados_diarios', label: 'Cuidados diários em casa', type: 'text' },
@@ -56,14 +61,23 @@ function withClinicalSummarySupplements(snapshot: Record<string, unknown>, secti
     const title = (section.title ?? '').toLocaleLowerCase('pt-BR');
     const supplements = sectionKey === 'conditions'
       ? CONDITIONS_SUMMARY_SUPPLEMENTS
-      : sectionKey === 'skin_review' || sectionKey === 'aesthetics' || title.includes('pele')
-        ? SKIN_SUMMARY_SUPPLEMENTS
-        : [];
+      : sectionKey === 'womens_health'
+        ? WOMENS_SUMMARY_SUPPLEMENTS
+        : sectionKey === 'skin_review' || sectionKey === 'aesthetics' || title.includes('pele')
+          ? SKIN_SUMMARY_SUPPLEMENTS
+          : [];
     if (!supplements.length) return section;
 
-    const fields = section.fields ?? [];
-    const represented = new Set(fields.flatMap(field => [field.key, field.detail_key].filter((key): key is string => Boolean(key))));
     const source = sectionAnswers(snapshot, sectionKey);
+    // Keep frozen historical fields visible, but hide obsolete delivery type for
+    // newer versions that carry the breastfeeding / individual children answers.
+    const usesNewWomensQuestions = sectionKey === 'womens_health' && (
+      isFilled(source.amamentando) || isFilled(source.filhos_detalhes)
+    );
+    const fields = usesNewWomensQuestions
+      ? (section.fields ?? []).filter(field => field.key !== 'tipo_parto')
+      : (section.fields ?? []);
+    const represented = new Set(fields.flatMap(field => [field.key, field.detail_key].filter((key): key is string => Boolean(key))));
     const extras = supplements.filter(field => Boolean(field.key) && !represented.has(field.key!) && isFilled(source[field.key!]));
     return extras.length ? { ...section, fields: [...fields, ...extras] } : section;
   });
@@ -73,6 +87,7 @@ function displayValue(snapshot: Record<string, unknown>, sectionKey: string, fie
   const key = field.key ?? '';
   const source = sectionAnswers(snapshot, sectionKey);
   const value = source[key];
+  if (field.type === 'children_list') return summarizeAnamnesisChildren(value);
   if (field.type === 'status_text') {
     const statusKey = key === 'allergies' ? 'allergies_status' : 'medications_status';
     const status = snapshot[statusKey];

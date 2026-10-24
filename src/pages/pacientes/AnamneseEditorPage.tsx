@@ -5,6 +5,7 @@ import { supabase } from '../../lib/supabase';
 import { useAnamneseDraftV2 } from '../../hooks/useAnamneseDraftV2';
 import { validateAnamnesisForCompletion, type AnamnesisSaveStatus, type ClinicalAnswerMap } from '../../lib/anamnesisV2';
 import { MedicationAutocomplete } from '../../components/clinical/MedicationAutocomplete';
+import { MAX_ANAMNESIS_CHILDREN, parseAnamnesisChildren, resizeAnamnesisChildren, updateAnamnesisChild } from '../../lib/anamnesisChildren';
 import './anamnese.css';
 import './anamnese391.css';
 
@@ -278,6 +279,21 @@ export function AnamneseEditorPage() {
   const setMap = (area: 'conditions' | 'surgicalHistory' | 'habits' | 'aesthetics', key: string, value: boolean | string | undefined) => {
     setDraft(previous => ({ ...previous, [area]: { ...(previous[area] as ClinicalAnswerMap), [key]: value } }));
   };
+  const updateChild = (index: number, field: 'nome' | 'sexo', value: string) => {
+    setDraft(previous => ({
+      ...previous,
+      surgicalHistory: {
+        ...previous.surgicalHistory,
+        filhos_detalhes: updateAnamnesisChild(
+          previous.surgicalHistory.filhos_detalhes,
+          Number(previous.surgicalHistory.quantidade_filhos ?? 0),
+          index,
+          field,
+          value,
+        ),
+      },
+    }));
+  };
   const statusText = saveStatusLabel(saveStatus, current?.last_saved_at);
   const statusClass = ['offline', 'error', 'session-expired', 'conflict'].includes(saveStatus) ? 'anamnesis-save-status is-alert' : 'anamnesis-save-status';
   const focusIssue = (fieldId: string) => {
@@ -395,35 +411,93 @@ export function AnamneseEditorPage() {
               id="q-surgicalHistory-tem_filhos"
               label="Tem filhos?"
               value={draft.surgicalHistory.tem_filhos as boolean | undefined}
-              onChange={value => {
-                setMap('surgicalHistory', 'tem_filhos', value);
-                if (!value) setMap('surgicalHistory', 'quantidade_filhos', '');
-              }}
+              onChange={value => setDraft(previous => ({
+                ...previous,
+                surgicalHistory: {
+                  ...previous.surgicalHistory,
+                  tem_filhos: value,
+                  ...(value ? {} : { quantidade_filhos: '', filhos_detalhes: '' }),
+                },
+              }))}
             />
             {draft.surgicalHistory.tem_filhos === true && (
+              <>
+                <div className="field">
+                  <label className="field-label" htmlFor="detail-surgicalHistory-quantidade_filhos">Quantos filhos?</label>
+                  <input
+                    id="detail-surgicalHistory-quantidade_filhos"
+                    data-focus-target
+                    className="field-input"
+                    type="number"
+                    inputMode="numeric"
+                    min={1}
+                    max={MAX_ANAMNESIS_CHILDREN}
+                    step={1}
+                    value={String(draft.surgicalHistory.quantidade_filhos ?? '')}
+                    onChange={event => {
+                      const raw = event.target.value.replace(/\D/g, '').slice(0, 2);
+                      const count = raw ? Math.min(MAX_ANAMNESIS_CHILDREN, Number(raw)) : 0;
+                      setDraft(previous => ({
+                        ...previous,
+                        surgicalHistory: {
+                          ...previous.surgicalHistory,
+                          quantidade_filhos: raw ? String(count) : '',
+                          filhos_detalhes: resizeAnamnesisChildren(previous.surgicalHistory.filhos_detalhes, count),
+                        },
+                      }));
+                    }}
+                    placeholder="Ex.: 2"
+                  />
+                </div>
+                {Array.from({ length: Math.min(MAX_ANAMNESIS_CHILDREN, Number(draft.surgicalHistory.quantidade_filhos ?? 0) || 0) }, (_, index) => {
+                  const child = parseAnamnesisChildren(draft.surgicalHistory.filhos_detalhes)[index] ?? { nome: '', sexo: '' };
+                  return (
+                    <div className="anamnesis-child-card" key={index}>
+                      <strong>Filho(a) {index + 1}</strong>
+                      <div className="form-grid">
+                        <div className="field">
+                          <label className="field-label" htmlFor={`child-${index}-name`}>Nome (opcional)</label>
+                          <input id={`child-${index}-name`} className="field-input" value={child.nome} placeholder="Nome" maxLength={120} onChange={event => updateChild(index, 'nome', event.target.value)} />
+                        </div>
+                        <div className="field">
+                          <label className="field-label" htmlFor={`child-${index}-sex`}>Sexo (opcional)</label>
+                          <select id={`child-${index}-sex`} className="field-input" value={child.sexo} onChange={event => updateChild(index, 'sexo', event.target.value)}>
+                            <option value="">Não informado</option>
+                            <option value="Feminino">Feminino</option>
+                            <option value="Masculino">Masculino</option>
+                            <option value="Outro">Outro</option>
+                          </select>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </>
+            )}
+            <BinaryField
+              id="q-surgicalHistory-gestante"
+              label="Está gestante?"
+              value={draft.surgicalHistory.gestante === 'sim' ? true : draft.surgicalHistory.gestante === 'não' ? false : undefined}
+              onChange={value => setMap('surgicalHistory', 'gestante', value ? 'sim' : 'não')}
+              observation={draft.surgicalHistory.gestante_detalhe as string | undefined}
+              onObservationChange={value => setMap('surgicalHistory', 'gestante_detalhe', value)}
+              observationPlaceholder="Observação da gestação (opcional)"
+            />
+            {draft.surgicalHistory.gestante === 'tentando' && (
+              <p className="anamnesis-section-help">Resposta anterior: tentando engravidar. Atualize para Sim ou Não, se desejar.</p>
+            )}
+            {draft.surgicalHistory.gestante === 'sim' && (
               <div className="field">
-                <label className="field-label" htmlFor="detail-surgicalHistory-quantidade_filhos">Quantos filhos?</label>
-                <input
-                  id="detail-surgicalHistory-quantidade_filhos"
-                  data-focus-target
-                  className="field-input"
-                  inputMode="numeric"
-                  pattern="[0-9]*"
-                  value={String(draft.surgicalHistory.quantidade_filhos ?? '')}
-                  onChange={event => setMap('surgicalHistory', 'quantidade_filhos', event.target.value.replace(/\D/g, '').slice(0, 2))}
-                  placeholder="Ex.: 2"
-                  aria-label="Quantidade de filhos"
-                />
+                <label className="field-label" htmlFor="detail-surgicalHistory-quantas_gestacoes">Quantas gestações?</label>
+                <input id="detail-surgicalHistory-quantas_gestacoes" className="field-input" inputMode="numeric" value={String(draft.surgicalHistory.quantas_gestacoes ?? '')} onChange={event => setMap('surgicalHistory', 'quantas_gestacoes', event.target.value)} />
               </div>
             )}
-            <div className={`anamnesis-question${(['sim', 'tentando'].includes(String(draft.surgicalHistory.gestante))) ? ' anamnesis-question--with-observation' : ''}`} id="q-surgicalHistory-gestante">
-              <span className="anamnesis-question__label" id="gestante-label">Gestante?</span>
-              <div className="anamnesis-choice-group" role="radiogroup" aria-labelledby="gestante-label" data-focus-target>
-                {[['sim', 'Sim'], ['não', 'Não'], ['tentando', 'Tentando']].map(([value, label]) => <button key={value} type="button" role="radio" aria-checked={draft.surgicalHistory.gestante === value} className={draft.surgicalHistory.gestante === value ? 'is-selected' : ''} onClick={() => setMap('surgicalHistory', 'gestante', value)}>{label}</button>)}
-              </div>
-              {(draft.surgicalHistory.gestante === 'sim' || draft.surgicalHistory.gestante === 'tentando') && <CompactObservation id="detail-surgicalHistory-gestante" label="Gestante" value={String(draft.surgicalHistory.gestante_detalhe ?? '')} placeholder="Observação (opcional)" onChange={value => setMap('surgicalHistory', 'gestante_detalhe', value)} />}
-            </div>
-            {draft.surgicalHistory.gestante === 'sim' && <div className="form-grid"><div className="field"><label className="field-label">Quantas gestações?</label><input className="field-input" value={String(draft.surgicalHistory.quantas_gestacoes ?? '')} onChange={event => setMap('surgicalHistory', 'quantas_gestacoes', event.target.value)} /></div><div className="field"><label className="field-label">Tipo de parto</label><input className="field-input" value={String(draft.surgicalHistory.tipo_parto ?? '')} onChange={event => setMap('surgicalHistory', 'tipo_parto', event.target.value)} /></div></div>}
+            <BinaryField
+              id="q-surgicalHistory-amamentando"
+              label="Está amamentando?"
+              value={draft.surgicalHistory.amamentando as boolean | undefined}
+              onChange={value => setMap('surgicalHistory', 'amamentando', value)}
+            />
             <BinaryField id="q-surgicalHistory-menstruacao_regular" label="Menstruação regular" value={draft.surgicalHistory.menstruacao_regular as boolean | undefined} onChange={value => setMap('surgicalHistory', 'menstruacao_regular', value)} observation={draft.surgicalHistory.menstruacao_regular_detalhe as string | undefined} onObservationChange={value => setMap('surgicalHistory', 'menstruacao_regular_detalhe', value)} observationPlaceholder="Ex.: duração do ciclo, fluxo, sintomas, alterações recentes" alwaysShowObservation />
             <div className="field"><label className="field-label">Método contraceptivo</label><input className="field-input" value={String(draft.surgicalHistory.metodo_contraceptivo ?? '')} onChange={event => setMap('surgicalHistory', 'metodo_contraceptivo', event.target.value)} /></div>
             <BinaryField id="q-surgicalHistory-colica_menstrual" label="Tem cólica menstrual?" value={draft.surgicalHistory.colica_menstrual as boolean | undefined} onChange={value => setMap('surgicalHistory', 'colica_menstrual', value)} observation={draft.surgicalHistory.colica_menstrual_detalhe as string | undefined} onObservationChange={value => setMap('surgicalHistory', 'colica_menstrual_detalhe', value)} observationPlaceholder="Descreva intensidade/contexto" />
