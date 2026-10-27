@@ -7,6 +7,7 @@ import { PacienteView, type TabKey } from './PacienteView';
 import { PatientJourneyBoard } from './PatientJourneyBoard';
 import { Skeleton } from '../../components/ui/Skeleton';
 import { exportPatientsCSV } from '../../lib/exportUtils';
+import { patientMatchesSearch } from '../../lib/patientSearch';
 import type { Patient } from '../../types';
 
 type PatientViewMode = 'active' | 'journey' | 'archived';
@@ -50,7 +51,7 @@ export function PacientesPage() {
 
   const requestedTab = searchParams.get('tab');
   const initialTab = PATIENT_TABS.includes(requestedTab as TabKey) ? requestedTab as TabKey : undefined;
-  const filtered = pacientes.filter(patient => [patient.name, patient.phone, patient.email].some(value => value?.toLowerCase().includes(search.toLowerCase())));
+  const filtered = pacientes.filter(patient => patientMatchesSearch(patient, search));
   const initials = (name: string) => name.split(' ').slice(0, 2).map(word => word[0]).join('').toUpperCase();
   const fmtDate = (iso: string | null) => iso ? new Date(iso).toLocaleDateString('pt-BR') : null;
 
