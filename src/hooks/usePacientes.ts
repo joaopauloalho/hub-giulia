@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 import {
   normalizePatientCreateData,
@@ -27,41 +27,56 @@ export function usePacientes(options: UsePacientesOptions = {}) {
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const requestIdRef = useRef(0);
 
   const loadPage = useCallback(async (nextPage: number, append: boolean) => {
+    const requestId = ++requestIdRef.current;
     if (!append) setLoading(true);
     setError(null);
 
     try {
       const from = nextPage * pageSize;
       const to = from + pageSize - 1;
-      let query = supabase
-        .from('patients')
-        .select('*', { count: 'exact' })
-        .order(archiveMode === 'archived' ? 'archived_at' : 'created_at', { ascending: false })
-        .range(from, to);
+      let rows: PatientRecord[];
+      let count: number | null;
 
-      if (archiveMode === 'active') query = query.is('archived_at', null);
-      if (archiveMode === 'archived') query = query.not('archived_at', 'is', null);
+      if (search) {
+        // Server-side unaccent search covers all pages, not only loaded patients.
+        const result = await supabase
+          .rpc('search_patients_v1', { p_search: search, p_archive_mode: archiveMode }, { count: 'exact' })
+          .order(archiveMode === 'archived' ? 'archived_at' : 'created_at', { ascending: false })
+          .range(from, to);
+        if (result.error) throw result.error;
+        rows = (result.data ?? []) as PatientRecord[];
+        count = result.count;
+      } else {
+        let query = supabase
+          .from('patients')
+          .select('*', { count: 'exact' })
+          .order(archiveMode === 'archived' ? 'archived_at' : 'created_at', { ascending: false })
+          .range(from, to);
 
-      if (search.length >= 3) {
-        const term = `%${search.replace(/[%_]/g, '\\$&')}%`;
-        query = query.or(`name.ilike.${term},phone.ilike.${term},email.ilike.${term}`);
+        if (archiveMode === 'active') query = query.is('archived_at', null);
+        if (archiveMode === 'archived') query = query.not('archived_at', 'is', null);
+
+        const result = await query;
+        if (result.error) throw result.error;
+        rows = (result.data ?? []) as PatientRecord[];
+        count = result.count;
       }
 
-      const { data, error: patientsError, count } = await query;
-      if (patientsError) throw patientsError;
-
-      const rows = (data ?? []) as PatientRecord[];
+      // Older requests must not overwrite newer results during rapid typing.
+      if (requestId !== requestIdRef.current) return;
       setPacientes(current => append ? [...current, ...rows] : rows);
       setTotal(count ?? 0);
       setPage(nextPage);
     } catch (err) {
+      if (requestId !== requestIdRef.current) return;
       if (!append) setPacientes([]);
       console.error('[usePacientes.load]', err);
       setError('Não foi possível carregar as pacientes.');
     } finally {
-      setLoading(false);
+      if (requestId === requestIdRef.current) setLoading(false);
     }
   }, [archiveMode, pageSize, search]);
 
