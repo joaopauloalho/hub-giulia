@@ -102,55 +102,15 @@ export function useFinanceiro(month: Date) {
   };
 
   const removeProcedure = async (procedureId: string) => {
-    const { error: rpcError } = await supabase.rpc('remove_procedure_cascade', {
+    const { data: current, error: loadError } = await supabase
+      .from('procedures').select('revision').eq('id', procedureId).single();
+    if (loadError) throw loadError;
+    const { error } = await supabase.rpc('cancel_procedure_v1', {
       p_procedure_id: procedureId,
+      p_expected_revision: current.revision,
+      p_reason: 'Exclusao manual pelo Financeiro',
     });
-
-    if (!rpcError) {
-      await refresh();
-      return;
-    }
-
-    if (rpcError.code !== 'PGRST202' && rpcError.code !== '42883') {
-      throw rpcError;
-    }
-
-    const { data: proc, error: fetchError } = await supabase
-      .from('procedures')
-      .select('id, appointment_id')
-      .eq('id', procedureId)
-      .single();
-    if (fetchError) throw fetchError;
-
-    await supabase.from('patient_photos').update({ procedure_id: null }).eq('procedure_id', procedureId);
-    await supabase.from('injectable_maps').update({ procedure_id: null }).eq('procedure_id', procedureId);
-
-    const { error: paymentsError } = await supabase
-      .from('procedure_payments')
-      .delete()
-      .eq('procedure_id', procedureId);
-    if (paymentsError) throw paymentsError;
-
-    const { error: pixError } = await supabase
-      .from('pix_installments')
-      .delete()
-      .eq('procedure_id', procedureId);
-    if (pixError) throw pixError;
-
-    const { error: deleteError } = await supabase
-      .from('procedures')
-      .delete()
-      .eq('id', procedureId);
-    if (deleteError) throw deleteError;
-
-    const appointmentId = (proc as { appointment_id: string | null } | null)?.appointment_id;
-    if (appointmentId) {
-      await supabase
-        .from('appointments')
-        .update({ status: 'confirmado' })
-        .eq('id', appointmentId);
-    }
-
+    if (error) throw error;
     await refresh();
   };
 

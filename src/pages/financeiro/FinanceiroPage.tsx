@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { addMonths, format, isPast, isToday, parseISO, subMonths } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import {
@@ -212,7 +213,7 @@ function ProcedureRow({ proc, services, onRemove }: { proc: Procedure; services:
             ))}
           </div>
           <button type="button" className="btn btn--danger btn--sm" onClick={() => onRemove(proc)} style={{ marginTop: 12 }}>
-            <Trash2 size={14} /> Excluir atendimento
+            <Trash2 size={14} /> Editar ou excluir atendimento
           </button>
         </div>
       )}
@@ -222,9 +223,10 @@ function ProcedureRow({ proc, services, onRemove }: { proc: Procedure; services:
 
 export function FinanceiroPage() {
   const [month, setMonth] = useState(new Date());
-  const { procedures, pixPendentes, pagamentosPendentes, loading, error, markPixPago, markPagamentoPago, removeProcedure } = useFinanceiro(month);
+  const { procedures, pixPendentes, pagamentosPendentes, loading, error, markPixPago, markPagamentoPago } = useFinanceiro(month);
   const { servicos, loading: loadingServices } = useServicos();
-  const { toast, confirm } = useToast();
+  const { toast } = useToast();
+  const navigate = useNavigate();
   const monthLabel = format(month, 'MMMM yyyy', { locale: ptBR });
   const summary = useMemo(() => summarizeFinance(procedures), [procedures]);
 
@@ -243,21 +245,8 @@ export function FinanceiroPage() {
     }
   };
 
-  const handleRemoveProcedure = async (proc: Procedure) => {
-    const ok = await confirm({
-      title: 'Excluir atendimento',
-      message: 'Excluir este atendimento? O financeiro vinculado, incluindo pagamentos e parcelas, sera removido junto.',
-      confirmLabel: 'Excluir',
-      tone: 'danger',
-    });
-    if (!ok) return;
-
-    try {
-      await removeProcedure(proc.id);
-      toast.success('Atendimento e financeiro excluidos.');
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Erro ao excluir atendimento.');
-    }
+  const handleRemoveProcedure = (proc: Procedure) => {
+    navigate('/registrar?edit=' + encodeURIComponent(proc.id));
   };
 
   return (
