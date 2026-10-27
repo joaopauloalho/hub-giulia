@@ -97,6 +97,8 @@ export function EditAttendancePage() {
   const { config: machine, loading: loadingMachine } = useMaquininhaConfig();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteReason, setDeleteReason] = useState('Paciente incorreta');
   const [patientName, setPatientName] = useState('Paciente');
   const [procedure, setProcedure] = useState<LoadedProcedure | null>(null);
   const [performedDate, setPerformedDate] = useState(TODAY);
@@ -314,17 +316,85 @@ export function EditAttendancePage() {
     } finally { setSaving(false); }
   };
 
+  const deleteAttendance = async () => {
+    if (!procedure || saving || deleting) return;
+    setDeleting(true);
+    try {
+      const { data: protocols, error: protocolsError } = await supabase
+        .from('patient_packages').select('id').eq('source_procedure_id', procedure.id);
+      if (protocolsError) throw protocolsError;
+      let linkedSessions = 0;
+      if (protocols?.length) {
+        const { data: redemptions, error: redemptionsError } = await supabase
+          .from('package_redemptions').select('procedure_id_snapshot')
+          .in('package_id', protocols.map(row => row.id))
+          .neq('procedure_id_snapshot', procedure.id);
+        if (redemptionsError) throw redemptionsError;
+        linkedSessions = new Set((redemptions ?? []).map(row => row.procedure_id_snapshot).filter(Boolean)).size;
+      }
+      const details = (protocols?.length ? ' Os protocolos criados nesta venda serão cancelados.' : '')
+        + (linkedSessions ? ' ATENÇÃO: ' + linkedSessions + ' outro(s) atendimento(s) com sessões vinculadas serão preservados e precisarão de revisão separada.' : '');
+      const confirmed = await confirm({
+        title: 'Excluir atendimento incorreto?',
+        message: 'Excluir o atendimento de ' + patientName + ' no valor de ' + money(procedure.total_value) +
+          '? Ele sairá do histórico e do caixa interno do Hub. O estoque será corrigido automaticamente.' +
+          ' Nenhum reembolso, cobrança ou transferência PIX/cartão será realizado.' + details +
+          ' Um registro de auditoria ficará guardado. Esta ação não pode ser desfeita pela interface.',
+        confirmLabel: 'Sim, excluir atendimento',
+        tone: 'danger',
+      });
+      if (!confirmed) return;
+      const { data, error } = await supabase.rpc('cancel_procedure_v1', {
+        p_procedure_id: procedure.id,
+        p_expected_revision: procedure.revision,
+        p_reason: deleteReason,
+      });
+      if (error) throw error;
+      const remaining = (data as { linked_sessions_preserved?: number } | null)?.linked_sessions_preserved ?? linkedSessions;
+      toast.success(remaining
+        ? 'Atendimento excluído. Revise as ' + remaining + ' sessões vinculadas preservadas.'
+        : 'Atendimento excluído. Financeiro interno, protocolo e estoque corrigidos.');
+      navigate('/pacientes/' + procedure.patient_id + '?tab=procedures', { replace: true });
+    } catch (error) {
+      console.error('[attendance:cancel]', error);
+      const message = error instanceof Error ? error.message : String((error as { message?: string } | null)?.message ?? '');
+      if (message.includes('ATTENDANCE_CANCEL_CONFLICT')) toast.error('O atendimento foi alterado. Reabra a ficha e tente novamente.');
+      else if (message.includes('ATTENDANCE_CANCEL_HAS_RETURNS')) toast.error('Há retorno vinculado. Revise ou exclua primeiro o retorno.');
+      else if (message.includes('ATTENDANCE_CANCEL_HAS_DOCUMENTS')) toast.error('Há documento ou sessão de fotos vinculada. Revise antes de excluir.');
+      else if (message.includes('ATTENDANCE_CANCEL_HAS_INJECTABLES')) toast.error('Há aplicação injetável vinculada. Revise antes de excluir.');
+      else if (message.includes('ATTENDANCE_CANCEL_HAS_PACKAGE_PAYMENTS')) toast.error('O protocolo possui recebimentos separados. Revise-os antes de excluir.');
+      else if (message.includes('ATTENDANCE_CANCEL_NOT_FOUND')) toast.error('Atendimento não encontrado. Recarregue a ficha.');
+      else toast.error('Não foi possível excluir com segurança. Nenhuma correção parcial foi gravada.');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   if (loading || loadingServices || loadingMaterials) return <div className="full-loader"><Loader2 className="spin" size={26}/> Carregando atendimento…</div>;
   if (loadError || !procedure) return <div className="empty-state"><AlertTriangle size={34}/><p>{loadError ?? 'Atendimento não encontrado.'}</p><button className="btn btn--secondary btn--md" onClick={() => navigate(-1)}>Voltar</button></div>;
 
   return <div className="page">
     <div className="page-header">
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}><button type="button" className="icon-btn" onClick={() => navigate(`/pacientes/${procedure.patient_id}?tab=procedures`)}><ArrowLeft size={20}/></button><div><h1 className="page-title">Editar atendimento</h1><p className="page-sub">{patientName} · mesmo registro · revisão {procedure.revision}</p></div></div>
-      <button type="button" className="btn btn--primary btn--md" disabled={saving || Math.abs(remaining) > .02 || loadingMachine} onClick={() => void save()}>{saving ? <><Loader2 size={16} className="spin"/> Salvando…</> : <><Check size={16}/> Salvar alterações</>}</button>
+      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 10 }}>
+        <button type="button" className="btn btn--danger btn--md" disabled={saving || deleting} onClick={() => void deleteAttendance()}>
+          {deleting ? <><Loader2 size={16} className="spin"/> Excluindo…</> : <><Trash2 size={16}/> Excluir atendimento</>}
+        </button>
+        <button type="button" className="btn btn--primary btn--md" disabled={saving || deleting || Math.abs(remaining) > .02 || loadingMachine} onClick={() => void save()}>{saving ? <><Loader2 size={16} className="spin"/> Salvando…</> : <><Check size={16}/> Salvar alterações</>}</button>
+      </div>
     </div>
 
     <div style={{ padding: '0 16px 110px', display: 'grid', gap: 14, maxWidth: 1120, margin: '0 auto', width: '100%' }}>
       <div style={{ padding: 12, borderRadius: 10, border: '1px solid #fbcfe8', background: '#fdf2f8', color: '#9d174d', fontSize: 13 }}><strong>Você está editando o atendimento existente.</strong> Fotos, injetáveis, documentos e retornos continuam vinculados ao mesmo atendimento. O estoque é corrigido apenas pela diferença.</div>
+      <section className="card" style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
+        <div style={{ flex: '1 1 270px' }}><strong style={{ fontSize: 14 }}>Atendimento lançado por engano?</strong><p className="page-sub" style={{ margin: '4px 0 0' }}>Selecione o motivo e clique em Excluir atendimento. Isso não altera os registros da paciente correta.</p></div>
+        <div style={{ minWidth: 210 }}><label className="field-label" htmlFor="cancel-attendance-reason">Motivo</label><select id="cancel-attendance-reason" className="field-input" value={deleteReason} disabled={deleting} onChange={event => setDeleteReason(event.target.value)}>
+          <option value="Paciente incorreta">Paciente incorreta</option>
+          <option value="Atendimento duplicado">Atendimento duplicado</option>
+          <option value="Atendimento nao realizado">Atendimento não realizado</option>
+          <option value="Outro erro de cadastro">Outro erro de cadastro</option>
+        </select></div>
+      </section>
 
       <section className="card">
         <h2 style={{ fontSize: '1rem', marginBottom: 12 }}>Dados do atendimento</h2>
@@ -357,7 +427,7 @@ export function EditAttendancePage() {
         {amountDue > .009 && <><div style={{ display: 'grid', gap: 9 }}>{payments.map(entry => { const amounts = paymentAmounts(entry); return <div key={entry.key} style={{ padding: 11, border: '1px solid var(--border)', borderRadius: 10, background: 'var(--bg-2)' }}><div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginBottom: 8 }}><strong>Forma de pagamento</strong>{payments.length > 1 && <button type="button" className="icon-btn" onClick={() => setPayments(current => current.filter(row => row.key !== entry.key))}><Trash2 size={15}/></button>}</div><div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))', gap: 9 }}><div><label className="field-label">Forma</label><select className="field-input" value={entry.method} onChange={event => setPayments(current => current.map(row => row.key === entry.key ? changePaymentPricing(row, { method: event.target.value as SimplePaymentMethod, installments: 1 }) : row))}>{Object.entries(METHOD_LABELS).map(([method,label]) => <option value={method} key={method}>{label}</option>)}</select></div><div><label className="field-label">Valor alocado</label><input className="field-input" type="number" inputMode="decimal" min="0" step="0.01" value={entry.baseValue} onChange={event => setPayments(current => current.map(row => row.key === entry.key ? { ...row, baseValue: Math.max(0, Number(event.target.value) || 0) } : row))}/></div>{(entry.method === 'cartao_credito' || entry.method === 'cartao_debito') && <div><label className="field-label">Bandeira</label><select className="field-input" value={entry.cardBrand} onChange={event => setPayments(current => current.map(row => row.key === entry.key ? changePaymentPricing(row, { cardBrand: event.target.value as CardBrand }) : row))}><option value="master_visa">Master / Visa</option><option value="elo">Elo</option></select></div>}{entry.method === 'cartao_credito' && <div><label className="field-label">Parcelas</label><select className="field-input" value={entry.installments} onChange={event => setPayments(current => current.map(row => row.key === entry.key ? changePaymentPricing(row, { installments: Number(event.target.value) }) : row))}>{Array.from({ length: 18 }, (_, index) => index + 1).map(value => <option value={value} key={value}>{value}x</option>)}</select></div>}<div><label className="field-label">Situação</label><select className="field-input" value={entry.received ? 'paid' : 'pending'} onChange={event => setPayments(current => current.map(row => row.key === entry.key ? { ...row, received: event.target.value === 'paid' } : row))}><option value="paid">Recebido</option><option value="pending">A receber</option></select></div><div><label className="field-label">Data</label><input className="field-input" type="date" value={entry.date} onChange={event => setPayments(current => current.map(row => row.key === entry.key ? { ...row, date: event.target.value } : row))}/></div></div>{entry.feePct > 0 && <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}><button type="button" className={`btn btn--sm ${entry.absorveTaxa ? 'btn--primary' : 'btn--ghost'}`} onClick={() => setPayments(current => current.map(row => row.key === entry.key ? { ...row, absorveTaxa: true } : row))}>Clínica absorve</button><button type="button" className={`btn btn--sm ${!entry.absorveTaxa ? 'btn--primary' : 'btn--ghost'}`} onClick={() => setPayments(current => current.map(row => row.key === entry.key ? { ...row, absorveTaxa: false } : row))}>Repassar taxa</button><span className="page-sub">taxa {entry.feePct.toFixed(2)}% · paciente {money(amounts.amount)} · líquido {money(amounts.netAmount)}</span></div>}</div>; })}</div><button type="button" className="btn btn--secondary btn--sm" style={{ marginTop: 9 }} onClick={() => setPayments(current => [...current, { key: crypto.randomUUID(), method: 'pix', baseValue: Math.max(0, remaining), cardBrand: 'master_visa', installments: 1, absorveTaxa: true, feePct: 0, received: true, date: TODAY, originalPaidAt: null }])}><Plus size={14}/> Outra forma</button><div style={{ marginTop: 9, textAlign: 'center', padding: 9, borderRadius: 9, background: Math.abs(remaining) <= .02 ? '#f0fdf4' : '#fffbeb', color: Math.abs(remaining) <= .02 ? '#166534' : '#b45309', fontWeight: 700 }}>{Math.abs(remaining) <= .02 ? '✓ Financeiro confere' : remaining > 0 ? `Falta alocar ${money(remaining)}` : `Excede ${money(Math.abs(remaining))}`}</div></>}
       </section>}
 
-      <section className="card" style={{ position: 'sticky', bottom: 12, zIndex: 4, boxShadow: '0 8px 28px rgba(0,0,0,.08)' }}><div style={{ display: 'grid', gap: 6 }}><div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Procedimentos/produtos</span><strong>{money(itemsCost)}</strong></div><div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Materiais</span><strong>{money(materialCost)}</strong></div><div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Tempo clínico</span><strong>{money(clinicalCost)}</strong></div><div style={{ borderTop: '1px solid var(--border)', paddingTop: 7, display: 'flex', justifyContent: 'space-between', fontSize: 16 }}><strong>Custo total corrigido</strong><strong style={{ color: 'var(--primary)' }}>{money(estimatedCost)}</strong></div></div><button type="button" className="btn btn--primary btn--md" style={{ width: '100%', marginTop: 10 }} disabled={saving || Math.abs(remaining) > .02 || loadingMachine} onClick={() => void save()}>{saving ? <><Loader2 size={16} className="spin"/> Salvando…</> : <><Check size={16}/> Salvar no mesmo atendimento</>}</button></section>
+      <section className="card" style={{ position: 'sticky', bottom: 12, zIndex: 4, boxShadow: '0 8px 28px rgba(0,0,0,.08)' }}><div style={{ display: 'grid', gap: 6 }}><div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Procedimentos/produtos</span><strong>{money(itemsCost)}</strong></div><div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Materiais</span><strong>{money(materialCost)}</strong></div><div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Tempo clínico</span><strong>{money(clinicalCost)}</strong></div><div style={{ borderTop: '1px solid var(--border)', paddingTop: 7, display: 'flex', justifyContent: 'space-between', fontSize: 16 }}><strong>Custo total corrigido</strong><strong style={{ color: 'var(--primary)' }}>{money(estimatedCost)}</strong></div></div><button type="button" className="btn btn--primary btn--md" style={{ width: '100%', marginTop: 10 }} disabled={saving || deleting || Math.abs(remaining) > .02 || loadingMachine} onClick={() => void save()}>{saving ? <><Loader2 size={16} className="spin"/> Salvando…</> : <><Check size={16}/> Salvar no mesmo atendimento</>}</button></section>
     </div>
   </div>;
 }
