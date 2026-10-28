@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { supabase } from '../../lib/supabase';
 import { useNavigate } from 'react-router-dom';
 import { Activity, CalendarDays, CheckCircle, ChevronRight, FileText, Package, RefreshCw, RotateCcw, TrendingUp, Users, Wallet } from 'lucide-react';
 import { Skeleton } from '../../components/ui/Skeleton';
@@ -27,6 +28,8 @@ function formatPeriodDate(value: string) { const [year, month, day] = value.spli
 
 export function DashboardPage() {
   const navigate = useNavigate();
+  const [todayOpportunities, setTodayOpportunities] = useState<{ count: number; amount: number } | null>(null);
+  useEffect(() => { let active = true; void supabase.rpc('relationship_today_v1', { p_limit: 250 }).then(({data,error}) => { if (!active || error) return; const rows = (data ?? []) as {estimated_amount: number | string | null}[]; setTodayOpportunities({ count: rows.length, amount: rows.reduce((sum,row)=>sum+(Number(row.estimated_amount)||0),0) }); }); return () => { active = false; }; }, []);
   const [today] = useState(() => clinicTodayIso());
   const [preset, setPreset] = useState<DashboardPeriodPreset>('month');
   const [showCustom, setShowCustom] = useState(false);
@@ -41,6 +44,10 @@ export function DashboardPage() {
 
   return <div className="page dashboard-page">
     <header className="dashboard-header"><div><h1 className="page-title">Hoje</h1><p className="page-sub">Resumo operacional primeiro; desempenho e gestão abaixo.</p></div><div className="dashboard-header__actions"><button type="button" className="btn btn--secondary btn--sm dashboard-refresh" onClick={() => void refresh()} disabled={isRefreshing}><RefreshCw size={16} className={isRefreshing ? 'spin' : undefined} /><span>Atualizar desempenho</span></button></div></header>
+    <button type="button" className="card" onClick={() => navigate('/crm/hoje')} style={{ display: 'block', width: '100%', textAlign: 'left', padding: 18, marginBottom: 16, cursor: 'pointer' }}>
+      <strong>Hoje: {todayOpportunities?.count ?? '…'} pessoas, {todayOpportunities ? money(todayOpportunities.amount) : 'R$ …'} em potencial</strong>
+      <div className="page-sub">Abrir fila de oportunidades comerciais · Estimativa, não faturamento realizado</div>
+    </button>
     <OperationalHomeSection today={today} />
     <ContactCalendarHome/>
     {error && <div className="dashboard-error" role="alert"><strong>Não foi possível atualizar o desempenho.</strong> {error instanceof Error ? error.message : 'Tente novamente.'}</div>}
