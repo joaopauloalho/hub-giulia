@@ -5,9 +5,24 @@ import {
   compareMetric,
   daysBetweenIso,
   getDashboardPeriod,
+  formatDashboardPeriodDate,
+  splitCrmNegotiationCount,
 } from './dashboardMetrics';
 
 describe('dashboard periods', () => {
+  it('does not display the previous month on October 1 due to the browser timezone', () => {
+    expect(formatDashboardPeriodDate('2026-10-01')).toMatch(/^01/);
+    expect(formatDashboardPeriodDate('2026-10-01')).toContain('out');
+    const period = getDashboardPeriod('month', '2026-10-27');
+    expect(period.startDate).toBe('2026-10-01');
+    expect(period.endDateExclusive).toBe('2026-10-28');
+  });
+
+  it('splits negotiation into CRM-visible negotiation and recontact', () => {
+    expect(splitCrmNegotiationCount(11,10)).toEqual({ negotiation:1, recontact:10 });
+    expect(splitCrmNegotiationCount(0,10)).toEqual({ negotiation:0, recontact:0 });
+  });
+
   it('uses month-to-date in Sao Paulo and an exact previous period', () => {
     const period = getDashboardPeriod('month', '2026-08-14');
     expect(period.startDate).toBe('2026-08-01');
