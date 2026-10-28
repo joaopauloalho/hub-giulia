@@ -24,7 +24,7 @@ function MetricCard({ label, value, icon, note, snapshot, comparison, onClick }:
   if (onClick) return <button type="button" className="dashboard-metric-card dashboard-metric-card--clickable" onClick={onClick}>{content}</button>;
   return <div className="dashboard-metric-card">{content}</div>;
 }
-function formatPeriodDate(value: string) { const [year, month, day] = value.split('-').map(Number); return new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: 'short' }).format(new Date(Date.UTC(year, month - 1, day))); }
+function formatPeriodDate(value: string) { const [year, month, day] = value.split('-').map(Number); return new Intl.DateTimeFormat('pt-BR', { timeZone: 'UTC', day: '2-digit', month: 'short' }).format(new Date(Date.UTC(year, month - 1, day))); }
 
 export function DashboardPage() {
   const navigate = useNavigate();
