@@ -72,7 +72,7 @@ const emptyOpportunity = () => ({
   interestLabel: '',
 });
 
-function CrmCard({ card, onOpen, onMove }: { card: CrmPipelineCard; onOpen: () => void; onMove: (stage: CrmDisplayStage) => void }) {
+function CrmCard({ card, onOpen, onMove, onEditValue }: { card: CrmPipelineCard; onOpen: () => void; onMove: (stage: CrmDisplayStage) => void; onEditValue: () => void }) {
   const bucket = followupBucket(card.next_followup_on);
   const displayStage = crmDisplayStage(card.stage, card.recontact_on);
   const sourceLabel = formatAcquisitionLabel(card.source, card.source_detail, card.referrer_patient_name ?? card.referrer_name);
@@ -98,6 +98,7 @@ function CrmCard({ card, onOpen, onMove }: { card: CrmPipelineCard; onOpen: () =
             : bucket === 'overdue' ? 'Atrasado · ' : bucket === 'today' ? 'Hoje · ' : 'Próximo · '}{card.next_followup_on.split('-').reverse().join('/')}
         </div>}
       </button>
+      {card.stage==='won' && card.estimated_value==null && <button type="button" className="btn btn--secondary btn--sm" onClick={onEditValue}>Informar valor do negócio ganho</button>}
       <select className="field-select" aria-label={`Mover acompanhamento de ${card.contact_name}`} value={displayStage} onClick={event => event.stopPropagation()} onChange={event => onMove(event.target.value as CrmDisplayStage)} style={{ marginTop: 8, minHeight: 32, fontSize: 11 }}>
         {CRM_DISPLAY_STAGE_KEYS.map(stage => <option value={stage} key={stage}>{CRM_STAGE_LABEL[stage]}</option>)}
       </select>
@@ -360,6 +361,9 @@ export function CrmPage() {
   const [selected, setSelected] = useState<CrmPipelineCard | null>(null);
   const [lossRequest, setLossRequest] = useState<LossRequest | null>(null);
   const [recontactRequest, setRecontactRequest] = useState<RecontactRequest | null>(null);
+  const [wonRequest, setWonRequest] = useState<CrmPipelineCard | null>(null);
+  const [wonValue, setWonValue] = useState('');
+  const [savingWon, setSavingWon] = useState(false);
   const [patientSeed, setPatientSeed] = useState<PatientSeed | null>(null);
   const patientId = new URLSearchParams(location.search).get('patient_id');
   const crm = useCrm({ search, stage, source, attention, patientKind });
@@ -382,6 +386,7 @@ export function CrmPage() {
     if (target === crmDisplayStage(card.stage, card.recontact_on)) return;
     if (target === 'recontact') { setRecontactRequest({ card }); return; }
     if (target === 'lost') { setLossRequest({ card }); return; }
+    if (target === 'won') { setWonRequest(card); setWonValue(card.estimated_value != null ? String(card.estimated_value) : ''); return; }
     try { await crm.moveStage(card.deal_id, target); if (selected?.deal_id === card.deal_id) setSelected({ ...card, stage: target, recontact_on: null, recontact_note: null }); toast.success(`Movido para ${CRM_STAGE_LABEL[target]}.`); }
     catch { toast.error('Não foi possível mover o acompanhamento.'); }
   };
@@ -396,10 +401,28 @@ export function CrmPage() {
     <div className="card crm-attention"><span className="crm-attention-label"><AlertTriangle size={14} style={{ verticalAlign: -2 }} /> Precisa de atenção</span><button className={`btn btn--sm ${attention === 'overdue' ? 'btn--primary' : 'btn--ghost'}`} onClick={() => setAttention(attention === 'overdue' ? 'all' : 'overdue')}>Atrasados {attentionCounts.overdue}</button><button className={`btn btn--sm ${attention === 'today' ? 'btn--primary' : 'btn--ghost'}`} onClick={() => setAttention(attention === 'today' ? 'all' : 'today')}>Hoje {attentionCounts.today}</button><button className={`btn btn--sm ${attention === 'upcoming' ? 'btn--primary' : 'btn--ghost'}`} onClick={() => setAttention(attention === 'upcoming' ? 'all' : 'upcoming')}>Próximos {attentionCounts.upcoming}</button></div>
     <div className="card" style={{ padding: 10, marginBottom: 10 }}><div className="crm-toolbar"><div className="crm-search" style={{ position: 'relative', flex: 1, minWidth: 200 }}><Search size={15} style={{ position: 'absolute', left: 11, top: 11 }} /><input className="field-input" style={{ paddingLeft: 33 }} value={search} onChange={event => setSearch(event.target.value)} placeholder="Buscar nome, telefone ou email" /></div><select className="field-select" value={stage} onChange={event => setStage(event.target.value as CrmDisplayStage | 'all')}><option value="all">Todos os estágios</option>{CRM_DISPLAY_STAGE_KEYS.map(key => <option value={key} key={key}>{CRM_STAGE_LABEL[key]}</option>)}</select><select className="field-select" aria-label="Filtrar tipo de paciente" value={patientKind} onChange={event => setPatientKind(event.target.value as CrmPatientKind)}><option value="all">Todas</option><option value="new">Pacientes novas</option><option value="recurring">Pacientes recorrentes</option></select><select className="field-select" value={source} onChange={event => setSource(event.target.value as CrmSource | 'all')}><option value="all">Todas as origens</option>{CRM_SOURCE_KEYS.map(key => <option value={key} key={key}>{CRM_SOURCE_LABEL[key]}</option>)}</select></div></div>
     <div className="crm-stage-segments" style={{ marginBottom: 9 }}>{CRM_DISPLAY_STAGE_KEYS.map(key => <button key={key} className={`btn btn--sm ${stage === key ? 'btn--primary' : 'btn--ghost'}`} onClick={() => setStage(stage === key ? 'all' : key)}>{CRM_STAGE_LABEL[key]}</button>)}</div>
-    {crm.loading ? <div className="card" style={{ padding: 16 }}>Carregando CRM…</div> : crm.error ? <div className="empty-state"><p>{crm.error}</p><button className="btn btn--secondary btn--sm" onClick={() => void crm.refresh()}>Tentar novamente</button></div> : <><div className="crm-board">{boardStages.map(columnStage => { const items = crm.cards.filter(card => crmDisplayStage(card.stage, card.recontact_on) === columnStage); return <div className="crm-column" key={columnStage} onDragOver={event => event.preventDefault()} onDrop={event => void dropInto(event, columnStage)}><div className="crm-column-head"><span className="crm-column-title">{CRM_STAGE_LABEL[columnStage]}</span><span className="crm-column-count">{items.length}</span></div>{items.length === 0 ? <div className="crm-empty-column">Nenhuma paciente</div> : items.map(card => <CrmCard key={card.deal_id} card={card} onOpen={() => setSelected(card)} onMove={target => void requestMove(card, target)} />)}</div>; })}</div><div className="crm-mobile-list">{mobileCards.length === 0 ? <div className="empty-state">Nenhuma paciente neste filtro.</div> : mobileCards.map(card => <CrmCard key={card.deal_id} card={card} onOpen={() => setSelected(card)} onMove={target => void requestMove(card, target)} />)}</div></>}
+    {crm.loading ? <div className="card" style={{ padding: 16 }}>Carregando CRM…</div> : crm.error ? <div className="empty-state"><p>{crm.error}</p><button className="btn btn--secondary btn--sm" onClick={() => void crm.refresh()}>Tentar novamente</button></div> : <><div className="crm-board">{boardStages.map(columnStage => { const items = crm.cards.filter(card => crmDisplayStage(card.stage, card.recontact_on) === columnStage); return <div className="crm-column" key={columnStage} onDragOver={event => event.preventDefault()} onDrop={event => void dropInto(event, columnStage)}><div className="crm-column-head"><span className="crm-column-title">{CRM_STAGE_LABEL[columnStage]}</span><span className="crm-column-count">{items.length}</span></div>{items.length === 0 ? <div className="crm-empty-column">Nenhuma paciente</div> : items.map(card => <CrmCard key={card.deal_id} card={card} onOpen={() => setSelected(card)} onMove={target => void requestMove(card, target)} onEditValue={() => { setWonRequest(card); setWonValue(''); }} />)}</div>; })}</div><div className="crm-mobile-list">{mobileCards.length === 0 ? <div className="empty-state">Nenhuma paciente neste filtro.</div> : mobileCards.map(card => <CrmCard key={card.deal_id} card={card} onOpen={() => setSelected(card)} onMove={target => void requestMove(card, target)} onEditValue={() => { setWonRequest(card); setWonValue(''); }} />)}</div></>}
     {newOpen && <NewLeadModal patient={patientSeed} crm={crm} onClose={() => { setNewOpen(false); if (patientId) navigate('/crm', { replace: true }); }} />}
     {selected && <DetailDrawer card={selected} crm={crm} onClose={() => { setSelected(null); void crm.refresh(); }} onStage={target => void requestMove(selected, target)} />}
     {lossRequest && <LossModal request={lossRequest} onClose={() => setLossRequest(null)} onConfirm={async (reason, detail) => { try { await crm.moveStage(lossRequest.card.deal_id, 'lost', { reason, detail }); setLossRequest(null); setSelected(null); toast.success('Acompanhamento marcado como perdido.'); } catch { toast.error('Não foi possível registrar a perda.'); } }} />}
+    {wonRequest && <div className="drawer-overlay" onMouseDown={event => event.target===event.currentTarget && !savingWon && setWonRequest(null)}>
+      <section className="drawer" role="dialog" aria-modal="true" aria-label="Valor do negócio ganho">
+        <div className="drawer-header"><strong>{wonRequest.stage==='won' ? 'Informar valor do negócio ganho' : 'Registrar ganho no CRM'}</strong></div>
+        <div className="drawer-body"><p className="page-sub">Informe o valor efetivamente negociado. Não use estimativas inventadas para fechar o negócio.</p>
+          <label className="field-label" htmlFor="crm-won-value">Valor do negócio (R$)</label>
+          <input className="field-input" id="crm-won-value" type="number" min="0.01" step="0.01" value={wonValue}
+            onChange={event => setWonValue(event.target.value)} placeholder="Ex.: 897,00" />
+        </div>
+        <div className="drawer-footer"><button className="btn btn--ghost" disabled={savingWon} onClick={() => setWonRequest(null)}>Cancelar</button>
+          <button className="btn btn--primary" disabled={savingWon || !Number.isFinite(Number(wonValue)) || Number(wonValue)<=0}
+            onClick={() => void (async () => { if(!wonRequest)return; setSavingWon(true); try {
+              await crm.moveStage(wonRequest.deal_id,'won',undefined,Number(wonValue));
+              toast.success('Negócio ganho com valor registrado.'); setWonRequest(null); setSelected(null);
+            } catch(err) { toast.error(err instanceof Error ? err.message : 'Não foi possível salvar o ganho.'); }
+            finally { setSavingWon(false); } })()}>{savingWon ? 'Salvando...' : 'Confirmar valor e ganho'}</button>
+        </div>
+      </section>
+    </div>}
     {recontactRequest && <RecontactModal request={recontactRequest} onClose={() => setRecontactRequest(null)} onConfirm={async (dueOn, note) => { try { await crm.scheduleRecontact(recontactRequest.card.deal_id, dueOn, note); const updated = { ...recontactRequest.card, stage: 'negotiation' as const, recontact_on: dueOn, recontact_note: note.trim() || null, next_followup_on: dueOn }; setRecontactRequest(null); if (selected?.deal_id === updated.deal_id) setSelected(updated); toast.success(`Retomada agendada para ${dueOn.split('-').reverse().join('/')}.`); } catch { toast.error('Não foi possível agendar a retomada.'); } }} />}
   </div>;
 }
