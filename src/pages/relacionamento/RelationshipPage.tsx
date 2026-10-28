@@ -3,8 +3,8 @@ import { Bell, CalendarPlus, ChevronLeft, ChevronRight, Clock3, MessageCircle, S
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useRelationshipCenter } from '../../hooks/useRelationship';
 import { buildSafeWhatsAppUrl, whatsappRecipientDigits } from '../../lib/whatsapp';
-import { copyCommunicationText, DEFAULT_COMMUNICATION_TEMPLATES, firstName, formatCommunicationDate, renderCommunicationTemplate, type CommunicationPlaceholder } from '../../lib/communications';
-import { RELATIONSHIP_TYPE_LABEL, relationshipCreditSummary, relationshipDate, relationshipDateTime, type RelationshipOpportunity, type RelationshipOpportunityType, type RelationshipPerson, type RelationshipPreferences } from '../../lib/relationship';
+import { copyCommunicationText, firstName } from '../../lib/communications';
+import { RELATIONSHIP_TYPE_LABEL, relationshipDate, relationshipDateTime, type RelationshipOpportunity, type RelationshipOpportunityType, type RelationshipPerson, type RelationshipPreferences } from '../../lib/relationship';
 import { appendReturnTo } from '../../lib/operational';
 import { useToast } from '../../hooks/useToast';
 import './relationship.css';
@@ -51,7 +51,7 @@ function PersonCard({ person, active, onOpen, onWhatsApp, onSnooze }: { person: 
       </dl>
     </button>
     <div className="relationship-card-actions">
-      <button type="button" className="btn btn--primary btn--sm" onClick={onWhatsApp} disabled={!person.phone}><MessageCircle size={15} /> WhatsApp</button>
+      <button type="button" className="btn btn--primary btn--sm" onClick={onWhatsApp} disabled={!person.phone || !person.whatsapp_opt_in}><MessageCircle size={15} /> WhatsApp</button>
       <button type="button" className="btn btn--secondary btn--sm" onClick={onOpen}>Abrir</button>
       <button type="button" className="btn btn--ghost btn--sm" onClick={onSnooze}><Bell size={15} /> Lembrar</button>
     </div>
@@ -198,18 +198,8 @@ function RelationshipOpportunities() {
     if (!opportunity && person.opportunities.length > 1) { setReasonPerson(person); return; }
     const target = opportunity ?? person.opportunities[0];
     if (!target) return;
-    const override = hub.templateMap.get(target.template_key);
-    const hasTypedCreditUnits = target.type === 'credit' && (target.remaining ?? []).some(item => !item.unit_label.toLowerCase().includes('crédito'));
-    const template = override?.enabled
-      ? override.body
-      : hasTypedCreditUnits
-        ? 'Oi, {first_name}! Tudo bem? Você ainda tem disponível no seu plano: {remaining_credits}. A validade é até {valid_until}. Se quiser, podemos organizar seu próximo horário.'
-        : DEFAULT_COMMUNICATION_TEMPLATES[target.template_key];
-    const values: Partial<Record<CommunicationPlaceholder, string>> = {
-      first_name: firstName(person.display_name), name: person.display_name, clinic_name: hub.clinicName,
-      proposal_title: String(target.context?.proposal_title ?? ''), valid_until: formatCommunicationDate(target.expires_on ?? (target.context?.valid_until as string | undefined)), package_title: String(target.context?.package_title ?? ''), remaining_credits: relationshipCreditSummary(target.remaining), aftercare_instructions: '', date: '', time: '',
-    };
-    setMessageBody(renderCommunicationTemplate(template, values));
+    if (!person.whatsapp_opt_in) { toast.error('Paciente sem autorização de WhatsApp.'); return; }
+    setMessageBody(`Oi, ${firstName(person.display_name)}! Tudo bem? Aqui é da Clínica Dra. Giulia Assis. Gostaria de te contar uma novidade especial. Posso te explicar? 😊`);
     setCompose({ person, opportunity: target }); setReasonPerson(null);
   };
 

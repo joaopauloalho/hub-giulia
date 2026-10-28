@@ -41,7 +41,7 @@ const PAYMENT_LABELS: Record<string, string> = {
 };
 
 function currency(value: number) {
-  return `R$ ${value.toFixed(2)}`;
+  return Number(value || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
 
 function SummaryCards({ summary }: { summary: FinanceiroSummary }) {

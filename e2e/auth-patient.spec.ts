@@ -6,7 +6,7 @@ test('protected route redirects, login works, patient double-submit is guarded a
   await expect(page).toHaveURL(/\/login$/);
 
   await browserLogin(page, 'a');
-  await expect(page).toHaveURL(/\/agenda$/);
+  await expect(page).toHaveURL(/\/crm\/hoje$/);
 
   await page.getByRole('link', { name: 'Pacientes' }).click();
   await expect(page.getByRole('heading', { name: 'Pacientes' })).toBeVisible();

@@ -20,7 +20,7 @@ export function LoginPage() {
       setError('Email ou senha incorretos.');
       setLoading(false);
     } else {
-      navigate('/agenda');
+      navigate('/crm/hoje');
     }
   };
 

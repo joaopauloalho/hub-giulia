@@ -3,7 +3,7 @@ import { NavLink, useLocation } from 'react-router-dom';
 import { BookOpen, CalendarDays, CircleEllipsis, HeartHandshake, LayoutDashboard, MessageCircle, Package, PlusCircle, RotateCcw, ShieldCheck, TrendingUp, Users, Wallet, X } from 'lucide-react';
 
 const PRIMARY = [
-  { to: '/dashboard', icon: LayoutDashboard, label: 'Hoje' },
+  { to: '/crm/hoje', icon: LayoutDashboard, label: 'Hoje' },
   { to: '/agenda', icon: CalendarDays, label: 'Agenda' },
   { to: '/comunicacao', icon: MessageCircle, label: 'Comunicação' },
   { to: '/pacientes', icon: Users, label: 'Pacientes' },

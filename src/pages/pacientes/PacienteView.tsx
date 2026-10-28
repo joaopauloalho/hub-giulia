@@ -12,6 +12,7 @@ import { PatientCommunicationCard } from '../../components/communications/Patien
 import { PatientNextActionCard } from '../../components/operational/PatientNextActionCard';
 import { PatientWaitlistCard } from '../agenda/AgendaRecoveryUI';
 import { PatientAcquisitionCard } from '../../components/patients/PatientAcquisitionCard';
+import { PatientWhatsAppConsent } from '../../components/patients/PatientWhatsAppConsent';
 
 const DadosTab = lazy(() => import('./tabs/DadosTab').then(module => ({ default: module.DadosTab })));
 const AnamneseTab = lazy(() => import('./tabs/AnamneseTab').then(module => ({ default: module.AnamneseTab })));
@@ -61,9 +62,15 @@ export function PacienteView({ patient, archived = false, sourceAppointmentId, i
   const location = useLocation();
   const { confirm, toast } = useToast();
   const [tab, setTab] = useState<TabKey>(initialTab ?? 'overview');
+  const [whatsappAllowed, setWhatsappAllowed] = useState(Boolean(patient.whatsapp_opt_in && !patient.whatsapp_opt_out_at));
+  useEffect(() => setWhatsappAllowed(Boolean(patient.whatsapp_opt_in && !patient.whatsapp_opt_out_at)), [patient.id, patient.whatsapp_opt_in, patient.whatsapp_opt_out_at]);
   const [signatureRequest, setSignatureRequest] = useState<SignatureRequest | null>(null);
   const [crmSummary, setCrmSummary] = useState<CrmPipelineCard | null>(null);
   const returnTo = new URLSearchParams(location.search).get('return_to');
+
+  // Warm the History 360 code chunk while the overview loads so tab switches do not
+  // serialize a bundle download before the first timeline query.
+  useEffect(() => { void import('./tabs/TimelineTab'); }, [patient.id]);
 
   useEffect(() => {
     if (initialTab) setTab(initialTab);
@@ -93,7 +100,7 @@ export function PacienteView({ patient, archived = false, sourceAppointmentId, i
     if (sourceAppointmentId) navigate(`/atendimento/${sourceAppointmentId}`);
   };
   const whatsapp = () => {
-    if (!patient.phone) return;
+    if (!patient.phone || !whatsappAllowed) { toast.error('Paciente não autorizou WhatsApp comercial.'); return; }
     const url = buildWhatsAppUrl(patient.phone, `Olá ${patient.name}!`);
     if (url) window.open(url, '_blank', 'noopener,noreferrer');
   };
@@ -169,7 +176,7 @@ export function PacienteView({ patient, archived = false, sourceAppointmentId, i
         {sourceAppointmentId && <button className="btn btn--primary btn--sm" onClick={attendance}><HeartPulse size={15} /> Atendimento</button>}
         <button className={`btn btn--sm ${sourceAppointmentId ? 'btn--secondary' : 'btn--primary'}`} onClick={register}><ClipboardPlus size={15} /> Registrar</button>
         <button className="btn btn--secondary btn--sm" onClick={schedule}><CalendarPlus size={15} /> Agendar</button>
-        <button className="btn btn--secondary btn--sm" onClick={whatsapp} disabled={!patient.phone}><MessageCircle size={15} /> WhatsApp</button>
+        <button className="btn btn--secondary btn--sm" onClick={whatsapp} disabled={!patient.phone || !whatsappAllowed}><MessageCircle size={15} /> WhatsApp</button>
         <button className="btn btn--ghost btn--sm patient-quick-action--low" onClick={crmOpportunity}><TrendingUp size={15} /> Oportunidade</button>
         <button className="btn btn--ghost btn--sm patient-quick-action--low" onClick={() => setTab('notes')}><StickyNote size={15} /> Nota</button>
         <button className="btn btn--ghost btn--sm patient-quick-action--low" onClick={() => setTab('data')}><Pencil size={15} /> Editar</button>
@@ -185,6 +192,7 @@ export function PacienteView({ patient, archived = false, sourceAppointmentId, i
         <div className="drawer-body">
           {tab === 'overview'
             ? <div style={{ display: 'grid', gap: 12 }}>
+                <PatientWhatsAppConsent patient={patient} onChanged={setWhatsappAllowed} />
                 <PatientAcquisitionCard patient={patient} />
                 <OverviewTab patientId={patient.id} onAgenda={schedule} onReturns={() => navigate(`/retornos?patient_id=${patient.id}`)} onHistory={() => setTab('procedures')} onFinance={() => setTab('finance')} onNotes={() => setTab('notes')} onAnamnesis={() => setTab('anamnesis')} onTimeline={() => setTab('timeline')} />
                 {!archived && <PatientWaitlistCard patient={{ id: patient.id, name: patient.name, phone: patient.phone }} />}
