@@ -38,5 +38,5 @@ export async function browserLogin(page: Page, which: keyof typeof E2E_USERS = '
   await page.getByLabel('Email').fill(credentials.email);
   await page.getByLabel('Senha').fill(credentials.password);
   await page.getByRole('button', { name: 'Entrar' }).click();
-  await page.waitForURL('**/agenda');
+  await page.waitForURL('**/crm/hoje');
 }
