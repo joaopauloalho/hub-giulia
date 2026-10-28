@@ -17,6 +17,11 @@ begin
  if exists(select 1 from public.relationship_today_actions where user_id=v_uid and idempotency_key=p_idempotency_key) then return; end if;
  select p.phone into v_phone from public.patients p where p.id=p_patient_id and p.user_id=v_uid and p.archived_at is null;
  if not found then raise exception 'PATIENT_NOT_FOUND' using errcode='42501'; end if;
+ if p_outcome='scheduled' and not public.relationship_today_opt_in_required_v1(p_patient_id) then
+   insert into public.relationship_today_actions(user_id,patient_id,outcome,idempotency_key)
+   values(v_uid,p_patient_id,'scheduled',p_idempotency_key) on conflict(user_id,idempotency_key) do nothing;
+   return;
+ end if;
  if not public.relationship_today_opt_in_required_v1(p_patient_id) then raise exception 'WHATSAPP_CONSENT_REQUIRED' using errcode='42501'; end if;
  if v_phone is null or btrim(v_phone)='' then raise exception 'PATIENT_PHONE_REQUIRED'; end if;
  select cm.message_id into v_message_id
