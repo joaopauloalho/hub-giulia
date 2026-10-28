@@ -110,7 +110,7 @@ voucher_conversion_sources as (
  jsonb_build_object('service_id',v.service_id,'service_name',v.service_name) context
  from people p join params x on x.user_id=p.user_id and p.person_type='patient'
  join lateral (
-   select max(pr.performed_at) last_at,max(pr.id) procedure_id,
+   select max(pr.performed_at) last_at,(array_agg(pr.id order by pr.performed_at desc))[1] procedure_id,
      (array_agg(pi.service_id order by pr.performed_at desc,pi.created_at desc))[1] service_id,
      (array_agg(pi.name order by pr.performed_at desc,pi.created_at desc))[1] service_name,
      count(distinct pr.id) visit_count,
