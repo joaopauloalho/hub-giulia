@@ -68,6 +68,10 @@ export function PacienteView({ patient, archived = false, sourceAppointmentId, i
   const [crmSummary, setCrmSummary] = useState<CrmPipelineCard | null>(null);
   const returnTo = new URLSearchParams(location.search).get('return_to');
 
+  // Warm the History 360 code chunk while the overview loads so tab switches do not
+  // serialize a bundle download before the first timeline query.
+  useEffect(() => { void import('./tabs/TimelineTab'); }, [patient.id]);
+
   useEffect(() => {
     if (initialTab) setTab(initialTab);
   }, [initialTab]);
