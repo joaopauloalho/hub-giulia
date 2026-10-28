@@ -15,6 +15,8 @@ const FILTERS: Array<{ key: RelationshipOpportunityType | null; label: string }>
   { key: 'return', label: 'Retornos' },
   { key: 'reschedule', label: 'Reagendar' },
   { key: 'proposal', label: 'Propostas' },
+  { key: 'followup', label: 'Contatos atrasados' },
+  { key: 'payment', label: 'A receber' },
   { key: 'credit', label: 'Créditos' },
   { key: 'reactivation', label: 'Reativação' },
 ];
@@ -80,7 +82,7 @@ function PersonDetail({ person, returnTo, onWhatsApp, onSnooze, onDismiss }: {
     <div className="relationship-opportunity-list">
       {person.opportunities.map(opportunity => <section key={opportunity.key} className="relationship-opportunity">
         <div className="relationship-opportunity-head"><OpportunityBadge opportunity={opportunity} /><strong>{opportunity.label}</strong></div>
-        {opportunity.type === 'proposal' && opportunity.amount != null && <p>Valor da proposta: <strong>{Number(opportunity.amount).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</strong></p>}
+        {['proposal', 'payment', 'followup'].includes(opportunity.type) && opportunity.amount != null && <p>Valor estimado: <strong>{Number(opportunity.amount).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</strong></p>}
         {opportunity.type === 'credit' && <div className="relationship-credit-items">{opportunity.remaining?.map(item => <div key={item.package_item_id}><span>{item.service_name}</span><strong>{Number(item.balance).toLocaleString('pt-BR', { maximumFractionDigits: 3 })} {item.unit_label}</strong></div>)}</div>}
         {opportunity.type === 'reschedule' && <p className="page-sub">{opportunity.context?.appointment_status === 'nao_compareceu' ? 'Não compareceu e ainda não possui novo horário.' : 'Cancelou e ainda não possui novo horário.'}{opportunity.context?.cancellation_reason ? ` Motivo: ${String(opportunity.context.cancellation_reason)}` : ''}</p>}
         {opportunity.expires_on && <p className="page-sub">Validade: {relationshipDate(opportunity.expires_on)}</p>}
