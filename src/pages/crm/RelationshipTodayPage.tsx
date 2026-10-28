@@ -165,8 +165,8 @@ export function RelationshipTodayPage() {
         </div>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 12 }}>
           <button className="btn btn--primary btn--sm" disabled={!row.phone || !row.whatsapp_opt_in} onClick={() => openWhatsApp(row)}><MessageCircle size={15} /> WhatsApp</button>
-          <button className="btn btn--secondary btn--sm" disabled={workingId === row.patient_id} onClick={() => void record(row, 'spoke')}>Falei</button>
-          <button className="btn btn--secondary btn--sm" disabled={workingId === row.patient_id} onClick={() => void record(row, 'no_reply')}>Sem resposta</button>
+          <button className="btn btn--secondary btn--sm" disabled={workingId === row.patient_id || !row.whatsapp_opt_in} onClick={() => void record(row, 'spoke')}>Falei</button>
+          <button className="btn btn--secondary btn--sm" disabled={workingId === row.patient_id || !row.whatsapp_opt_in} onClick={() => void record(row, 'no_reply')}>Sem resposta</button>
           <button className="btn btn--secondary btn--sm" onClick={() => {
             setDate(todayKey()); setTime('09:00'); setScheduleTarget(row);
           }}><CalendarPlus size={15} /> Agendou</button>
