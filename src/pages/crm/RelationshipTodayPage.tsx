@@ -8,6 +8,7 @@ import { useAgenda } from '../../hooks/useAgenda';
 import { useRetornos } from '../../hooks/useRetornos';
 import { useServicos } from '../../hooks/useServicos';
 import { useToast } from '../../hooks/useToast';
+import { useAuth } from '../../hooks/useAuth';
 import { ReturnScheduleDrawer } from '../retornos/ReturnScheduleDrawer';
 
 export type TodayRow = {
@@ -25,6 +26,7 @@ const addDays = (days: number) => new Date(Date.now() + days * 86400000).toISOSt
 export function RelationshipTodayPage() {
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { user } = useAuth();
   const { retornos, refresh: refreshReturns } = useRetornos();
   const { servicos } = useServicos();
   const [items, setItems] = useState<TodayRow[]>([]);
@@ -95,9 +97,10 @@ export function RelationshipTodayPage() {
   };
 
   const snooze = async (row: TodayRow, days: number) => {
+    if (!user) { toast.error('Entre novamente para continuar.'); return; }
     setWorkingId(row.patient_id);
     const { error: snoozeError } = await supabase.from('communication_attention_state').upsert({
-      item_key: 'relationship:patient:' + row.patient_id, snoozed_until: addDays(days),
+      user_id: user.id, item_key: 'relationship:patient:' + row.patient_id, snoozed_until: addDays(days),
     }, { onConflict: 'user_id,item_key' });
     if (snoozeError) toast.error('Não foi possível adiar esta paciente.');
     else { toast.success('Adiado por ' + days + ' dias.'); await refresh(); }
