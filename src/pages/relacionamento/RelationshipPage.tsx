@@ -51,7 +51,7 @@ function PersonCard({ person, active, onOpen, onWhatsApp, onSnooze }: { person: 
       </dl>
     </button>
     <div className="relationship-card-actions">
-      <button type="button" className="btn btn--primary btn--sm" onClick={onWhatsApp} disabled={!person.phone}><MessageCircle size={15} /> WhatsApp</button>
+      <button type="button" className="btn btn--primary btn--sm" onClick={onWhatsApp} disabled={!person.phone || !person.whatsapp_opt_in}><MessageCircle size={15} /> WhatsApp</button>
       <button type="button" className="btn btn--secondary btn--sm" onClick={onOpen}>Abrir</button>
       <button type="button" className="btn btn--ghost btn--sm" onClick={onSnooze}><Bell size={15} /> Lembrar</button>
     </div>
@@ -209,7 +209,7 @@ function RelationshipOpportunities() {
       first_name: firstName(person.display_name), name: person.display_name, clinic_name: hub.clinicName,
       proposal_title: String(target.context?.proposal_title ?? ''), valid_until: formatCommunicationDate(target.expires_on ?? (target.context?.valid_until as string | undefined)), package_title: String(target.context?.package_title ?? ''), remaining_credits: relationshipCreditSummary(target.remaining), aftercare_instructions: '', date: '', time: '',
     };
-    setMessageBody(renderCommunicationTemplate(template, values));
+    setMessageBody(`Oi, ${firstName(person.display_name)}! Tudo bem? Aqui é da Clínica Dra. Giulia Assis. Gostaria de te contar uma novidade especial. Posso te explicar? 😊`);
     setCompose({ person, opportunity: target }); setReasonPerson(null);
   };
 
