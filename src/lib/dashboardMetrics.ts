@@ -159,6 +159,18 @@ export function clinicTodayIso(now = new Date()): string {
   return `${part('year')}-${part('month')}-${part('day')}`;
 }
 
+export function formatDashboardPeriodDate(value: string): string {
+  const [year, month, day] = value.split('-').map(Number);
+  return new Intl.DateTimeFormat('pt-BR', { timeZone: 'UTC', day: '2-digit', month: 'short' })
+    .format(new Date(Date.UTC(year, month - 1, day)));
+}
+
+export function splitCrmNegotiationCount(total: number, recontact: number) {
+  const safeTotal = Math.max(0, Number(total) || 0);
+  const safeRecontact = Math.min(safeTotal, Math.max(0, Number(recontact) || 0));
+  return { negotiation: safeTotal - safeRecontact, recontact: safeRecontact };
+}
+
 function monthStart(value: string): string {
   return `${value.slice(0, 7)}-01`;
 }
