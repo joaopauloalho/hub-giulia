@@ -4,6 +4,8 @@ import type { RetornoInfo } from '../../hooks/useRetornos';
 
 export function ReturnScheduleDrawer({
   item,
+  patientName,
+  serviceName,
   date,
   time,
   saving,
@@ -12,7 +14,9 @@ export function ReturnScheduleDrawer({
   onSave,
   onClose,
 }: {
-  item: RetornoInfo;
+  item?: RetornoInfo | null;
+  patientName?: string;
+  serviceName?: string;
   date: string;
   time: string;
   saving: boolean;
@@ -27,7 +31,7 @@ export function ReturnScheduleDrawer({
         <div className="drawer-header">
           <div>
             <h2 className="drawer-title" id="return-schedule-title">Agendar retorno</h2>
-            <p className="page-sub">{item.patientName} · {item.serviceName}</p>
+            <p className="page-sub">{item?.patientName ?? patientName} · {item?.serviceName ?? serviceName}</p>
           </div>
           <button className="icon-btn" onClick={onClose} disabled={saving} aria-label="Fechar"><X size={20} /></button>
         </div>
@@ -36,10 +40,10 @@ export function ReturnScheduleDrawer({
             <div><label className="field-label">Data</label><input className="field-input" type="date" value={date} onChange={e => onDate(e.target.value)} /></div>
             <div><label className="field-label">Horário</label><input className="field-input" type="time" value={time} onChange={e => onTime(e.target.value)} /></div>
           </div>
-          <div style={{ marginTop: '14px', background: 'var(--bg-2)', padding: '12px', borderRadius: 'var(--radius)' }}>
+          {item && <div style={{ marginTop: '14px', background: 'var(--bg-2)', padding: '12px', borderRadius: 'var(--radius)' }}>
             <div className="page-sub">Janela recomendada</div>
             <strong>{formatClinicDate(item.windowStartIso)} a {formatClinicDate(item.windowEndIso)}</strong>
-          </div>
+          </div>}
         </div>
         <div className="drawer-footer">
           <button className="btn-secondary" onClick={onClose} disabled={saving}>Cancelar</button>
