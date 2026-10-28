@@ -7,6 +7,7 @@ import type { Service } from '../../types';
 
 type FollowUpService = Service & {
   return_enabled?: boolean;
+  maintenance_days?: number | null;
   return_type?: 'clinical_return' | 'next_session' | null;
 };
 
@@ -18,6 +19,7 @@ export function ServiceReturnSettings() {
   const [type, setType] = useState<'clinical_return' | 'next_session'>('clinical_return');
   const [startDays, setStartDays] = useState('');
   const [endDays, setEndDays] = useState('');
+  const [maintenanceDays, setMaintenanceDays] = useState('');
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -26,14 +28,20 @@ export function ServiceReturnSettings() {
     setType(editing.return_type ?? 'clinical_return');
     setStartDays(editing.return_min_days?.toString() ?? '');
     setEndDays(editing.return_max_days?.toString() ?? '');
+    setMaintenanceDays(editing.maintenance_days?.toString() ?? '');
   }, [editing]);
 
   const save = async () => {
     if (!editing) return;
     const start = startDays === '' ? null : Number(startDays);
     const end = endDays === '' ? null : Number(endDays);
+    const maintenance = maintenanceDays.trim() === '' ? null : Number(maintenanceDays);
     if (enabled && (start === null || end === null || start < 0 || end < start)) {
       toast.error('Informe uma janela válida de acompanhamento.');
+      return;
+    }
+    if (maintenance !== null && (!Number.isInteger(maintenance) || maintenance < 1 || maintenance > 3650)) {
+      toast.error('A manutenção deve ser um número inteiro entre 1 e 3650 dias.');
       return;
     }
     setSaving(true);
@@ -43,6 +51,7 @@ export function ServiceReturnSettings() {
         return_type: enabled ? type : editing.return_type ?? null,
         return_min_days: start,
         return_max_days: end,
+        maintenance_days: maintenance,
       }).eq('id', editing.id);
       if (error) throw error;
       await refresh();
@@ -79,6 +88,7 @@ export function ServiceReturnSettings() {
                     ? `Regra antiga preservada: ${row.return_min_days ?? '—'}–${row.return_max_days ?? '—'} dias (não gera novos retornos)`
                     : 'Sem acompanhamento configurado'}
               </div>
+              <div className="page-sub" style={{ marginTop: '4px' }}>Manutenção comercial: {row.maintenance_days ? `a cada ${row.maintenance_days} dias` : 'não configurada'}</div>
             </button>
           );
         })}
@@ -96,6 +106,11 @@ export function ServiceReturnSettings() {
                 <input type="checkbox" checked={enabled} onChange={event => setEnabled(event.target.checked)} />
                 <span><strong>Ativar acompanhamento</strong><span className="page-sub" style={{ display: 'block' }}>Só novos procedimentos usarão esta regra.</span></span>
               </label>
+              <div>
+                <label className="field-label" htmlFor="service-maintenance-days">Manutenção / nova indicação comercial (dias)</label>
+                <input id="service-maintenance-days" className="field-input" type="number" min="1" max="3650" step="1" value={maintenanceDays} onChange={event => setMaintenanceDays(event.target.value)} placeholder="Sem manutenção" />
+                <span className="page-sub">Independente da revisão clínica; deixe vazio para desativar.</span>
+              </div>
               {enabled && <>
                 <div><label className="field-label">Tipo</label><select className="field-input" value={type} onChange={event => setType(event.target.value as typeof type)}><option value="clinical_return">Retorno clínico</option><option value="next_session">Nova sessão</option></select></div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>

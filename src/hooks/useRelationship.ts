@@ -7,7 +7,7 @@ import { DEFAULT_RELATIONSHIP_PREFERENCES, EMPTY_RELATIONSHIP_COUNTS, normalizeR
 export type RelationshipTemplateOverride = { template_key: CommunicationTemplateKey; body: string; enabled: boolean };
 function counts(value: unknown): RelationshipCounts {
   const item=(value??{}) as Partial<Record<keyof RelationshipCounts,unknown>>;
-  return { total:Number(item.total??0),return:Number(item.return??0),proposal:Number(item.proposal??0),credit:Number(item.credit??0),reactivation:Number(item.reactivation??0),reschedule:Number(item.reschedule??0),birthday:Number(item.birthday??0),followup:Number(item.followup??0),payment:Number(item.payment??0),birthday_today:Number(item.birthday_today??0),snoozed:Number(item.snoozed??0) };
+  return { total:Number(item.total??0),return:Number(item.return??0),proposal:Number(item.proposal??0),credit:Number(item.credit??0),reactivation:Number(item.reactivation??0),reschedule:Number(item.reschedule??0),birthday:Number(item.birthday??0),followup:Number(item.followup??0),payment:Number(item.payment??0),voucher_conversion:Number(item.voucher_conversion??0),maintenance_due:Number(item.maintenance_due??0),birthday_today:Number(item.birthday_today??0),snoozed:Number(item.snoozed??0) };
 }
 
 export function useRelationshipCenter(options:{category?:string|null;search?:string;includeSnoozed?:boolean;page?:number}={}){
@@ -42,7 +42,7 @@ export function useRelationshipCenter(options:{category?:string|null;search?:str
       });
       if(error)throw error;
     }
-    else if(opportunity.type==='payment'){
+    else if(opportunity.type==='payment' || opportunity.type==='voucher_conversion' || opportunity.type==='maintenance_due'){
       if(!person.patient_id)throw new Error('Cobrança exige paciente vinculada.');
       const{error}=await supabase.rpc('record_relationship_manual_contact_v1',{
         p_patient_id:person.patient_id,p_recipient_phone:recipientPhone,p_message_body:body,p_idempotency_key:idempotencyKey
