@@ -22,7 +22,15 @@ export function useRelationshipCenter(options:{category?:string|null;search?:str
       supabase.from('communication_templates').select('template_key,body,enabled'),
       supabase.from('professional_profiles').select('display_name').maybeSingle(),
     ]);if(listResult.error)throw listResult.error;if(countsResult.error)throw countsResult.error;if(prefResult.error)throw prefResult.error;if(communicationPrefResult.error)throw communicationPrefResult.error;if(templatesResult.error)throw templatesResult.error;if(profileResult.error)throw profileResult.error;
-    setItems(((listResult.data??[]) as RelationshipPerson[]).map(normalizeRelationshipPerson));setSummary(counts(countsResult.data));
+    const raw=((listResult.data??[]) as RelationshipPerson[]).map(normalizeRelationshipPerson);
+    const patientIds=Array.from(new Set(raw.map(item=>item.patient_id).filter((id):id is string=>Boolean(id))));
+    let consent=new Map<string,boolean>();
+    if(patientIds.length){
+      const {data:patientsData,error:consentError}=await supabase.from('patients').select('id,whatsapp_opt_in,whatsapp_opt_out_at').in('id',patientIds);
+      if(consentError)throw consentError;
+      consent=new Map((patientsData??[]).map(item=>[item.id,Boolean(item.whatsapp_opt_in&&!item.whatsapp_opt_out_at)]));
+    }
+    setItems(raw.map(item=>({...item,whatsapp_opt_in:item.patient_id?consent.get(item.patient_id)??false:false})));setSummary(counts(countsResult.data));
     setPreferences(prefResult.data?{returns_enabled:Boolean(prefResult.data.returns_enabled),proposals_enabled:Boolean(prefResult.data.proposals_enabled),credits_enabled:Boolean(prefResult.data.credits_enabled),reactivation_enabled:Boolean(prefResult.data.reactivation_enabled),reactivation_after_days:Number(prefResult.data.reactivation_after_days),recent_contact_cooldown_days:Number(prefResult.data.recent_contact_cooldown_days)}:DEFAULT_RELATIONSHIP_PREFERENCES);
     setCommunicationPreferences(communicationPrefResult.data?{confirmation_lead_hours:Number(communicationPrefResult.data.confirmation_lead_hours),proposal_followup_days:Number(communicationPrefResult.data.proposal_followup_days),package_expiry_days:Number(communicationPrefResult.data.package_expiry_days)}:DEFAULT_COMMUNICATION_PREFERENCES);
     setTemplates((templatesResult.data??[]) as RelationshipTemplateOverride[]);setClinicName(String(profileResult.data?.display_name??''));
