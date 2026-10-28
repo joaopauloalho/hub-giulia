@@ -57,6 +57,15 @@ describe('relationship helpers', () => {
     expect(sorted.map(item => item.key)).toEqual(['return', 'followup', 'payment']);
   });
 
+  it('puts maintenance overdue before voucher conversion and reactivation', () => {
+    const sorted = sortRelationshipOpportunities([
+      opportunity('voucher','voucher_conversion','voucher_conversion'),
+      opportunity('maintenance','maintenance_due','maintenance_overdue'),
+      opportunity('reactivation','reactivation','reactivation'),
+    ]);
+    expect(sorted.map(item => item.key)).toEqual(['maintenance','voucher','reactivation']);
+  });
+
   it('formats clinical dates in Sao Paulo without UTC day drift', () => {
     expect(relationshipDate('2026-08-20')).toBe('20/08/2026');
     expect(relationshipDate('2026-08-20T01:00:00.000Z')).toBe('19/08/2026');
