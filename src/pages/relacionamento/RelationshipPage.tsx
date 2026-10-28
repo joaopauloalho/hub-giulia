@@ -4,7 +4,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useRelationshipCenter } from '../../hooks/useRelationship';
 import { buildSafeWhatsAppUrl, whatsappRecipientDigits } from '../../lib/whatsapp';
 import { copyCommunicationText, firstName } from '../../lib/communications';
-import { RELATIONSHIP_TYPE_LABEL, relationshipCreditSummary, relationshipDate, relationshipDateTime, type RelationshipOpportunity, type RelationshipOpportunityType, type RelationshipPerson, type RelationshipPreferences } from '../../lib/relationship';
+import { RELATIONSHIP_TYPE_LABEL, relationshipDate, relationshipDateTime, type RelationshipOpportunity, type RelationshipOpportunityType, type RelationshipPerson, type RelationshipPreferences } from '../../lib/relationship';
 import { appendReturnTo } from '../../lib/operational';
 import { useToast } from '../../hooks/useToast';
 import './relationship.css';
