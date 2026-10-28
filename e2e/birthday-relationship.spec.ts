@@ -23,6 +23,11 @@ test('birthdays appear for the right tenant and disappear after contact is recor
   expect(inserted.error).toBeNull();
   const patientId = inserted.data!.id as string;
 
+  const consent = await a.rpc('set_patient_whatsapp_consent_v1', {
+    p_patient_id: patientId, p_opt_in: true, p_source: 'ficha',
+  });
+  expect(consent.error).toBeNull();
+
   const counts = await a.rpc('get_relationship_opportunity_counts_v2');
   expect(counts.error).toBeNull();
   expect(Number(counts.data?.birthday)).toBeGreaterThanOrEqual(1);
@@ -47,7 +52,7 @@ test('birthdays appear for the right tenant and disappear after contact is recor
   const personCard = page.locator('.relationship-person-card').filter({ hasText: name }).first();
   await personCard.getByRole('button', { name: 'WhatsApp' }).click();
   await expect(page.getByRole('dialog', { name: 'Mensagem de relacionamento' })).toBeVisible();
-  await expect(page.getByRole('textbox', { name: 'Mensagem', exact: true })).toHaveValue(/feliz aniversário/i);
+  await expect(page.getByRole('textbox', { name: 'Mensagem', exact: true })).toHaveValue(/Clínica Dra\. Giulia Assis/i);
   await page.getByRole('button', { name: 'Fechar' }).click();
 
   const recorded = await a.rpc('record_relationship_birthday_contact_v1', {
