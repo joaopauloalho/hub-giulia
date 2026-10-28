@@ -4,7 +4,8 @@ import { useAuth } from '../../hooks/useAuth';
 import './sideRail391.css';
 
 const tabs = [
-  { to: '/dashboard', icon: LayoutDashboard, label: 'Hoje', end: true },
+  { to: '/crm/hoje', icon: HeartHandshake, label: 'Hoje', end: true },
+  { to: '/dashboard', icon: LayoutDashboard, label: 'Painel', end: true },
   { to: '/agenda', icon: CalendarDays, label: 'Agenda', end: false },
   { to: '/comunicacao', icon: MessageCircle, label: 'Comunicação', end: false },
   { to: '/relacionamento', icon: HeartHandshake, label: 'Relacionamento', end: false },
