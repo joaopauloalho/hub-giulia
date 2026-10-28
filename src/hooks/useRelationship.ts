@@ -7,7 +7,7 @@ import { DEFAULT_RELATIONSHIP_PREFERENCES, EMPTY_RELATIONSHIP_COUNTS, normalizeR
 export type RelationshipTemplateOverride = { template_key: CommunicationTemplateKey; body: string; enabled: boolean };
 function counts(value: unknown): RelationshipCounts {
   const item=(value??{}) as Partial<Record<keyof RelationshipCounts,unknown>>;
-  return { total:Number(item.total??0),return:Number(item.return??0),proposal:Number(item.proposal??0),credit:Number(item.credit??0),reactivation:Number(item.reactivation??0),reschedule:Number(item.reschedule??0),birthday:Number(item.birthday??0),birthday_today:Number(item.birthday_today??0),snoozed:Number(item.snoozed??0) };
+  return { total:Number(item.total??0),return:Number(item.return??0),proposal:Number(item.proposal??0),credit:Number(item.credit??0),reactivation:Number(item.reactivation??0),reschedule:Number(item.reschedule??0),birthday:Number(item.birthday??0),followup:Number(item.followup??0),payment:Number(item.payment??0),birthday_today:Number(item.birthday_today??0),snoozed:Number(item.snoozed??0) };
 }
 
 export function useRelationshipCenter(options:{category?:string|null;search?:string;includeSnoozed?:boolean;page?:number}={}){
@@ -33,6 +33,22 @@ export function useRelationshipCenter(options:{category?:string|null;search?:str
   const recordManualContact=useCallback(async(person:RelationshipPerson,opportunity:RelationshipOpportunity,recipientPhone:string,body:string)=>{const idempotencyKey=crypto.randomUUID();
     if(opportunity.type==='reschedule'){const{error}=await supabase.rpc('record_appointment_recovery_contact_v1',{p_appointment_id:opportunity.source_id,p_recipient_phone:recipientPhone,p_message_body:body,p_idempotency_key:idempotencyKey});if(error)throw error;}
     else if(opportunity.type==='birthday'){if(!person.patient_id)throw new Error('Aniversário exige paciente vinculada.');const{error}=await supabase.rpc('record_relationship_birthday_contact_v1',{p_patient_id:person.patient_id,p_recipient_phone:recipientPhone,p_message_body:body,p_idempotency_key:idempotencyKey});if(error)throw error;}
+    else if(opportunity.source_type==='relationship_deal'){
+      if(!user || !person.contact_id)throw new Error('Contato CRM não encontrado.');
+      const{error}=await supabase.from('crm_activities').insert({
+        user_id:user.id,contact_id:person.contact_id,deal_id:opportunity.source_id,
+        actor_user_id:user.id,activity_type:'contact',note:'Contato de relacionamento registrado',
+        metadata:{channel:'whatsapp',result:'manual',relationship_key:opportunity.key}
+      });
+      if(error)throw error;
+    }
+    else if(opportunity.type==='payment'){
+      if(!person.patient_id)throw new Error('Cobrança exige paciente vinculada.');
+      const{error}=await supabase.rpc('record_relationship_manual_contact_v1',{
+        p_patient_id:person.patient_id,p_recipient_phone:recipientPhone,p_message_body:body,p_idempotency_key:idempotencyKey
+      });
+      if(error)throw error;
+    }
     else if(opportunity.type==='reactivation'){if(!person.patient_id)throw new Error('Reativação exige paciente vinculada.');const{error}=await supabase.rpc('record_relationship_manual_contact_v1',{p_patient_id:person.patient_id,p_recipient_phone:recipientPhone,p_message_body:body,p_idempotency_key:idempotencyKey});if(error)throw error;}
     else{const{error}=await supabase.rpc('record_manual_communication_v1',{p_source_type:opportunity.source_type,p_source_id:opportunity.source_id,p_item_key:opportunity.communication_item_key,p_context:opportunity.template_key,p_recipient_phone:recipientPhone,p_message_body:body,p_template_key:opportunity.template_key,p_idempotency_key:idempotencyKey});if(error)throw error;if(opportunity.type==='return'){const{error:returnError}=await supabase.rpc('mark_procedure_return_contacted_v2',{p_return_id:opportunity.source_id,p_method:'whatsapp'});if(returnError)throw returnError;}}
     await refresh();},[refresh]);
