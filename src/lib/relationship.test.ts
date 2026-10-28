@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { relationshipCreditSummary, relationshipDate, relationshipPersonStateKey, sortRelationshipOpportunities, type RelationshipOpportunity } from './relationship';
+import { DEFAULT_RELATIONSHIP_PREFERENCES, relationshipCreditSummary, relationshipDate, relationshipPersonStateKey, sortRelationshipOpportunities, type RelationshipOpportunity } from './relationship';
 
 const opportunity = (key: string, type: RelationshipOpportunity['type'], priority_class: string): RelationshipOpportunity => ({
   key,
@@ -42,6 +42,19 @@ describe('relationship helpers', () => {
       opportunity('return', 'return', 'return_overdue'),
     ]);
     expect(sorted.map(item => item.key)).toEqual(['return', 'credit', 'proposal', 'reactivation']);
+  });
+
+  it('defaults reactivation to 60 days', () => {
+    expect(DEFAULT_RELATIONSHIP_PREFERENCES.reactivation_after_days).toBe(60);
+  });
+
+  it('prioritizes overdue follow-up above overdue payment but below return', () => {
+    const sorted = sortRelationshipOpportunities([
+      opportunity('payment', 'payment', 'payment_overdue'),
+      opportunity('return', 'return', 'return_overdue'),
+      opportunity('followup', 'followup', 'crm_followup_overdue'),
+    ]);
+    expect(sorted.map(item => item.key)).toEqual(['return', 'followup', 'payment']);
   });
 
   it('formats clinical dates in Sao Paulo without UTC day drift', () => {
