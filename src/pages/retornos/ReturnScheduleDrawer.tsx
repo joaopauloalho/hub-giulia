@@ -37,7 +37,7 @@ export function ReturnScheduleDrawer({
         </div>
         <div className="drawer-body">
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-            <div><label className="field-label">Data (dd/mm/aaaa)</label><input className="field-input" type="date" lang="pt-BR" value={date} onChange={e => onDate(e.target.value)} /></div>
+            <div><label className="field-label">Data (dd/mm/aaaa)</label><input className="field-input" type="date" lang="pt-BR" value={date} onChange={e => onDate(e.target.value)} /><div className="page-sub">{date ? formatClinicDate(date) : 'Selecione uma data'}</div></div>
             <div><label className="field-label">Horário</label><input className="field-input" type="time" value={time} onChange={e => onTime(e.target.value)} /></div>
           </div>
           {item && <div style={{ marginTop: '14px', background: 'var(--bg-2)', padding: '12px', borderRadius: 'var(--radius)' }}>
