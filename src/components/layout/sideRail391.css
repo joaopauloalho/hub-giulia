@@ -23,3 +23,7 @@
     padding: 6px 4px;
   }
 }
+
+/* Keep long Portuguese labels visible in compact navigation. */
+.side-rail .rail-item span { overflow: visible; text-overflow: clip; white-space: normal; overflow-wrap: anywhere; line-height: 1.15; }
+.side-rail .rail-item { min-height: 50px; height: auto; }
