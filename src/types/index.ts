@@ -28,6 +28,7 @@ export interface Patient {
   referred_by_patient_id: string | null;
   referrer_name: string | null;
   created_at: string;
+  last_activity_at: string;
 }
 
 export interface AnamnesisConditions {
