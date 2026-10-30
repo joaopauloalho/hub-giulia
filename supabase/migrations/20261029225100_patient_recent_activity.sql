@@ -47,7 +47,7 @@ begin
 end;
 $$;
 
-create trigger patient_self_activity_touch_v1
+create or replace trigger patient_self_activity_touch_v1
 before update on public.patients
 for each row execute function public.patient_self_activity_touch_v1();
 
@@ -84,38 +84,38 @@ $$;
 revoke all on function public.patient_related_activity_touch_v1() from public, anon, authenticated;
 revoke all on function public.patient_self_activity_touch_v1() from public, anon;
 -- Related records maintained in independent tables; INSERT and meaningful UPDATE count.
-create trigger patient_procedure_activity_v1
+create or replace trigger patient_procedure_activity_v1
 after insert or update on public.procedures
 for each row execute function public.patient_related_activity_touch_v1();
 
-create trigger patient_photo_activity_v1
+create or replace trigger patient_photo_activity_v1
 after insert or update on public.patient_photos
 for each row execute function public.patient_related_activity_touch_v1();
 
-create trigger patient_photo_session_activity_v1
+create or replace trigger patient_photo_session_activity_v1
 after insert or update on public.patient_photo_sessions
 for each row execute function public.patient_related_activity_touch_v1();
 
-create trigger patient_anamnesis_activity_v1
+create or replace trigger patient_anamnesis_activity_v1
 after insert or update on public.anamnesis
 for each row execute function public.patient_related_activity_touch_v1();
 
-create trigger patient_note_activity_v1
+create or replace trigger patient_note_activity_v1
 after insert or update on public.patient_notes
 for each row execute function public.patient_related_activity_touch_v1();
 
-create trigger patient_photo_day_note_activity_v1
+create or replace trigger patient_photo_day_note_activity_v1
 after insert or update on public.patient_photo_day_notes
 for each row execute function public.patient_related_activity_touch_v1();
 
-create trigger patient_injectable_map_activity_v1
+create or replace trigger patient_injectable_map_activity_v1
 after insert or update on public.injectable_maps
 for each row execute function public.patient_related_activity_touch_v1();
 
-create trigger patient_contract_activity_v1
+create or replace trigger patient_contract_activity_v1
 after insert or update on public.contracts
 for each row execute function public.patient_related_activity_touch_v1();
 
-create trigger patient_package_activity_v1
+create or replace trigger patient_package_activity_v1
 after insert or update on public.patient_packages
 for each row execute function public.patient_related_activity_touch_v1();
