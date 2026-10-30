@@ -10,7 +10,7 @@ set last_activity_at = greatest(
   p.created_at,
   coalesce(p.last_activity_at, p.created_at),
   coalesce((select max(x.created_at) from public.procedures x where x.patient_id=p.id and x.user_id=p.user_id), p.created_at),
-  coalesce((select least(max(x.taken_at), now()) from public.patient_photos x where x.patient_id=p.id and x.user_id=p.user_id and x.voided_at is null), p.created_at),
+  coalesce((select max(least(x.taken_at, now())) from public.patient_photos x where x.patient_id=p.id and x.user_id=p.user_id and x.voided_at is null), p.created_at),
   coalesce((select max(x.created_at) from public.patient_photo_sessions x where x.patient_id=p.id and x.user_id=p.user_id and x.voided_at is null), p.created_at),
   coalesce((select max(x.updated_at) from public.anamnesis x where x.patient_id=p.id and x.user_id=p.user_id), p.created_at),
   coalesce((select max(x.created_at) from public.patient_notes x where x.patient_id=p.id and x.user_id=p.user_id), p.created_at),
