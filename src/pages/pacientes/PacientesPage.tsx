@@ -22,7 +22,7 @@ export function PacientesPage() {
   const [search, setSearch] = useState('');
   const [viewMode, setViewMode] = useState<PatientViewMode>('active');
   const archiveMode = viewMode === 'archived' ? 'archived' : 'active';
-  const { pacientes, total, loading, error, create, update, archive, restore, getById, nextPage, hasMore } = usePacientes({ search: viewMode === 'journey' ? '' : search, archiveMode });
+  const { pacientes, total, loading, error, create, update, archive, restore, getById, refresh, nextPage, hasMore } = usePacientes({ search: viewMode === 'journey' ? '' : search, archiveMode });
   const [showCreate, setShowCreate] = useState(false);
   const [viewing, setViewing] = useState<PatientRecord | null>(null);
   const [sourceAppointmentId, setSourceAppointmentId] = useState<string | null>(null);
@@ -59,6 +59,9 @@ export function PacientesPage() {
     closingPatientIdRef.current = requestedPatientId ?? viewing?.id ?? null;
     setViewing(null);
     setSourceAppointmentId(null);
+    // Photo, procedure and other nested tabs save independently of patient data.
+    // Reload on close so the patient immediately moves to the correct position.
+    void refresh();
     const returnTo = searchParams.get('return_to');
     const from = (location.state as { from?: string } | null)?.from;
     if (returnTo?.startsWith('/')) navigate(returnTo);
@@ -107,7 +110,7 @@ export function PacientesPage() {
     <div className="search-wrap"><Search size={18} className="search-icon" /><input className="search-input" placeholder={viewMode === 'journey' ? 'Buscar paciente na jornada...' : 'Buscar por nome, celular ou email...'} value={search} onChange={event => setSearch(event.target.value)} /></div>
 
     {viewMode === 'journey' ? <PatientJourneyBoard search={search} onOpenPatient={patientId => { void openPatientById(patientId); }} /> : error ? <div className="empty-state"><p>{error}</p></div> : loading ? <div className="patient-list">{Array.from({ length: 3 }, (_, index) => <div className="patient-item" key={index}><Skeleton width={44} height={44} borderRadius="50%" /><div style={{ flex: 1 }}><Skeleton lines={2} /></div></div>)}</div> : filtered.length === 0 ? <div className="empty-state"><UserRound size={48} strokeWidth={1} style={{ color: 'var(--primary-lt)' }} />{search ? <p>Nenhuma paciente encontrada para "{search}".</p> : viewMode === 'archived' ? <p>Nenhuma paciente arquivada.</p> : <><p>Nenhuma paciente cadastrada ainda.</p><button className="btn btn--primary btn--md" onClick={() => setShowCreate(true)}><Plus size={16} /> Cadastrar primeira paciente</button></>}</div> : <div className="patient-list">
-      {filtered.map(patient => <button type="button" key={patient.id} className="patient-item" style={{ width: '100%', textAlign: 'left', cursor: 'pointer', font: 'inherit' }} onClick={() => openPatient(patient)} aria-label={`Abrir ficha de ${patient.name}`}><div className="avatar">{initials(patient.name)}</div><div style={{ flex: 1, minWidth: 0 }}><div style={{ fontWeight: 600, fontSize: '0.95rem', color: 'var(--text)' }}>{patient.name}</div><div className="page-sub">{[patient.phone, patient.profession].filter(Boolean).join(' · ')}</div></div>{(viewMode === 'archived' ? patient.archived_at : patient.created_at) && <div className="page-sub" style={{ flexShrink: 0 }}>{fmtDate(viewMode === 'archived' ? patient.archived_at : patient.created_at)}</div>}</button>)}
+      {filtered.map(patient => <button type="button" key={patient.id} className="patient-item" style={{ width: '100%', textAlign: 'left', cursor: 'pointer', font: 'inherit' }} onClick={() => openPatient(patient)} aria-label={`Abrir ficha de ${patient.name}`}><div className="avatar">{initials(patient.name)}</div><div style={{ flex: 1, minWidth: 0 }}><div style={{ fontWeight: 600, fontSize: '0.95rem', color: 'var(--text)' }}>{patient.name}</div><div className="page-sub">{[patient.phone, patient.profession].filter(Boolean).join(' · ')}</div></div>{(viewMode === 'archived' ? patient.archived_at : patient.last_activity_at) && <div className="page-sub" style={{ flexShrink: 0 }}>{fmtDate(viewMode === 'archived' ? patient.archived_at : patient.created_at)}</div>}</button>)}
       {hasMore && <button className="btn btn--secondary btn--md" onClick={nextPage} style={{ marginTop: 8 }}>Carregar mais</button>}
     </div>}
 
