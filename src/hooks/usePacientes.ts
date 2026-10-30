@@ -44,7 +44,9 @@ export function usePacientes(options: UsePacientesOptions = {}) {
         // Server-side unaccent search covers all pages, not only loaded patients.
         const result = await supabase
           .rpc('search_patients_v1', { p_search: search, p_archive_mode: archiveMode }, { count: 'exact' })
-          .order(archiveMode === 'archived' ? 'archived_at' : 'created_at', { ascending: false })
+          .order(archiveMode === 'archived' ? 'archived_at' : 'last_activity_at', { ascending: false })
+          .order('created_at', { ascending: false })
+          .order('id', { ascending: false })
           .range(from, to);
         if (result.error) throw result.error;
         rows = (result.data ?? []) as PatientRecord[];
@@ -53,7 +55,9 @@ export function usePacientes(options: UsePacientesOptions = {}) {
         let query = supabase
           .from('patients')
           .select('*', { count: 'exact' })
-          .order(archiveMode === 'archived' ? 'archived_at' : 'created_at', { ascending: false })
+          .order(archiveMode === 'archived' ? 'archived_at' : 'last_activity_at', { ascending: false })
+          .order('created_at', { ascending: false })
+          .order('id', { ascending: false })
           .range(from, to);
 
         if (archiveMode === 'active') query = query.is('archived_at', null);
@@ -112,7 +116,7 @@ export function usePacientes(options: UsePacientesOptions = {}) {
     return row as PatientRecord;
   };
 
-  const update = async (id: string, data: Partial<Omit<Patient, 'id' | 'user_id' | 'created_at'>>) => {
+  const update = async (id: string, data: Partial<Omit<Patient, 'id' | 'user_id' | 'created_at' | 'last_activity_at'>>) => {
     const { error: updateError } = await supabase.from('patients').update(data).eq('id', id);
     if (updateError) throw updateError;
     await refresh();
