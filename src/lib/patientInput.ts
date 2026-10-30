@@ -2,7 +2,7 @@ import type { PostgrestError } from '@supabase/supabase-js';
 import type { Patient } from '../types';
 import { normalizeAcquisitionDraft } from './acquisition';
 
-export type PatientCreateData = Omit<Patient, 'id' | 'user_id' | 'created_at'>;
+export type PatientCreateData = Omit<Patient, 'id' | 'user_id' | 'created_at' | 'last_activity_at'>;
 
 export const SESSION_EXPIRED_MESSAGE = 'Sua sessão expirou. Entre novamente.';
 
