@@ -3,8 +3,8 @@ import { Bell, CalendarPlus, ChevronLeft, ChevronRight, Clock3, MessageCircle, S
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useRelationshipCenter } from '../../hooks/useRelationship';
 import { buildSafeWhatsAppUrl, whatsappRecipientDigits } from '../../lib/whatsapp';
-import { copyCommunicationText, firstName } from '../../lib/communications';
-import { RELATIONSHIP_TYPE_LABEL, relationshipDate, relationshipDateTime, type RelationshipOpportunity, type RelationshipOpportunityType, type RelationshipPerson, type RelationshipPreferences } from '../../lib/relationship';
+import { copyCommunicationText, DEFAULT_COMMUNICATION_TEMPLATES, firstName, formatCommunicationDate, renderCommunicationTemplate, type CommunicationPlaceholder } from '../../lib/communications';
+import { RELATIONSHIP_TYPE_LABEL, relationshipCreditSummary, relationshipDate, relationshipDateTime, type RelationshipOpportunity, type RelationshipOpportunityType, type RelationshipPerson, type RelationshipPreferences } from '../../lib/relationship';
 import { appendReturnTo } from '../../lib/operational';
 import { useToast } from '../../hooks/useToast';
 import './relationship.css';
@@ -15,10 +15,6 @@ const FILTERS: Array<{ key: RelationshipOpportunityType | null; label: string }>
   { key: 'return', label: 'Retornos' },
   { key: 'reschedule', label: 'Reagendar' },
   { key: 'proposal', label: 'Propostas' },
-  { key: 'followup', label: 'Contatos atrasados' },
-  { key: 'payment', label: 'A receber' },
-  { key: 'voucher_conversion', label: 'Vouchers' },
-  { key: 'maintenance_due', label: 'Manutenção' },
   { key: 'credit', label: 'Créditos' },
   { key: 'reactivation', label: 'Reativação' },
 ];
@@ -51,7 +47,7 @@ function PersonCard({ person, active, onOpen, onWhatsApp, onSnooze }: { person: 
       </dl>
     </button>
     <div className="relationship-card-actions">
-      <button type="button" className="btn btn--primary btn--sm" onClick={onWhatsApp} disabled={!person.phone || !person.whatsapp_opt_in}><MessageCircle size={15} /> WhatsApp</button>
+      <button type="button" className="btn btn--primary btn--sm" onClick={onWhatsApp} disabled={!person.phone}><MessageCircle size={15} /> WhatsApp</button>
       <button type="button" className="btn btn--secondary btn--sm" onClick={onOpen}>Abrir</button>
       <button type="button" className="btn btn--ghost btn--sm" onClick={onSnooze}><Bell size={15} /> Lembrar</button>
     </div>
@@ -84,7 +80,7 @@ function PersonDetail({ person, returnTo, onWhatsApp, onSnooze, onDismiss }: {
     <div className="relationship-opportunity-list">
       {person.opportunities.map(opportunity => <section key={opportunity.key} className="relationship-opportunity">
         <div className="relationship-opportunity-head"><OpportunityBadge opportunity={opportunity} /><strong>{opportunity.label}</strong></div>
-        {['proposal', 'payment', 'followup', 'voucher_conversion', 'maintenance_due'].includes(opportunity.type) && opportunity.amount != null && <p>Valor estimado: <strong>{Number(opportunity.amount).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</strong></p>}
+        {opportunity.type === 'proposal' && opportunity.amount != null && <p>Valor da proposta: <strong>{Number(opportunity.amount).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</strong></p>}
         {opportunity.type === 'credit' && <div className="relationship-credit-items">{opportunity.remaining?.map(item => <div key={item.package_item_id}><span>{item.service_name}</span><strong>{Number(item.balance).toLocaleString('pt-BR', { maximumFractionDigits: 3 })} {item.unit_label}</strong></div>)}</div>}
         {opportunity.type === 'reschedule' && <p className="page-sub">{opportunity.context?.appointment_status === 'nao_compareceu' ? 'Não compareceu e ainda não possui novo horário.' : 'Cancelou e ainda não possui novo horário.'}{opportunity.context?.cancellation_reason ? ` Motivo: ${String(opportunity.context.cancellation_reason)}` : ''}</p>}
         {opportunity.expires_on && <p className="page-sub">Validade: {relationshipDate(opportunity.expires_on)}</p>}
@@ -198,8 +194,18 @@ function RelationshipOpportunities() {
     if (!opportunity && person.opportunities.length > 1) { setReasonPerson(person); return; }
     const target = opportunity ?? person.opportunities[0];
     if (!target) return;
-    if (!person.whatsapp_opt_in) { toast.error('Paciente sem autorização de WhatsApp.'); return; }
-    setMessageBody(`Oi, ${firstName(person.display_name)}! Tudo bem? Aqui é da Clínica Dra. Giulia Assis. Gostaria de te contar uma novidade especial. Posso te explicar? 😊`);
+    const override = hub.templateMap.get(target.template_key);
+    const hasTypedCreditUnits = target.type === 'credit' && (target.remaining ?? []).some(item => !item.unit_label.toLowerCase().includes('crédito'));
+    const template = override?.enabled
+      ? override.body
+      : hasTypedCreditUnits
+        ? 'Oi, {first_name}! Tudo bem? Você ainda tem disponível no seu plano: {remaining_credits}. A validade é até {valid_until}. Se quiser, podemos organizar seu próximo horário.'
+        : DEFAULT_COMMUNICATION_TEMPLATES[target.template_key];
+    const values: Partial<Record<CommunicationPlaceholder, string>> = {
+      first_name: firstName(person.display_name), name: person.display_name, clinic_name: hub.clinicName,
+      proposal_title: String(target.context?.proposal_title ?? ''), valid_until: formatCommunicationDate(target.expires_on ?? (target.context?.valid_until as string | undefined)), package_title: String(target.context?.package_title ?? ''), remaining_credits: relationshipCreditSummary(target.remaining), aftercare_instructions: '', date: '', time: '',
+    };
+    setMessageBody(renderCommunicationTemplate(template, values));
     setCompose({ person, opportunity: target }); setReasonPerson(null);
   };
 

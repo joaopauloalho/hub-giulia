@@ -4,10 +4,6 @@ export interface Patient {
   id: string;
   user_id: string;
   name: string;
-  whatsapp_opt_in?: boolean;
-  opt_in_at?: string | null;
-  opt_in_source?: string | null;
-  whatsapp_opt_out_at?: string | null;
   birth_date: string | null;
   phone: string | null;
   email: string | null;
@@ -28,7 +24,6 @@ export interface Patient {
   referred_by_patient_id: string | null;
   referrer_name: string | null;
   created_at: string;
-  last_activity_at: string;
 }
 
 export interface AnamnesisConditions {
