@@ -37,6 +37,7 @@ create table public.icloud_appointment_links (
   appointment_id uuid not null,
   calendar_id text not null,
   resource_href text not null,
+  recurrence_id text not null default '',
   event_uid text not null,
   etag text,
   source_kind text not null default 'hub' check(source_kind in ('hub','imported')),
@@ -44,7 +45,7 @@ create table public.icloud_appointment_links (
   last_error_code text,
   updated_at timestamptz not null default now(),
   primary key (user_id, appointment_id),
-  unique(user_id, calendar_id, resource_href),
+  unique(user_id, calendar_id, resource_href, recurrence_id),
   foreign key (appointment_id,user_id) references public.appointments(id,user_id) on delete cascade,
   foreign key (user_id,calendar_id) references public.icloud_calendar_collections(user_id,calendar_id)
 );
@@ -103,9 +104,9 @@ begin
   ) returning id into v_appointment;
 
   insert into public.icloud_appointment_links (
-    user_id,appointment_id,calendar_id,resource_href,event_uid,etag,source_kind,sync_status
+    user_id,appointment_id,calendar_id,resource_href,recurrence_id,event_uid,etag,source_kind,sync_status
   ) values (
-    v_user,v_appointment,v_event.calendar_id,v_event.resource_href,
+    v_user,v_appointment,v_event.calendar_id,v_event.resource_href,v_event.recurrence_id,
     v_event.event_uid,v_event.etag,'imported','synced'
   );
 
