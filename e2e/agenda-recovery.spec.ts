@@ -136,15 +136,18 @@ test('cancel and no-show recovery appear only without a future valid appointment
   expect(hidden.data).toEqual([]);
 });
 
-test('canonical appointment overlap remains the final double-booking guard', async () => {
+test('canonical agenda permits intentional overlapping appointments and retains distinct records', async () => {
   const seeded = await state();
   const a = await signedInClient('a');
   const firstPatient = await createPatient(`E2E Slot A ${randomUUID().slice(0, 8)}`, '+55 43 99999-4040');
   const secondPatient = await createPatient(`E2E Slot B ${randomUUID().slice(0, 8)}`, '+55 43 99999-5050');
-  await createAppointment(firstPatient.id, seeded.serviceId, '2031-01-15T14:00:00-03:00');
-  const collision = await a.from('appointments').insert({ patient_id: secondPatient.id, service_id: seeded.serviceId, scheduled_at: '2031-01-15T14:00:00-03:00', duration_minutes: 60 }).select('id');
-  expect(collision.error).not.toBeNull();
-  expect(collision.error?.code).toBe('23P01');
+  const first = await createAppointment(firstPatient.id, seeded.serviceId, '2031-01-15T14:00:00-03:00');
+  const collision = await a.from('appointments').insert({ patient_id: secondPatient.id, service_id: seeded.serviceId, scheduled_at: '2031-01-15T14:00:00-03:00', duration_minutes: 60 }).select('id,patient_id,scheduled_at').single();
+  expect(collision.error).toBeNull();
+  expect(collision.data?.id).toBeTruthy();
+  expect(collision.data?.id).not.toBe(first.id);
+  expect(collision.data?.patient_id).toBe(secondPatient.id);
+  expect(collision.data?.scheduled_at).toBe(first.scheduled_at);
 });
 
 test('Patient 360 waitlist and Relationship Reagendar remain touch-usable on phone and iPad widths', async ({ page }) => {
