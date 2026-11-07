@@ -40,7 +40,7 @@ export function IcloudConnectionPanel({ onImported }: { onImported: () => void }
 
   const refresh = useCallback(async () => {
     try {
-      const response = await callIcloud('status') as IcloudStatus;
+      const response = await callIcloud('status') as unknown as IcloudStatus;
       setStatus(response);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Nao foi possivel carregar a integracao.');
