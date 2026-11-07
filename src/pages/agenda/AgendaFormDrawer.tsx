@@ -80,7 +80,16 @@ export function AgendaFormDrawer({ initialDate, initialTime, initialPatientId, i
     try {
       const scheduledAt = clinicLocalToIso(date, time);
       const conflict = await findConflict(scheduledAt, duration, appointment?.id);
-      if (conflict) { setError('Esse horário acabou de ser ocupado. Escolha outro horário.'); return; }
+      if (conflict) {
+        const proceed = await confirm({
+          title: 'Já existe um agendamento nesse horário',
+          message: `Já há um compromisso às ${clinicTime(conflict.scheduled_at)}. Você pode ajustar o horário ou agendar mesmo assim.`,
+          confirmLabel: 'Agendar mesmo assim',
+          cancelLabel: 'Alterar horário',
+          tone: 'warning',
+        });
+        if (!proceed) return;
+      }
       const input: AgendaInput = { patient_id: patientId, service_id: serviceId || null, scheduled_at: scheduledAt, duration_minutes: duration, notes: notes.trim() || null };
       if (appointment) await onUpdate(appointment.id, input); else await onCreate(input);
       setDirty(false);
