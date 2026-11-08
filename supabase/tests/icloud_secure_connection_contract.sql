@@ -9,6 +9,17 @@ begin
      has_table_privilege('authenticated','public.icloud_appointment_links','update') then
     raise exception 'External provider identities are backend-owned';
   end if;
+  if has_function_privilege('anon','public.icloud_vault_read_v1(uuid)','execute')
+     or has_function_privilege('authenticated','public.icloud_vault_read_v1(uuid)','execute')
+     or has_function_privilege('anon','public.icloud_vault_store_v1(uuid,text)','execute')
+     or has_function_privilege('authenticated','public.icloud_vault_store_v1(uuid,text)','execute')
+     or has_function_privilege('anon','public.icloud_vault_revoke_v1(uuid)','execute')
+     or has_function_privilege('authenticated','public.icloud_vault_revoke_v1(uuid)','execute') then
+    raise exception 'Vault credential access must be restricted to server role';
+  end if;
+  if not has_function_privilege('service_role','public.icloud_vault_read_v1(uuid)','execute') then
+    raise exception 'Backend secret access missing';
+  end if;
   if not (select relrowsecurity from pg_class where oid='public.icloud_calendar_accounts'::regclass) or
      not (select relrowsecurity from pg_class where oid='public.icloud_calendar_collections'::regclass) or
      not (select relrowsecurity from pg_class where oid='public.icloud_appointment_links'::regclass) then
