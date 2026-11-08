@@ -15,3 +15,5 @@ Verificações pré-merge:
 A fase seguinte implementa o conector CalDAV, autenticação e sincronização
 em modo somente leitura. A escrita no iCloud fica desabilitada até um smoke
 autenticado com a proprietária.
+
+A migration foi verificada no Supabase de produção; os eventos continuam somente leitura até a conexão.
