@@ -50,6 +50,21 @@ export function IcloudConnectionPanel({ onImported, onConnectionChange }: { onIm
 
   useEffect(() => { void refresh(); }, [refresh]);
 
+  // While the Hub is open, keep imported times fresh without polling Apple
+  // unnecessarily when disconnected. Background sync is a later server-side phase.
+  useEffect(() => {
+    if (!status?.connected || !status.last_sync_at) return;
+    const interval = window.setInterval(() => {
+      void callIcloud('sync').then(() => {
+        onImported();
+        void refresh();
+      }).catch(() => {
+        // A background failure does not block manual scheduling.
+      });
+    }, 10 * 60 * 1000);
+    return () => window.clearInterval(interval);
+  }, [status?.connected, status?.last_sync_at, onImported, refresh]);
+
   const run = async (operation: () => Promise<void>) => {
     setBusy(true); setError(null); setMessage(null);
     try { await operation(); }
@@ -61,7 +76,10 @@ export function IcloudConnectionPanel({ onImported, onConnectionChange }: { onIm
     await callIcloud('connect',{ apple_id:appleId.trim(), app_password:appPassword });
     setAppPassword('');
     setShowConnect(false);
-    setMessage('Conta conectada! Agora importe os calendarios.');
+    await refresh();
+    const result = await callIcloud('sync');
+    onImported();
+    setMessage(`Conectado! ${result.imported ?? 0} eventos encontrados nos calendarios selecionados. Nenhum compromisso do iPhone foi alterado.`);
     await refresh();
   });
   const sync = () => void run(async () => {
