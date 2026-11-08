@@ -90,6 +90,8 @@ export function IcloudConnectionPanel({ onImported, onConnectionChange }: { onIm
   });
   const toggle = (calendar: IcloudCollection, selected: boolean) => void run(async () => {
     await callIcloud('select', { calendar_id:calendar.calendar_id,selected });
+    if(selected) await callIcloud('sync');
+    onImported();
     await refresh();
   });
   const disconnect = () => void run(async () => {
@@ -128,8 +130,8 @@ export function IcloudConnectionPanel({ onImported, onConnectionChange }: { onIm
           onClick={disconnect}><Unplug size={15}/> Desconectar</button>
       </div>
       <p className="page-sub" style={{marginTop:9}}>
-        Primeira etapa: leitura segura dos eventos. A escrita de novos agendamentos no iCloud
-        sera ativada separadamente depois da revisao da importacao.
+        Atualizacao automatica de hora em hora, mesmo sem abrir o Hub.
+        A escrita de novos agendamentos no iCloud continua desativada por seguranca.
       </p>
     </> : <>
       <p className="page-sub" style={{marginTop:7}}>
