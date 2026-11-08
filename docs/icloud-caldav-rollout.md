@@ -29,3 +29,10 @@ contra a Apple. Sincronização bidirecional completa somente após validação 
 - CI Deno: checagem da Edge Function, parse XML/ICS, recorrência, fusos e SSRF;
 - E2E Supabase: schema inteiro, RLS e conversão idempotente de evento importado;
 - Smoke real manual com a Conta Apple da clínica, sem colocar credenciais em logs ou chat.
+
+## Deploy verificado em produção
+
+- A migration de conexão foi aplicada em Supabase e sua versão reconciliada no Git.
+- A Edge Function `icloud-calendar` foi publicada com verificação JWT.
+- Os privilégios das funções de Vault foram conferidos: sem acesso por anon/autenticado.
+- Frontend só deve ir para produção depois das validações de CI e do merge.
