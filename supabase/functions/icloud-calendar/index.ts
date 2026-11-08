@@ -9,6 +9,7 @@ type Command = {
   action?: 'status' | 'connect' | 'sync' | 'select' | 'disconnect' | 'check_conflict';
   starts_at?: string;
   ends_at?: string;
+  ignore_appointment_id?: string;
   apple_id?: string;
   app_password?: string;
   calendar_id?: string;
@@ -123,12 +124,23 @@ Deno.serve(async (req: Request) => {
       if (secretError || !password) throw new HttpError(409,'icloud_secret_unavailable',
         'A credencial do iCloud precisa ser reconectada.');
       const { data: calendars, error: calendarError } = await admin.from('icloud_calendar_collections')
-        .select('calendar_url').eq('user_id',user.id).eq('is_selected',true);
+        .select('calendar_id,calendar_url').eq('user_id',user.id).eq('is_selected',true);
+      const { data: ownLink, error: linkError } = body.ignore_appointment_id
+        ? await admin.from('icloud_appointment_links')
+            .select('calendar_id,resource_href,recurrence_id')
+            .eq('user_id',user.id).eq('appointment_id',body.ignore_appointment_id).maybeSingle()
+        : {data:null,error:null};
+      if (linkError) throw new HttpError(500,'icloud_link_failed',
+        'Falha ao verificar o vinculo do agendamento.');
       if (calendarError) throw new HttpError(500,'icloud_collections_failed',
         'Falha ao carregar os calendarios.');
       for (const calendar of calendars ?? []) {
         const found = await readCalendar(account.apple_id,password,calendar.calendar_url,start,end);
-        const hit = found.find(event => new Date(event.starts_at) < end && new Date(event.ends_at) > start);
+        const hit = found.find(event =>
+          !(ownLink && ownLink.calendar_id === calendar.calendar_id
+             && ownLink.resource_href === event.resource_href
+             && ownLink.recurrence_id === event.recurrence_id)
+          && new Date(event.starts_at) < end && new Date(event.ends_at) > start);
         if (hit) return json(req,{connected:true,checked:true,conflict:{scheduled_at:hit.starts_at}});
       }
       return json(req,{connected:true,checked:true,conflict:null});
