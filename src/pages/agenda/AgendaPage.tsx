@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { Calendar, ChevronLeft, ChevronRight, Plus, Search } from 'lucide-react';
 import { format } from 'date-fns';
@@ -120,6 +120,7 @@ export function AgendaV2Page() {
   const [icloudRevision, setIcloudRevision] = useState(0);
   const [activeIcloudId, setActiveIcloudId] = useState<string | null>(null);
   const [icloudConnected, setIcloudConnected] = useState(false);
+  const onIcloudImported=useCallback(()=>setIcloudRevision(v=>v+1),[]);
   const range = useMemo(() => agendaRange(anchor, view), [anchor, view]);
   const agenda = useAgenda({ from: range.from, to: range.to });
   const icloud = useIcloudEvents({from:range.from,to:range.to,revision:icloudRevision});
@@ -162,7 +163,7 @@ export function AgendaV2Page() {
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(105px,1fr))', gap: 8, marginBottom: 10 }}><div className="card" style={{ padding: 10 }}><strong>{counts.total}</strong><div className="page-sub">Agendadas</div></div><div className="card" style={{ padding: 10 }}><strong>{counts.confirmado}</strong><div className="page-sub">Confirmadas</div></div><div className="card" style={{ padding: 10 }}><strong>{counts.realizado}</strong><div className="page-sub">Realizadas</div></div><div className="card" style={{ padding: 10 }}><strong>{counts.pendente}</strong><div className="page-sub">Pendentes</div><div className="card" style={{padding:10}}><strong>{visibleIcloud.length}</strong><div className="page-sub">Compromissos iCloud</div></div></div>
     {!icloudConnected && !google.loading && (!google.connected || google.needsReauth) && <div className="card" style={{ padding: 10, marginBottom: 10, display: 'flex', gap: 8, alignItems: 'center' }}><Calendar size={16} /><span style={{ flex: 1, fontSize: 12 }}>{google.needsReauth ? 'Google Calendar precisa ser reconectado. A Agenda local continua funcionando.' : 'Google Calendar desconectado. A Agenda local continua funcionando.'}</span><button className="btn btn--ghost btn--sm" onClick={() => void google.connect().catch(error => toast.error(error instanceof Error ? error.message : 'Falha ao conectar.'))}>{google.needsReauth ? 'Reconectar' : 'Conectar'}</button></div>}
     <div className="card" style={{ padding: 10, marginBottom: 10 }}><div style={{ position: 'relative', marginBottom: 8 }}><Search size={16} style={{ position: 'absolute', left: 11, top: 12 }} /><input className="field-input" style={{ paddingLeft: 34 }} value={search} onChange={event => setSearch(event.target.value)} placeholder="Buscar paciente ou telefone" /></div><div style={{ display: 'flex', gap: 5, overflowX: 'auto' }}>{(['all','pendente','confirmado','realizado','cancelado','nao_compareceu'] as Filter[]).map(status => <button key={status} className={`btn btn--sm ${filter === status ? 'btn--primary' : 'btn--ghost'}`} onClick={() => setFilter(status)}>{status === 'all' ? 'Todos' : AGENDA_STATUS_LABEL[status]}</button>)}</div></div>
-    <IcloudConnectionPanel onConnectionChange={setIcloudConnected} onImported={() => setIcloudRevision(v => v + 1)} />
+    <IcloudConnectionPanel onConnectionChange={setIcloudConnected} onImported={onIcloudImported} />
     {icloud.error && <p role="alert" className="page-sub">Nao foi possivel carregar os eventos do iCloud: {icloud.error}</p>}
     <IcloudEventsPanel events={icloud.events} activeId={activeIcloudId}
       onActiveChange={setActiveIcloudId}
