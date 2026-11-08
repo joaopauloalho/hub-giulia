@@ -28,7 +28,7 @@ async function callIcloud(action: string, extras: Record<string, unknown> = {}):
   return data as Record<string, unknown>;
 }
 
-export function IcloudConnectionPanel({ onImported }: { onImported: () => void }) {
+export function IcloudConnectionPanel({ onImported, onConnectionChange }: { onImported: () => void; onConnectionChange: (connected: boolean) => void }) {
   const [status, setStatus] = useState<IcloudStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -42,10 +42,11 @@ export function IcloudConnectionPanel({ onImported }: { onImported: () => void }
     try {
       const response = await callIcloud('status') as unknown as IcloudStatus;
       setStatus(response);
+      onConnectionChange(Boolean(response.connected));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Nao foi possivel carregar a integracao.');
     } finally { setLoading(false); }
-  }, []);
+  }, [onConnectionChange]);
 
   useEffect(() => { void refresh(); }, [refresh]);
 
