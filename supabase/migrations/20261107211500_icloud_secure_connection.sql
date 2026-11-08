@@ -1,9 +1,9 @@
--- Account credentials are encrypted in Edge Functions with ICLOUD_ENCRYPTION_KEY.
--- No credential is exposed to anon/authenticated SQL API or clients.
+-- Account secrets are managed by Supabase Vault, not by public tables or the browser.
+-- The only Vault RPCs are restricted to the backend service_role.
 create table public.icloud_calendar_accounts (
   user_id uuid primary key references auth.users(id) on delete cascade,
   apple_id text not null check (length(trim(apple_id)) between 3 and 254),
-  password_ciphertext text not null,
+  secret_id uuid,
   calendar_home_url text not null,
   connected boolean not null default false,
   write_enabled boolean not null default false,
@@ -119,5 +119,69 @@ $$;
 revoke all on function public.convert_icloud_event_v1(uuid,uuid) from public, anon;
 grant execute on function public.convert_icloud_event_v1(uuid,uuid) to authenticated;
 
-comment on table public.icloud_calendar_accounts is 'Apple ID and AES-GCM ciphertext are backend-only; no frontend SQL grants.';
+comment on table public.icloud_calendar_accounts is 'Apple ID and Vault secret reference are backend-only; no frontend SQL grants.';
+
+-- Service-role-only bridge to Supabase Vault.
+-- Edge Functions authenticate the user before calling these RPCs; a browser never
+-- receives plaintext or an executable role capable of invoking this bridge.
+create or replace function public.icloud_vault_store_v1(p_user uuid,p_password text)
+returns uuid language plpgsql security definer set search_path = ''
+as $
+declare
+  v_secret uuid;
+begin
+  if current_setting('request.jwt.claim.role',true) is distinct from 'service_role' then
+    raise exception 'BACKEND_ONLY';
+  end if;
+  if p_user is null or length(p_password) < 12 or length(p_password) > 128 then
+    raise exception 'INVALID_SECRET';
+  end if;
+  select a.secret_id into v_secret from public.icloud_calendar_accounts a where a.user_id=p_user;
+  if v_secret is null then
+    v_secret := vault.create_secret(p_password,'hub_giulia_icloud_'||p_user::text);
+  else
+    perform vault.update_secret(v_secret,p_password);
+  end if;
+  return v_secret;
+end;
+$;
+create or replace function public.icloud_vault_read_v1(p_user uuid)
+returns text language plpgsql security definer set search_path = ''
+as $
+declare
+  v_password text;
+begin
+  if current_setting('request.jwt.claim.role',true) is distinct from 'service_role' then
+    raise exception 'BACKEND_ONLY';
+  end if;
+  select v.decrypted_secret into v_password
+  from public.icloud_calendar_accounts a
+  join vault.decrypted_secrets v on v.id=a.secret_id
+  where a.user_id=p_user and a.connected=true;
+  return v_password;
+end;
+$;
+create or replace function public.icloud_vault_revoke_v1(p_user uuid)
+returns void language plpgsql security definer set search_path = ''
+as $
+declare
+  v_secret uuid;
+begin
+  if current_setting('request.jwt.claim.role',true) is distinct from 'service_role' then
+    raise exception 'BACKEND_ONLY';
+  end if;
+  select a.secret_id into v_secret from public.icloud_calendar_accounts a where a.user_id=p_user for update;
+  update public.icloud_calendar_accounts
+    set connected=false,write_enabled=false,secret_id=null,last_error_code=null,updated_at=now()
+    where user_id=p_user;
+  if v_secret is not null then delete from vault.secrets where id=v_secret; end if;
+end;
+$;
+revoke all on function public.icloud_vault_store_v1(uuid,text) from public,anon,authenticated;
+revoke all on function public.icloud_vault_read_v1(uuid) from public,anon,authenticated;
+revoke all on function public.icloud_vault_revoke_v1(uuid) from public,anon,authenticated;
+grant execute on function public.icloud_vault_store_v1(uuid,text) to service_role;
+grant execute on function public.icloud_vault_read_v1(uuid) to service_role;
+grant execute on function public.icloud_vault_revoke_v1(uuid) to service_role;
+
 comment on table public.icloud_appointment_links is 'External identity for iCloud sync; imported events remain read-only to avoid rewriting personal calendar details.';
