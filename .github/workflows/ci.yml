@@ -221,3 +221,18 @@ jobs:
       - name: Stop local Supabase stack
         if: always()
         run: npx -y supabase@2.114.0 stop --no-backup || true
+
+  icloud-caldav-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+      - name: Setup Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Typecheck iCloud CalDAV Edge Function
+        run: deno check supabase/functions/icloud-calendar/index.ts
+      - name: Test CalDAV parsing and security
+        run: deno test --allow-env supabase/functions/_shared/icloud-caldav.test.ts
