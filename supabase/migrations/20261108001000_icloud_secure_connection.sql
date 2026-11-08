@@ -126,7 +126,7 @@ comment on table public.icloud_calendar_accounts is 'Apple ID and Vault secret r
 -- receives plaintext or an executable role capable of invoking this bridge.
 create or replace function public.icloud_vault_store_v1(p_user uuid,p_password text)
 returns uuid language plpgsql security definer set search_path = ''
-as $
+as $$
 declare
   v_secret uuid;
 begin
@@ -145,10 +145,10 @@ begin
   end if;
   return v_secret;
 end;
-$;
+$$;
 create or replace function public.icloud_vault_read_v1(p_user uuid)
 returns text language plpgsql security definer set search_path = ''
-as $
+as $$
 declare
   v_password text;
 begin
@@ -162,10 +162,10 @@ begin
   where a.user_id=p_user and a.connected=true;
   return v_password;
 end;
-$;
+$$;
 create or replace function public.icloud_vault_revoke_v1(p_user uuid)
 returns void language plpgsql security definer set search_path = ''
-as $
+as $$
 declare
   v_secret uuid;
 begin
@@ -179,7 +179,7 @@ begin
     where user_id=p_user;
   if v_secret is not null then delete from vault.secrets where id=v_secret; end if;
 end;
-$;
+$$;
 revoke all on function public.icloud_vault_store_v1(uuid,text) from public,anon,authenticated;
 revoke all on function public.icloud_vault_read_v1(uuid) from public,anon,authenticated;
 revoke all on function public.icloud_vault_revoke_v1(uuid) from public,anon,authenticated;
