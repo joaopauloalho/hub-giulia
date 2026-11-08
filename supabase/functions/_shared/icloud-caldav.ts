@@ -266,9 +266,10 @@ export async function readCalendar(email: string, password: string, calendarUrl:
     if (!data) {
       // A partial 207 response is not evidence that an Apple event was deleted.
       // Fail closed rather than let the hourly reconciliation hide valid events.
-      const resourcePath = new URL(resource).pathname.replace(/\\/$/, '');
-      const calendarPath = new URL(calendarUrl).pathname.replace(/\\/$/, '');
-      if (resourcePath === calendarPath) continue;
+      const resourcePath = new URL(resource).pathname;
+      const calendarPath = new URL(calendarUrl).pathname;
+      if (resourcePath === calendarPath || resourcePath + '/' === calendarPath ||
+          calendarPath + '/' === resourcePath) continue;
       throw new HttpError(502,'icloud_incomplete_report',
         'O iCloud devolveu um calendario incompleto. Nenhum evento foi removido.');
     }
