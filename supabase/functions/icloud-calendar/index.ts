@@ -2,7 +2,7 @@ import {
   HttpError, assertMethod, authenticate, createAdminClient, json, logSafe, preflight,
 } from '../_shared/google-calendar-security.ts';
 import {
-  discoverCalendars, decryptPassword, encryptPassword, readCalendar,
+  discoverCalendars, readCalendar,
 } from '../_shared/icloud-caldav.ts';
 
 type Command = {
@@ -59,11 +59,14 @@ Deno.serve(async (req: Request) => {
       }
       // Authenticate and discover before storing a credential or touching an existing link.
       const { home, calendars } = await discoverCalendars(email,password);
-      const cipher = await encryptPassword(password);
+      const { data: secretId, error: secretError } = await admin.rpc('icloud_vault_store_v1', {
+        p_user:user.id,p_password:password,
+      });
+      if (secretError || !secretId) throw new HttpError(500,'icloud_vault_failed','Nao foi possivel guardar a credencial com seguranca.');
       const { error: accountError } = await admin.from('icloud_calendar_accounts').upsert({
         user_id:user.id,
         apple_id:email,
-        password_ciphertext:cipher,
+        secret_id:secretId,
         calendar_home_url:home,
         connected:true,
         write_enabled:false,
@@ -83,9 +86,7 @@ Deno.serve(async (req: Request) => {
     }
 
     if (body.action === 'disconnect') {
-      const { error } = await admin.from('icloud_calendar_accounts')
-        .update({connected:false,write_enabled:false,password_ciphertext:'revoked',
-          last_error_code:null,updated_at:new Date().toISOString()}).eq('user_id',user.id);
+      const { error } = await admin.rpc('icloud_vault_revoke_v1',{p_user:user.id});
       if (error) throw new HttpError(500,'icloud_disconnect_failed','Nao foi possivel desconectar.');
       return json(req,{connected:false});
     }
@@ -106,11 +107,12 @@ Deno.serve(async (req: Request) => {
 
     if (body.action === 'sync') {
       const { data: account, error: accountError } = await admin.from('icloud_calendar_accounts')
-        .select('apple_id,password_ciphertext,connected').eq('user_id',user.id).maybeSingle();
+        .select('apple_id,connected').eq('user_id',user.id).maybeSingle();
       if (accountError || !account?.connected) {
         throw new HttpError(409,'icloud_not_connected','Conecte o iCloud antes de sincronizar.');
       }
-      const password = await decryptPassword(account.password_ciphertext);
+      const { data: password, error: secretError } = await admin.rpc('icloud_vault_read_v1',{p_user:user.id});
+      if (secretError || !password) throw new HttpError(409,'icloud_secret_unavailable','A credencial do iCloud precisa ser reconectada.');
       const { data: calendars, error: collectionError } = await admin.from('icloud_calendar_collections')
         .select('calendar_id,calendar_url').eq('user_id',user.id).eq('is_selected',true);
       if (collectionError) throw new HttpError(500,'icloud_collections_failed','Nao foi possivel carregar os calendarios.');
