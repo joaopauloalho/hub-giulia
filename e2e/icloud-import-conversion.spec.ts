@@ -60,7 +60,7 @@ test('imported iCloud event is linked explicitly once, with the original externa
     .eq('id',first.data).single();
   expect(appointment.error).toBeNull();
   expect(appointment.data?.patient_id).toBe(patient.data!.id);
-  expect(appointment.data?.scheduled_at).toBe('2031-02-12T17:00:00+00:00');
+  expect(new Date(appointment.data!.scheduled_at).toISOString()).toBe('2031-02-12T17:00:00.000Z');
   expect(appointment.data?.duration_minutes).toBe(60);
 
   const external = await admin.from('icloud_calendar_events')
