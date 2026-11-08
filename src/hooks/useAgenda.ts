@@ -87,6 +87,18 @@ export function useAgenda(input: AgendaRange | Date) {
   useEffect(() => { void refresh(); }, [refresh]);
 
   const syncGoogle = useCallback(async (id: string) => {
+    // Connecting Apple explicitly suspends the previous Google exporter.
+    // Until the read-only import has been reviewed, no remote calendar is written.
+    const { data: appleStatus, error: appleError } = await supabase.functions.invoke<{ connected?: boolean }>(
+      'icloud-calendar', { body: { action: 'status' } },
+    );
+    if (appleStatus?.connected) return;
+    if (appleError) {
+      const response = (appleError as { context?: Response }).context;
+      // During rollout the new Edge Function may not yet be deployed (404);
+      // preserve existing Google behaviour only in that specific case.
+      if (response?.status !== 404) return;
+    }
     const { data: calendarStatus, error: statusError } = await supabase.functions.invoke<CalendarStatus>('google-calendar-status', { body: {} });
     if (!statusError && (!calendarStatus?.connected || calendarStatus?.needs_reauth)) {
       const needsReauth = Boolean(calendarStatus?.needs_reauth);
@@ -178,6 +190,21 @@ export function useAgenda(input: AgendaRange | Date) {
       return rowStart < end && rowEnd > start;
     });
     if (hubConflict) return hubConflict;
+
+    // Check Apple live so an event just added on the iPhone is considered
+    // even if the last periodic import has not happened yet.
+    const { data: liveApple, error: liveError } = await supabase.functions.invoke<{
+      connected?: boolean; checked?: boolean; conflict?: {scheduled_at: string} | null;
+    }>('icloud-calendar', {body:{
+      action:'check_conflict',starts_at:start.toISOString(),ends_at:end.toISOString(),
+      ignore_appointment_id:ignoreId,
+    }});
+    if (!liveError && liveApple?.connected && liveApple.checked) {
+      return liveApple.conflict ?? null;
+    }
+    // Fall back to locally imported events when the provider is temporarily offline.
+    // Booking remains available, but the UI must not treat this as a guarantee
+    // that the Apple calendar has no conflicting appointments.
 
     // Imported iCloud events also trigger the same advisory confirmation.
     // The end-exclusive condition allows adjacent appointments.

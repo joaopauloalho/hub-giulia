@@ -7,13 +7,14 @@ import { clinicDateLabel, clinicTime, displayEndTime } from '../../lib/agendaTim
 import { AGENDA_STATUS_LABEL, agendaStatusStyle } from './agendaStyles';
 
 export function AppointmentDetailDrawer({
-  appointment, isReturn, googleConnected, needsReauth,
+  appointment, isReturn, googleConnected, needsReauth, icloudConnected = false,
   onEdit, onConfirm, onCancel, onNoShow, onRetryGoogle, onWaitlist, onCandidates, onClose,
 }: {
   appointment: AgendaAppointment;
   isReturn: boolean;
   googleConnected: boolean;
   needsReauth: boolean;
+  icloudConnected?: boolean;
   onEdit: () => void;
   onConfirm: () => Promise<unknown>;
   onCancel: (reason: string | null) => Promise<unknown>;
@@ -65,7 +66,13 @@ export function AppointmentDetailDrawer({
             {appointment.notes && <div className="card" style={{ padding: 12 }}><div className="page-sub">Observação</div><span>{appointment.notes}</span></div>}
             <div className="card" style={{ padding: 12 }}><div className="page-sub">Origem</div><strong>{appointment.source === 'return' || isReturn ? 'Retorno' : 'Manual'}</strong></div>
             {appointment.last_rescheduled_at && appointment.previous_scheduled_at && <div className="card" style={{ padding: 12 }}><div className="page-sub">Último reagendamento</div><span>{clinicTime(appointment.previous_scheduled_at)} → {clinicTime(appointment.scheduled_at)}</span></div>}
-            <div className="card" style={{ padding: 12 }}><div className="page-sub">Google Calendar</div><strong>{needsReauth ? 'Reconexão necessária' : syncLabel}</strong>{(appointment.google_sync_status === 'error' || appointment.google_sync_status === 'pending') && googleConnected && !needsReauth && <button className="btn btn--ghost btn--sm" style={{ marginTop: 8 }} onClick={() => void run(onRetryGoogle, 'Sincronização atualizada.')} disabled={busy}><RefreshCw size={14} /> Tentar novamente</button>}</div>
+            {icloudConnected
+              ? <div className="card" style={{ padding: 12 }}>
+                  <div className="page-sub">Calendário do iPhone</div>
+                  <strong>iCloud conectado</strong>
+                  <div className="page-sub">Importação segura ativa. O envio de alterações ao iPhone será habilitado após a revisão da agenda.</div>
+                </div>
+              : <div className="card" style={{ padding: 12 }}><div className="page-sub">Google Calendar</div><strong>{needsReauth ? 'Reconexão necessária' : syncLabel}</strong>{(appointment.google_sync_status === 'error' || appointment.google_sync_status === 'pending') && googleConnected && !needsReauth && <button className="btn btn--ghost btn--sm" style={{ marginTop: 8 }} onClick={() => void run(onRetryGoogle, 'Sincronização atualizada.')} disabled={busy}><RefreshCw size={14} /> Tentar novamente</button>}</div>}
             {appointment.status === 'cancelado' && onCandidates && <div className="card" style={{ padding: 12, border: '1px solid var(--border)' }}><div style={{ display: 'flex', gap: 8, alignItems: 'center' }}><BellRing size={17}/><strong>Horário disponível</strong></div><p className="page-sub" style={{ marginTop: 4 }}>Veja quem já disse que gostaria de antecipar um atendimento.</p><button type="button" className="btn btn--primary btn--sm" style={{ marginTop: 8, minHeight: 44 }} onClick={onCandidates}>Ver lista de encaixe</button></div>}
           </div>
           {active && <div style={{ marginTop: 16 }}><label className="field-label">Motivo do cancelamento (opcional)</label><input className="field-input" value={cancelReason} onChange={event => setCancelReason(event.target.value)} placeholder="Paciente cancelou, clínica cancelou, outro..." /></div>}
