@@ -261,9 +261,17 @@ export async function readCalendar(email: string, password: string, calendarUrl:
   if (rows.length > EVENT_LIMIT) throw new HttpError(413, 'icloud_events_limit', 'Calendario muito grande neste intervalo.');
   const output: CalendarOccurrence[] = [];
   for (const row of rows) {
-    const data = valueOf(row.prop['calendar-data']);
-    if (!data) continue;
     const resource = safeIcloudUrl(row.href, response.url);
+    const data = valueOf(row.prop['calendar-data']);
+    if (!data) {
+      // A partial 207 response is not evidence that an Apple event was deleted.
+      // Fail closed rather than let the hourly reconciliation hide valid events.
+      const resourcePath = new URL(resource).pathname.replace(/\\/$/, '');
+      const calendarPath = new URL(calendarUrl).pathname.replace(/\\/$/, '');
+      if (resourcePath === calendarPath) continue;
+      throw new HttpError(502,'icloud_incomplete_report',
+        'O iCloud devolveu um calendario incompleto. Nenhum evento foi removido.');
+    }
     const items = parseCalendarResource(data, resource, valueOf(row.prop.getetag) || null, from, to);
     output.push(...items);
     if (output.length > EVENT_LIMIT) throw new HttpError(413, 'icloud_events_limit', 'Calendario muito grande neste intervalo.');
