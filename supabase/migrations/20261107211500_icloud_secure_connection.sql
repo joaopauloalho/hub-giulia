@@ -130,7 +130,8 @@ as $
 declare
   v_secret uuid;
 begin
-  if current_setting('request.jwt.claim.role',true) is distinct from 'service_role' then
+  if coalesce(nullif(current_setting('request.jwt.claims',true),'')::jsonb->>'role',
+              current_setting('request.jwt.claim.role',true),'') <> 'service_role' then
     raise exception 'BACKEND_ONLY';
   end if;
   if p_user is null or length(p_password) < 12 or length(p_password) > 128 then
@@ -151,7 +152,8 @@ as $
 declare
   v_password text;
 begin
-  if current_setting('request.jwt.claim.role',true) is distinct from 'service_role' then
+  if coalesce(nullif(current_setting('request.jwt.claims',true),'')::jsonb->>'role',
+              current_setting('request.jwt.claim.role',true),'') <> 'service_role' then
     raise exception 'BACKEND_ONLY';
   end if;
   select v.decrypted_secret into v_password
@@ -167,7 +169,8 @@ as $
 declare
   v_secret uuid;
 begin
-  if current_setting('request.jwt.claim.role',true) is distinct from 'service_role' then
+  if coalesce(nullif(current_setting('request.jwt.claims',true),'')::jsonb->>'role',
+              current_setting('request.jwt.claim.role',true),'') <> 'service_role' then
     raise exception 'BACKEND_ONLY';
   end if;
   select a.secret_id into v_secret from public.icloud_calendar_accounts a where a.user_id=p_user for update;
