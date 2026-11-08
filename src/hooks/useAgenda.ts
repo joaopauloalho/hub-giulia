@@ -172,11 +172,32 @@ export function useAgenda(input: AgendaRange | Date) {
     if (ignoreId) query = query.neq('id', ignoreId);
     const { data, error: conflictError } = await query;
     if (conflictError) throw conflictError;
-    return (data ?? []).find(row => {
+    const hubConflict = (data ?? []).find(row => {
       const rowStart = new Date(row.scheduled_at);
       const rowEnd = new Date(rowStart.getTime() + (row.duration_minutes ?? 60) * 60_000);
       return rowStart < end && rowEnd > start;
-    }) ?? null;
+    });
+    if (hubConflict) return hubConflict;
+
+    // Imported iCloud events also trigger the same advisory confirmation.
+    // The end-exclusive condition allows adjacent appointments.
+    const { data: appleEvents, error: appleError } = await supabase
+      .from('icloud_calendar_events')
+      .select('starts_at,ends_at')
+      .lt('starts_at', end.toISOString())
+      .gt('ends_at', start.toISOString())
+      .eq('is_deleted', false)
+      .is('linked_appointment_id', null)
+      .order('starts_at')
+      .limit(1);
+    // Until the staging migration is deployed the Hub agenda stays usable.
+    if (appleError) {
+      const code = (appleError as { code?: string }).code;
+      if (code === '42P01' || code === 'PGRST205') return null;
+      throw appleError;
+    }
+    const first = appleEvents?.[0];
+    return first ? { scheduled_at: first.starts_at } : null;
   };
 
   return { agendamentos, loading, error, create, update, confirm, cancel, markNoShow, retryGoogle, refresh, findConflict };
