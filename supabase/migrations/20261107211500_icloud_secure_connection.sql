@@ -139,7 +139,7 @@ begin
   end if;
   select a.secret_id into v_secret from public.icloud_calendar_accounts a where a.user_id=p_user;
   if v_secret is null then
-    v_secret := vault.create_secret(p_password,'hub_giulia_icloud_'||p_user::text);
+    v_secret := vault.create_secret(p_password,null,'Credencial de calendario iCloud - Hub Giulia');
   else
     perform vault.update_secret(v_secret,p_password);
   end if;
