@@ -257,31 +257,3 @@ export async function readCalendar(email: string, password: string, calendarUrl:
   return output;
 }
 
-const keyString = Deno.env.get('ICLOUD_ENCRYPTION_KEY') ?? '';
-async function encryptionKey(): Promise<CryptoKey> {
-  if (!/^[A-Za-z0-9+/]{43}=$/.test(keyString)) {
-    throw new HttpError(503,'icloud_key_missing','A chave de criptografia do iCloud ainda nao foi configurada no servidor.');
-  }
-  const data = Uint8Array.from(atob(keyString), c=>c.charCodeAt(0));
-  return crypto.subtle.importKey('raw', data, {name:'AES-GCM'}, false, ['encrypt','decrypt']);
-}
-function toB64(data: Uint8Array): string {
-  let s=''; for(const b of data) s+=String.fromCharCode(b); return btoa(s);
-}
-function fromB64(data: string): Uint8Array {
-  return Uint8Array.from(atob(data), c=>c.charCodeAt(0));
-}
-export async function encryptPassword(password: string): Promise<string> {
-  const iv = crypto.getRandomValues(new Uint8Array(12));
-  const data = new TextEncoder().encode(password);
-  const encrypted = new Uint8Array(await crypto.subtle.encrypt({name:'AES-GCM',iv}, await encryptionKey(), data));
-  return toB64(iv) + '.' + toB64(encrypted);
-}
-export async function decryptPassword(ciphertext: string): Promise<string> {
-  const [left,right] = ciphertext.split('.');
-  if (!left || !right) throw new HttpError(500, 'icloud_secret_invalid', 'Credencial do iCloud precisa ser reconectada.');
-  try {
-    const decrypted = await crypto.subtle.decrypt({name:'AES-GCM',iv:fromB64(left)},await encryptionKey(),fromB64(right));
-    return new TextDecoder().decode(decrypted);
-  } catch { throw new HttpError(500,'icloud_secret_invalid','Credencial do iCloud precisa ser reconectada.'); }
-}
