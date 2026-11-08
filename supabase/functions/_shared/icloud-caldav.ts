@@ -169,6 +169,12 @@ function jsInstant(time: ICAL.Time): string {
     const d = String(time.day).padStart(2,'0');
     return new Date(y + '-' + m + '-' + d + 'T00:00:00-03:00').toISOString();
   }
+  if (time.zone?.tzid === 'floating') {
+    // Floating times use the clinic's wall clock, not UTC.
+    const pad = (x: number) => String(x).padStart(2,'0');
+    const local = `${time.year}-${pad(time.month)}-${pad(time.day)}T${pad(time.hour)}:${pad(time.minute)}:${pad(time.second)}-03:00`;
+    return new Date(local).toISOString();
+  }
   return time.toJSDate().toISOString();
 }
 export function parseCalendarResource(icalText: string, href: string, etag: string | null,
@@ -184,6 +190,14 @@ export function parseCalendarResource(icalText: string, href: string, etag: stri
     } catch { /* unknown zone: do not mutate server data */ }
   }
   const components = root.getAllSubcomponents('vevent');
+  // Fail closed on unknown named zones: guessing UTC silently shifts patient appointments.
+  for (const component of components) {
+    const property = component.getFirstProperty('dtstart');
+    const tzid = property?.getParameter('tzid');
+    if (tzid && tzid !== 'UTC' && !ICAL.TimezoneService.get(tzid)) {
+      throw new HttpError(422,'icloud_unknown_timezone','O iCloud retornou um fuso horario nao reconhecido.');
+    }
+  }
   const masters = components.filter(component => !component.hasProperty('recurrence-id'));
   const exceptions = components.filter(component => component.hasProperty('recurrence-id'));
   const occurrences: CalendarOccurrence[] = [];
