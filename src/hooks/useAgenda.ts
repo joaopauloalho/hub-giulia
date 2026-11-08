@@ -191,6 +191,20 @@ export function useAgenda(input: AgendaRange | Date) {
     });
     if (hubConflict) return hubConflict;
 
+    // Check Apple live so an event just added on the iPhone is considered
+    // even if the last periodic import has not happened yet.
+    const { data: liveApple, error: liveError } = await supabase.functions.invoke<{
+      connected?: boolean; checked?: boolean; conflict?: {scheduled_at: string} | null;
+    }>('icloud-calendar', {body:{
+      action:'check_conflict',starts_at:start.toISOString(),ends_at:end.toISOString(),
+    }});
+    if (!liveError && liveApple?.connected && liveApple.checked) {
+      return liveApple.conflict ?? null;
+    }
+    // Fall back to locally imported events when the provider is temporarily offline.
+    // Booking remains available, but the UI must not treat this as a guarantee
+    // that the Apple calendar has no conflicting appointments.
+
     // Imported iCloud events also trigger the same advisory confirmation.
     // The end-exclusive condition allows adjacent appointments.
     const { data: appleEvents, error: appleError } = await supabase
