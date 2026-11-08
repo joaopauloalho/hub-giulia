@@ -197,6 +197,7 @@ export function useAgenda(input: AgendaRange | Date) {
       connected?: boolean; checked?: boolean; conflict?: {scheduled_at: string} | null;
     }>('icloud-calendar', {body:{
       action:'check_conflict',starts_at:start.toISOString(),ends_at:end.toISOString(),
+      ignore_appointment_id:ignoreId,
     }});
     if (!liveError && liveApple?.connected && liveApple.checked) {
       return liveApple.conflict ?? null;
