@@ -232,7 +232,14 @@ jobs:
         uses: denoland/setup-deno@v2
         with:
           deno-version: v2.x
+      - name: Setup Node for npm: dependencies
+        uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: npm
+      - name: Install repository dependencies
+        run: npm ci
       - name: Typecheck iCloud CalDAV Edge Function
-        run: deno check supabase/functions/icloud-calendar/index.ts
+        run: deno check --node-modules-dir=auto supabase/functions/icloud-calendar/index.ts
       - name: Test CalDAV parsing and security
-        run: deno test --allow-env supabase/functions/_shared/icloud-caldav.test.ts
+        run: deno test --node-modules-dir=auto --allow-env supabase/functions/_shared/icloud-caldav.test.ts
