@@ -87,6 +87,18 @@ export function useAgenda(input: AgendaRange | Date) {
   useEffect(() => { void refresh(); }, [refresh]);
 
   const syncGoogle = useCallback(async (id: string) => {
+    // Connecting Apple explicitly suspends the previous Google exporter.
+    // Until the read-only import has been reviewed, no remote calendar is written.
+    const { data: appleStatus, error: appleError } = await supabase.functions.invoke<{ connected?: boolean }>(
+      'icloud-calendar', { body: { action: 'status' } },
+    );
+    if (appleStatus?.connected) return;
+    if (appleError) {
+      const response = (appleError as { context?: Response }).context;
+      // During rollout the new Edge Function may not yet be deployed (404);
+      // preserve existing Google behaviour only in that specific case.
+      if (response?.status !== 404) return;
+    }
     const { data: calendarStatus, error: statusError } = await supabase.functions.invoke<CalendarStatus>('google-calendar-status', { body: {} });
     if (!statusError && (!calendarStatus?.connected || calendarStatus?.needs_reauth)) {
       const needsReauth = Boolean(calendarStatus?.needs_reauth);
