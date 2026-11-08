@@ -4,6 +4,7 @@ import {
 import {
   discoverCalendars, readCalendar,
 } from '../_shared/icloud-caldav.ts';
+import { syncIcloudUser } from '../_shared/icloud-import.ts';
 
 type Command = {
   action?: 'status' | 'connect' | 'sync' | 'select' | 'disconnect' | 'check_conflict';
@@ -147,45 +148,8 @@ Deno.serve(async (req: Request) => {
     }
 
     if (body.action === 'sync') {
-      const { data: account, error: accountError } = await admin.from('icloud_calendar_accounts')
-        .select('apple_id,connected').eq('user_id',user.id).maybeSingle();
-      if (accountError || !account?.connected) {
-        throw new HttpError(409,'icloud_not_connected','Conecte o iCloud antes de sincronizar.');
-      }
-      const { data: password, error: secretError } = await admin.rpc('icloud_vault_read_v1',{p_user:user.id});
-      if (secretError || !password) throw new HttpError(409,'icloud_secret_unavailable','A credencial do iCloud precisa ser reconectada.');
-      const { data: calendars, error: collectionError } = await admin.from('icloud_calendar_collections')
-        .select('calendar_id,calendar_url').eq('user_id',user.id).eq('is_selected',true);
-      if (collectionError) throw new HttpError(500,'icloud_collections_failed','Nao foi possivel carregar os calendarios.');
-      const now = Date.now();
-      // Wide enough for upcoming appointments; never mutates Apple or deletes existing Hub records.
-      const from = new Date(now - 180 * 86400000);
-      const to = new Date(now + 540 * 86400000);
-      const seen = new Date().toISOString();
-      let imported = 0;
-      for (const calendar of calendars ?? []) {
-        const events = await readCalendar(account.apple_id,password,calendar.calendar_url,from,to);
-        for (let i=0; i<events.length; i+=150) {
-          const batch = events.slice(i,i+150).map(event=>({
-            user_id:user.id,calendar_id:calendar.calendar_id,
-            ...event, last_seen_at:seen, is_deleted:false, updated_at:seen,
-          }));
-          const { error } = await admin.from('icloud_calendar_events').upsert(batch,{
-            onConflict:'user_id,calendar_id,resource_href,recurrence_id',
-          });
-          if (error) throw new HttpError(500,'icloud_import_failed','Nao foi possivel importar os eventos. Nada foi apagado.');
-        }
-        imported += events.length;
-        const { error: updateError } = await admin.from('icloud_calendar_collections')
-          .update({last_sync_at:seen}).eq('user_id',user.id).eq('calendar_id',calendar.calendar_id);
-        if (updateError) throw new HttpError(500,'icloud_import_progress_failed','Nao foi possivel atualizar o progresso.');
-      }
-      const { error } = await admin.from('icloud_calendar_accounts').update({
-        last_sync_at:seen,last_error_code:null,updated_at:seen,
-      }).eq('user_id',user.id);
-      if (error) throw new HttpError(500,'icloud_import_progress_failed','Nao foi possivel concluir o controle de sincronizacao.');
-      return json(req,{imported,calendars_checked:calendars?.length ?? 0,last_sync_at:seen,
-        mode:'read_only'});
+      const result = await syncIcloudUser(admin,user.id);
+      return json(req,result);
     }
 
     throw new HttpError(400,'action_invalid','Operacao nao suportada.');

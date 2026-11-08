@@ -5,140 +5,206 @@ import { supabase } from '../../lib/supabase';
 import { usePacientes } from '../../hooks/usePacientes';
 import { useToast } from '../../hooks/useToast';
 import { clinicDateLabel, clinicTime } from '../../lib/agendaTime';
+import type { IcloudImportedEvent } from '../../hooks/useIcloudEvents';
 
-type ImportedEvent = {
-  id: string;
-  title: string;
-  starts_at: string;
-  ends_at: string;
-  is_all_day: boolean;
-  is_private: boolean;
-  linked_patient_id: string | null;
-  linked_appointment_id: string | null;
-};
+function PatientLink({event,onSaved,onClose}:{
+  event:IcloudImportedEvent;onSaved:()=>void;onClose:()=>void;
+}) {
+  const {toast}=useToast();
+  const [search,setSearch]=useState('');
+  const [patientId,setPatientId]=useState(event.linked_patient_id ?? '');
+  const [saving,setSaving]=useState(false);
+  const {pacientes,hasMore,nextPage}=usePacientes({search,pageSize:50});
 
-function PatientLink({ event, onSaved, onClose }: { event: ImportedEvent; onSaved: () => void; onClose: () => void }) {
-  const { toast } = useToast();
-  const [search, setSearch] = useState('');
-  const [patientId, setPatientId] = useState(event.linked_patient_id ?? '');
-  const [saving, setSaving] = useState(false);
-  const { pacientes, hasMore, nextPage } = usePacientes({ search, pageSize: 50 });
-
-  const save = async () => {
+  const save=async()=>{
     setSaving(true);
     try {
-      const { error } = await supabase.from('icloud_calendar_events')
-        .update({ linked_patient_id: patientId || null }).eq('id', event.id);
-      if (error) throw error;
-      toast.success(patientId ? 'Paciente vinculada ao evento do iCloud.' : 'Vínculo removido.');
+      const {error}=await supabase.from('icloud_calendar_events')
+        .update({linked_patient_id:patientId||null}).eq('id',event.id);
+      if(error)throw error;
+      toast.success(patientId ? 'Paciente vinculada ao compromisso.' : 'Vinculo removido.');
       onSaved();
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Não foi possível vincular a paciente.');
-    } finally { setSaving(false); }
+    } catch(error) {
+      toast.error(error instanceof Error ? error.message : 'Nao foi possivel salvar o vinculo.');
+    } finally {setSaving(false);}
   };
 
-  return <div className="card" style={{ padding: 12, marginTop: 10 }}>
-    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-      <strong style={{ flex: 1 }}>Vincular compromisso a uma paciente</strong>
-      <button type="button" className="icon-btn" onClick={onClose} aria-label="Fechar"><X size={16}/></button>
-    </div>
-    <p className="page-sub" style={{ marginTop: 6 }}>O evento original continua no iCloud, sem criar atendimento nem alterar o calendário.</p>
-    <label className="field-label">Buscar paciente cadastrada</label>
-    <input className="field-input" value={search} onChange={e => setSearch(e.target.value)} placeholder="Nome da paciente"/>
-    <select className="field-input" style={{ marginTop: 8 }} value={patientId} onChange={e => setPatientId(e.target.value)}>
-      <option value="">Nenhuma paciente vinculada</option>
-      {event.linked_patient_id && !pacientes.some(p => p.id === event.linked_patient_id) &&
-        <option value={event.linked_patient_id}>Paciente já vinculada</option>}
-      {pacientes.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-    </select>
-    {hasMore && <button className="btn btn--ghost btn--sm" type="button" onClick={() => void nextPage()}>Carregar mais pacientes</button>}
-    <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 10 }}>
-      <button className="btn btn--primary btn--sm" type="button" disabled={saving} onClick={() => void save()}>
-        <Link2 size={14}/> {saving ? 'Salvando...' : 'Salvar vínculo'}
+  return <div className="card" style={{padding:12,marginTop:12}}>
+    <div style={{display:'flex',alignItems:'center',gap:8}}>
+      <strong style={{flex:1}}>Vincular paciente cadastrada</strong>
+      <button className="icon-btn" type="button" onClick={onClose} aria-label="Fechar busca">
+        <X size={16}/>
       </button>
+    </div>
+    <div className="page-sub" style={{marginTop:6}}>
+      O evento do iPhone nao sera alterado nem sera criado um atendimento automaticamente.
+    </div>
+    <label className="field-label">Buscar paciente</label>
+    <input className="field-input" value={search}
+      onChange={e=>setSearch(e.target.value)} placeholder="Digite o nome"/>
+    <select className="field-input" style={{marginTop:8}}
+      value={patientId} onChange={e=>setPatientId(e.target.value)}>
+      <option value="">Nenhuma paciente</option>
+      {event.linked_patient_id && !pacientes.some(p=>p.id===event.linked_patient_id) &&
+        <option value={event.linked_patient_id}>Paciente ja vinculada</option>}
+      {pacientes.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
+    </select>
+    {hasMore && <button className="btn btn--ghost btn--sm" type="button"
+      onClick={()=>void nextPage()}>Carregar mais</button>}
+    <div style={{display:'flex',justifyContent:'flex-end',marginTop:10}}>
+      <button className="btn btn--primary btn--sm" type="button" disabled={saving}
+        onClick={()=>void save()}><Link2 size={14}/> Salvar vinculo</button>
     </div>
   </div>;
 }
 
-export function IcloudEventsPanel({ from, to, revision = 0 }: { from: string; to: string; revision?: number }) {
-  const navigate = useNavigate();
-  const { toast, confirm } = useToast();
-  const [converting, setConverting] = useState<string | null>(null);
-  const [events, setEvents] = useState<ImportedEvent[]>([]);
-  const [selected, setSelected] = useState<ImportedEvent | null>(null);
-  const [localRevision, setLocalRevision] = useState(0);
-  useEffect(() => {
-    let disposed = false;
-    const load = async () => {
-      const { data, error } = await supabase.from('icloud_calendar_events')
-        .select('id,title,starts_at,ends_at,is_all_day,is_private,linked_patient_id,linked_appointment_id')
-        .lt('starts_at', to).gt('ends_at', from).eq('is_deleted', false).order('starts_at');
-      if (!disposed) {
-        // The optional integration may not yet have its migration deployed.
-        if (!error) setEvents((data ?? []) as ImportedEvent[]);
-        else setEvents([]);
-      }
-    };
-    void load();
-    return () => { disposed = true; };
-  }, [from, to, revision, localRevision]);
+export function IcloudEventsPanel({events,activeId,onActiveChange,onChanged}:{
+  events:IcloudImportedEvent[];
+  activeId:string|null;
+  onActiveChange:(id:string|null)=>void;
+  onChanged:()=>void;
+}) {
+  const navigate=useNavigate();
+  const {toast,confirm}=useToast();
+  const [busy,setBusy]=useState(false);
+  const [linkMode,setLinkMode]=useState(false);
+  const [showPending,setShowPending]=useState(false);
+  const [showAll,setShowAll]=useState(false);
 
-  const convert = async (event: ImportedEvent) => {
-    if (!event.linked_patient_id || event.is_all_day) return;
-    const ok = await confirm({
-      title: 'Criar agendamento para essa paciente?',
-      message: 'O Hub criara um agendamento vinculado ao evento ja existente no iCloud. O horario e o evento do iPhone nao serao modificados. Nenhum procedimento sera registrado.',
-      confirmLabel: 'Criar agendamento', cancelLabel: 'Voltar', tone: 'warning',
-    });
-    if (!ok) return;
-    setConverting(event.id);
+  const active=events.find(e=>e.id===activeId) ?? null;
+  const pending=events.filter(e=>!e.is_deleted && e.review_state==='pending'
+    && !e.linked_patient_id && !e.linked_appointment_id);
+  const removedLinked=events.filter(e=>e.is_deleted && e.linked_appointment_id);
+  useEffect(()=>{setLinkMode(false);},[activeId]);
+  useEffect(()=>{
+    if(!activeId)return;
+    const onKey=(e:KeyboardEvent)=>{if(e.key==='Escape')onActiveChange(null);};
+    window.addEventListener('keydown',onKey);
+    return()=>window.removeEventListener('keydown',onKey);
+  },[activeId,onActiveChange]);
+
+  const updateState=async(event:IcloudImportedEvent,state:IcloudImportedEvent['review_state'])=>{
+    setBusy(true);
     try {
-      const { data, error } = await supabase.rpc('convert_icloud_event_v1', {
-        p_event_id: event.id, p_service_id: null,
-      });
-      if (error) throw error;
-      toast.success('Agendamento vinculado a paciente com sucesso.');
-      setLocalRevision(v => v + 1);
-      if (data) navigate(`/atendimento/${data}`);
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Falha ao criar agendamento.');
-    } finally { setConverting(null); }
+      const {error}=await supabase.from('icloud_calendar_events')
+        .update({review_state:state}).eq('id',event.id);
+      if(error)throw error;
+      onChanged();
+      onActiveChange(null);
+      toast.success(state==='personal' ? 'Compromisso pessoal: o horario continua ocupado.'
+        : state==='dismissed' ? 'Removido dos pendentes, sem apagar do iPhone.'
+        : 'Compromisso voltou para a lista de organizacao.');
+    } catch(error) {
+      toast.error(error instanceof Error ? error.message : 'Nao foi possivel classificar.');
+    } finally {setBusy(false);}
   };
 
-  if (events.length === 0) return null;
-  return <div className="card" style={{ padding: 12, marginBottom: 12 }}>
-    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-      <CalendarDays size={17}/><strong>Compromissos importados do iCloud ({events.length})</strong>
-    </div>
-    <div style={{ display: 'grid', gap: 8 }}>
-      {events.map(event => <div key={event.id} style={{ border: '1px solid var(--border)', borderRadius: 8, padding: 10 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
-          <div>
-            <strong>{event.is_private ? 'Compromisso privado' : event.title || 'Compromisso'}</strong>
-            <div className="page-sub">
-              {clinicDateLabel(event.starts_at)} · {event.is_all_day ? 'Dia inteiro' : clinicTime(event.starts_at) + '–' + clinicTime(event.ends_at)}
-            </div>
-            <div className="page-sub">{event.linked_patient_id ? 'Paciente vinculada' : 'Sem paciente vinculada'}{event.linked_appointment_id ? ' · Agendamento vinculado' : ''}</div>
-          </div>
-          <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>
-            <button className="btn btn--secondary btn--sm" type="button"
-              onClick={() => setSelected(current => current?.id === event.id ? null : event)}>
-              <Link2 size={14}/> Vincular paciente
-            </button>
-            {event.linked_appointment_id ? <button type="button" className="btn btn--ghost btn--sm"
-              onClick={() => navigate(`/atendimento/${event.linked_appointment_id}`)}>
-              Abrir atendimento
-            </button> : event.linked_patient_id && !event.is_all_day ?
-              <button type="button" className="btn btn--primary btn--sm"
-                disabled={converting !== null} onClick={() => void convert(event)}>
-                {converting === event.id ? 'Criando...' : 'Criar agendamento'}
-              </button> : null}
-          </div>
+  const convert=async(event:IcloudImportedEvent)=>{
+    if(!event.linked_patient_id || event.is_all_day || event.is_deleted)return;
+    const accepted=await confirm({
+      title:'Criar agendamento clinico?',
+      message:'Vai criar um agendamento para a paciente vinculada, sem apagar ou duplicar o compromisso do iPhone. Nenhum procedimento ou pagamento sera registrado.',
+      confirmLabel:'Criar agendamento',cancelLabel:'Voltar',tone:'warning',
+    });
+    if(!accepted)return;
+    setBusy(true);
+    try {
+      const {data,error}=await supabase.rpc('convert_icloud_event_v1',{
+        p_event_id:event.id,p_service_id:null,
+      });
+      if(error)throw error;
+      toast.success('Agendamento criado e vinculado ao evento original.');
+      onChanged();
+      onActiveChange(null);
+      if(data)navigate(`/atendimento/${data}`);
+    } catch(error) {
+      toast.error(error instanceof Error ? error.message : 'Falha ao criar agendamento.');
+    } finally {setBusy(false);}
+  };
+
+  if(!events.length)return null;
+  return <>
+    <section className="card" style={{padding:12,marginBottom:12}}>
+      <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
+        <CalendarDays size={17}/>
+        <strong style={{flex:1}}>Compromissos do iCloud</strong>
+        <button className="btn btn--secondary btn--sm" type="button"
+          onClick={()=>setShowPending(x=>!x)} aria-expanded={showPending}>
+          {pending.length} para organizar {showPending ? '−' : '+'}
+        </button>
+      </div>
+      <p className="page-sub" style={{marginTop:6}}>
+        Os eventos agora aparecem nos dias da agenda. Vincule pacientes, marque como pessoal
+        ou dispense da lista. Nada disso apaga eventos no iPhone.
+      </p>
+      {removedLinked.length>0 && <p role="status" style={{marginTop:8,fontSize:13}}>
+        <strong>{removedLinked.length} compromisso(s) removido(s) do iPhone</strong> ainda
+        possuem agendamento clinico no Hub. Confira antes de cancelar atendimentos.
+      </p>}
+      {showPending && <div style={{display:'grid',gap:7,marginTop:10}}>
+        {(showAll?pending:pending.slice(0,10)).map(event=>
+          <button key={event.id} type="button" className="btn btn--ghost btn--sm"
+            style={{justifyContent:'space-between',textAlign:'left',height:'auto',padding:10}}
+            onClick={()=>onActiveChange(event.id)}>
+            <span>{event.is_private ? 'Compromisso privado' : event.title || 'Compromisso'}</span>
+            <span className="page-sub">{clinicDateLabel(event.starts_at)} · {clinicTime(event.starts_at)}</span>
+          </button>
+        )}
+        {!pending.length && <p className="page-sub">Nenhum compromisso pendente neste periodo.</p>}
+        {pending.length>10 && <button type="button" className="btn btn--ghost btn--sm"
+          onClick={()=>setShowAll(x=>!x)}>{showAll?'Mostrar menos':`Mostrar todos (${pending.length})`}</button>}
+      </div>}
+    </section>
+    {active && <div role="presentation" onClick={()=>onActiveChange(null)}
+      style={{position:'fixed',inset:0,zIndex:150,background:'rgba(0,0,0,.35)',
+        display:'flex',justifyContent:'center',alignItems:'center',padding:18}}>
+      <div role="dialog" aria-modal="true" aria-label="Detalhes do compromisso do iCloud"
+        className="card" onClick={event=>event.stopPropagation()}
+        style={{maxWidth:520,width:'100%',maxHeight:'85vh',overflowY:'auto',padding:20}}>
+        <div style={{display:'flex',alignItems:'center',gap:8}}>
+          <strong style={{flex:1}}>{active.is_private?'Compromisso privado':active.title || 'Compromisso'}</strong>
+          <button type="button" className="icon-btn" aria-label="Fechar"
+            onClick={()=>onActiveChange(null)}><X size={18}/></button>
         </div>
-      </div>)}
-    </div>
-    {selected && <PatientLink key={selected.id} event={selected}
-      onClose={() => setSelected(null)}
-      onSaved={() => { setSelected(null); setLocalRevision(value => value + 1); }}/>}
-  </div>;
+        <p className="page-sub" style={{marginTop:7}}>
+          {clinicDateLabel(active.starts_at)} · {active.is_all_day ? 'Dia inteiro'
+            : clinicTime(active.starts_at)+'–'+clinicTime(active.ends_at)}
+        </p>
+        {active.is_deleted && <p className="page-sub">Este compromisso foi removido do iPhone.</p>}
+        <div className="page-sub" style={{marginTop:8}}>
+          {active.linked_patient_id ? 'Paciente vinculada' : active.review_state==='personal'
+            ? 'Compromisso pessoal' : active.review_state==='dismissed'
+            ? 'Dispensado da lista de organizacao' : 'Sem vinculo'}
+        </div>
+        <div style={{display:'flex',gap:8,flexWrap:'wrap',marginTop:14}}>
+          <button type="button" className="btn btn--secondary btn--sm"
+            disabled={busy} onClick={()=>setLinkMode(x=>!x)}><Link2 size={14}/> Vincular paciente</button>
+          <button type="button" className="btn btn--secondary btn--sm" disabled={busy}
+            onClick={()=>void updateState(active,'personal')}>Marcar como pessoal</button>
+          <button type="button" className="btn btn--ghost btn--sm" disabled={busy}
+            onClick={()=>void updateState(active,'dismissed')}>Dispensar da lista</button>
+          {active.review_state!=='pending' && <button type="button"
+            className="btn btn--ghost btn--sm" disabled={busy}
+            onClick={()=>void updateState(active,'pending')}>Voltar para pendentes</button>}
+        </div>
+        {active.linked_appointment_id
+          ? <button type="button" className="btn btn--primary btn--sm"
+              style={{marginTop:12}} onClick={()=>navigate(`/atendimento/${active.linked_appointment_id}`)}>
+              Abrir agendamento clinico
+            </button>
+          : active.linked_patient_id && !active.is_deleted && !active.is_all_day
+            ? <button type="button" className="btn btn--primary btn--sm"
+              style={{marginTop:12}} disabled={busy} onClick={()=>void convert(active)}>
+              Criar agendamento clinico
+              </button> : null}
+        {linkMode && <PatientLink key={active.id} event={active}
+          onSaved={()=>{setLinkMode(false);onChanged();}}
+          onClose={()=>setLinkMode(false)}/>}
+        <p className="page-sub" style={{marginTop:12}}>
+          Dispensar remove apenas desta lista, mas conserva o horario ocupado no Hub.
+          Excluir no iPhone e uma acao separada.
+        </p>
+      </div>
+    </div>}
+  </>;
 }
