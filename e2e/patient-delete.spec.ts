@@ -63,3 +63,39 @@ test('exclusão continua bloqueada quando existe agenda e CRM', async () => {
   const { data: appointment } = await client.from('appointments').select('id').eq('id', fixture.appointmentId).maybeSingle();
   expect(appointment?.id).toBe(fixture.appointmentId);
 });
+
+
+test('anamnese finalizada sem assinatura não bloqueia exclusão (e versões são removidas)', async () => {
+  const client = await signedInClient('a');
+  const { data: auth } = await client.auth.getUser();
+  const name = `E2E finalizada sem assinatura ${Date.now()}`;
+  const { data: patient, error: patientError } = await client.from('patients')
+    .insert({ name }).select('id').single();
+  expect(patientError).toBeNull();
+  const { data: draft, error: draftError } = await client.from('anamnesis')
+    .insert({ patient_id: patient!.id, user_id: auth.user!.id, conditions: { teste: true } })
+    .select('id,draft_revision').single();
+  expect(draftError).toBeNull();
+
+  const { data: finalized, error: finalizeError } = await client.rpc('finalize_anamnesis_v2', {
+    p_patient_id: patient!.id,
+    p_expected_revision: draft!.draft_revision,
+    p_idempotency_key: crypto.randomUUID(),
+  });
+  expect(finalizeError).toBeNull();
+  expect(finalized).toHaveLength(1);
+  const versionId = finalized![0].version_id;
+
+  const { error: deleteError } = await client.rpc('delete_empty_patient_v1', { p_patient_id: patient!.id });
+  expect(deleteError).toBeNull();
+
+  for (const [table, id] of [
+    ['patients', patient!.id],
+    ['anamnesis', draft!.id],
+    ['anamnesis_versions', versionId],
+  ] as const) {
+    const { data, error } = await client.from(table).select('id').eq('id', id).maybeSingle();
+    expect(error).toBeNull();
+    expect(data).toBeNull();
+  }
+});

@@ -1,10 +1,15 @@
 import { isPostgrestError, SESSION_EXPIRED_MESSAGE } from './patientInput';
 
 export const PATIENT_HAS_HISTORY_MESSAGE =
-  'Esta paciente possui informações vinculadas (como atendimentos, agenda, fotos ou financeiro). Para preservar o histórico, utilize Arquivar.';
+  'Esta paciente possui atendimento, movimentação financeira ou outro vínculo que precisa ser preservado. Utilize Arquivar.';
+export const PATIENT_HAS_SIGNED_ANAMNESIS_MESSAGE =
+  'Esta paciente possui anamnese assinada, que não pode ser apagada por esta opção. Utilize Arquivar.';
 
 export function patientDeletionFriendlyError(error: unknown): string {
   if (isPostgrestError(error)) {
+    if (error.code === 'P0001' && error.message.includes('PATIENT_HAS_SIGNED_ANAMNESIS')) {
+      return PATIENT_HAS_SIGNED_ANAMNESIS_MESSAGE;
+    }
     if (error.code === '23503' ||
       (error.code === 'P0001' && error.message.includes('PATIENT_HAS_RELATED_RECORDS'))) {
       return PATIENT_HAS_HISTORY_MESSAGE;
