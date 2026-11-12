@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Archive, CalendarPlus, ClipboardPlus, HeartPulse, Mail, MessageCircle, Pencil, Phone, RotateCcw, StickyNote, TrendingUp, X } from 'lucide-react';
+import { Archive, CalendarPlus, ClipboardPlus, HeartPulse, Mail, MessageCircle, Pencil, Phone, RotateCcw, StickyNote, Trash2, TrendingUp, X } from 'lucide-react';
 import type { Patient } from '../../types';
 import { ageLabel } from '../../lib/dateUtils';
 import { buildWhatsAppUrl } from '../../lib/whatsapp';
@@ -35,6 +35,7 @@ interface Props {
   onUpdate: (data: Partial<Patient>) => Promise<void>;
   onArchive: () => Promise<void>;
   onRestore: () => Promise<void>;
+  onDelete: () => Promise<void>;
 }
 
 const TABS = [
@@ -56,13 +57,14 @@ export type TabKey = typeof TABS[number][1];
 type SignatureRequest = { contractId?: string; procedureId?: string; appointmentId?: string };
 const initials = (name: string) => name.split(' ').slice(0, 2).map(word => word[0]).join('').toUpperCase();
 
-export function PacienteView({ patient, archived = false, sourceAppointmentId, initialTab, onClose, onUpdate, onArchive, onRestore }: Props) {
+export function PacienteView({ patient, archived = false, sourceAppointmentId, initialTab, onClose, onUpdate, onArchive, onRestore, onDelete }: Props) {
   const navigate = useNavigate();
   const location = useLocation();
   const { confirm, toast } = useToast();
   const [tab, setTab] = useState<TabKey>(initialTab ?? 'overview');
   const [signatureRequest, setSignatureRequest] = useState<SignatureRequest | null>(null);
   const [crmSummary, setCrmSummary] = useState<CrmPipelineCard | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const returnTo = new URLSearchParams(location.search).get('return_to');
 
   useEffect(() => {
@@ -114,6 +116,27 @@ export function PacienteView({ patient, archived = false, sourceAppointmentId, i
       toast.success(archived ? 'Paciente restaurada.' : 'Paciente arquivada.');
     } catch {
       toast.error('Não foi possível atualizar o arquivamento.');
+    }
+  };
+
+  const deletePatient = async () => {
+    if (deleting) return;
+    const ok = await confirm({
+      title: 'Excluir paciente definitivamente?',
+      message: `Excluir ${patient.name}? Esta ação não poderá ser desfeita. Por segurança, só é possível excluir cadastros sem histórico vinculado; para as demais pacientes, utilize Arquivar.`,
+      confirmLabel: 'Excluir definitivamente',
+      cancelLabel: 'Cancelar',
+      tone: 'danger',
+    });
+    if (!ok) return;
+    setDeleting(true);
+    try {
+      await onDelete();
+      toast.success('Paciente excluída definitivamente.');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Não foi possível excluir a paciente.');
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -175,6 +198,16 @@ export function PacienteView({ patient, archived = false, sourceAppointmentId, i
         <button className="btn btn--ghost btn--sm patient-quick-action--low" onClick={() => setTab('data')}><Pencil size={15} /> Editar</button>
         <button className="btn btn--ghost btn--sm patient-quick-action--low" onClick={() => void archiveOrRestore()}>
           {archived ? <RotateCcw size={15} /> : <Archive size={15} />} {archived ? 'Restaurar' : 'Arquivar'}
+        </button>
+        <button
+          type="button"
+          className="btn btn--ghost btn--sm patient-quick-action--low"
+          style={{ color: 'var(--red)' }}
+          disabled={deleting}
+          onClick={() => void deletePatient()}
+          aria-label={`Excluir definitivamente ${patient.name}`}
+        >
+          <Trash2 size={15} /> {deleting ? 'Excluindo...' : 'Excluir'}
         </button>
       </div>
 

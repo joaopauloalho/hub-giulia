@@ -22,7 +22,7 @@ export function PacientesPage() {
   const [search, setSearch] = useState('');
   const [viewMode, setViewMode] = useState<PatientViewMode>('active');
   const archiveMode = viewMode === 'archived' ? 'archived' : 'active';
-  const { pacientes, total, loading, error, create, update, archive, restore, getById, nextPage, hasMore } = usePacientes({ search: viewMode === 'journey' ? '' : search, archiveMode });
+  const { pacientes, total, loading, error, create, update, archive, restore, remove, getById, nextPage, hasMore } = usePacientes({ search: viewMode === 'journey' ? '' : search, archiveMode });
   const [showCreate, setShowCreate] = useState(false);
   const [viewing, setViewing] = useState<PatientRecord | null>(null);
   const [sourceAppointmentId, setSourceAppointmentId] = useState<string | null>(null);
@@ -114,6 +114,6 @@ export function PacientesPage() {
     {viewMode === 'active' && <button className="fab" onClick={() => setShowCreate(true)} aria-label="Nova paciente"><Plus size={24} /></button>}
     <NovaClienteDrawer open={showCreate} onClose={() => setShowCreate(false)} onCreate={async data => { await create(data); setShowCreate(false); }} />
 
-    {viewing && <PacienteView patient={viewing as Patient} archived={Boolean(viewing.archived_at)} sourceAppointmentId={sourceAppointmentId} initialTab={initialTab} onClose={closePatient} onUpdate={async data => { await update(viewing.id, data); setViewing(previous => previous ? { ...previous, ...data } : previous); }} onArchive={async () => { await archive(viewing.id); setViewing(null); navigate('/pacientes', { replace: true }); }} onRestore={async () => { await restore(viewing.id); setViewing(null); navigate('/pacientes', { replace: true }); }} />}
+    {viewing && <PacienteView patient={viewing as Patient} archived={Boolean(viewing.archived_at)} sourceAppointmentId={sourceAppointmentId} initialTab={initialTab} onClose={closePatient} onUpdate={async data => { await update(viewing.id, data); setViewing(previous => previous ? { ...previous, ...data } : previous); }} onArchive={async () => { await archive(viewing.id); setViewing(null); navigate('/pacientes', { replace: true }); }} onRestore={async () => { await restore(viewing.id); setViewing(null); navigate('/pacientes', { replace: true }); }} onDelete={async () => { await remove(viewing.id); closingPatientIdRef.current = viewing.id; setViewing(null); setSourceAppointmentId(null); navigate('/pacientes', { replace: true }); }} />}
   </div>;
 }

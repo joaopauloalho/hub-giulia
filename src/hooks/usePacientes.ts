@@ -8,6 +8,7 @@ import {
   type PatientCreateData,
 } from '../lib/patientInput';
 import type { Patient } from '../types';
+import { patientDeletionFriendlyError } from '../lib/patientDeletion';
 
 type ArchiveMode = 'active' | 'archived' | 'all';
 export type PatientRecord = Patient & { archived_at: string | null };
@@ -136,6 +137,12 @@ export function usePacientes(options: UsePacientesOptions = {}) {
     await refresh();
   };
 
+  const remove = async (id: string) => {
+    const { error: deleteError } = await supabase.rpc('delete_empty_patient_v1', { p_patient_id: id });
+    if (deleteError) throw new Error(patientDeletionFriendlyError(deleteError));
+    await refresh();
+  };
+
   const getById = useCallback(async (id: string): Promise<PatientRecord | null> => {
     const local = pacientes.find(patient => patient.id === id);
     if (local) return local;
@@ -166,6 +173,7 @@ export function usePacientes(options: UsePacientesOptions = {}) {
     update,
     archive,
     restore,
+    remove,
     getById,
     refresh,
     total,
