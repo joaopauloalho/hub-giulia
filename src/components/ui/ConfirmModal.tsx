@@ -27,7 +27,7 @@ export function ConfirmModal({
   const confirmClass = isDanger ? 'btn btn--danger btn--md' : 'btn btn--primary btn--md';
 
   return (
-    <div className="modal-overlay" role="presentation" onClick={onCancel}>
+    <div className="modal-overlay" role="presentation" style={{ zIndex: 450 }} onClick={onCancel}>
       <div
         className="modal"
         role="alertdialog"
