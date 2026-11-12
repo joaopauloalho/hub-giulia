@@ -123,7 +123,7 @@ export function PacienteView({ patient, archived = false, sourceAppointmentId, i
     if (deleting) return;
     const ok = await confirm({
       title: 'Excluir paciente definitivamente?',
-      message: `Excluir ${patient.name}? Esta ação não poderá ser desfeita. Por segurança, só é possível excluir cadastros sem histórico vinculado; para as demais pacientes, utilize Arquivar.`,
+      message: `Excluir ${patient.name} definitivamente? O cadastro e as anamneses que ainda estiverem em rascunho serão apagados. A ação não pode ser desfeita. Se houver atendimento, financeiro ou histórico clínico finalizado, utilize Arquivar.`,
       confirmLabel: 'Excluir definitivamente',
       cancelLabel: 'Cancelar',
       tone: 'danger',
