@@ -112,7 +112,7 @@ export function PacientesPage() {
     </div>}
 
     {viewMode === 'active' && <button className="fab" onClick={() => setShowCreate(true)} aria-label="Nova paciente"><Plus size={24} /></button>}
-    <NovaClienteDrawer open={showCreate} onClose={() => setShowCreate(false)} onCreate={async data => { await create(data); setShowCreate(false); }} />
+    <NovaClienteDrawer open={showCreate} onClose={() => setShowCreate(false)} onCreate={async data => { await create(data); setShowCreate(false); }} onOpenExisting={patientId => { setShowCreate(false); void openPatientById(patientId); }} />
 
     {viewing && <PacienteView patient={viewing as Patient} archived={Boolean(viewing.archived_at)} sourceAppointmentId={sourceAppointmentId} initialTab={initialTab} onClose={closePatient} onUpdate={async data => { await update(viewing.id, data); setViewing(previous => previous ? { ...previous, ...data } : previous); }} onArchive={async () => { await archive(viewing.id); setViewing(null); navigate('/pacientes', { replace: true }); }} onRestore={async () => { await restore(viewing.id); setViewing(null); navigate('/pacientes', { replace: true }); }} onDelete={async () => { await remove(viewing.id); closingPatientIdRef.current = viewing.id; setViewing(null); setSourceAppointmentId(null); navigate('/pacientes', { replace: true }); }} />}
   </div>;
