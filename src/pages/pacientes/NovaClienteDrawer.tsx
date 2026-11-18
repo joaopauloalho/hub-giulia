@@ -3,6 +3,8 @@ import { X } from 'lucide-react';
 import { useToast } from '../../hooks/useToast';
 import { ageLabel, birthDateIsoToInput, formatBirthDateInput, parseBirthDateInput } from '../../lib/dateUtils';
 import { birthDateInputError, normalizePatientCreateData, patientCreateFriendlyError, validatePatientCreateData, type PatientCreateData } from '../../lib/patientInput';
+import { duplicateMatchDetail } from '../../lib/patientDuplicates';
+import { usePatientDuplicateCheck } from '../../hooks/usePatientDuplicateCheck';
 import { AcquisitionFields } from '../../components/patients/AcquisitionFields';
 
 const empty: PatientCreateData = {
@@ -11,16 +13,27 @@ const empty: PatientCreateData = {
   emergency_phone: null, convenio: null, notes: null, photo_url: null, start_date: null,
   acquisition_source: null, acquisition_source_detail: null, referred_by_patient_id: null, referrer_name: null,
 };
-interface Props { open: boolean; onClose: () => void; onCreate: (data: PatientCreateData) => Promise<void>; }
+interface Props {
+  open: boolean;
+  onClose: () => void;
+  onCreate: (data: PatientCreateData) => Promise<void>;
+  onOpenExisting?: (patientId: string) => void;
+}
 function Field({ label, children }: { label: string; children: React.ReactNode }) { return <div className="field"><label className="field-label">{label}</label>{children}</div>; }
 
-export function NovaClienteDrawer({ open, onClose, onCreate }: Props) {
+export function NovaClienteDrawer({ open, onClose, onCreate, onOpenExisting }: Props) {
   const { toast, confirm } = useToast();
   const [form, setForm] = useState<PatientCreateData>(empty);
   const [birthInput, setBirthInput] = useState('');
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const savingRef = useRef(false);
+  const duplicates = usePatientDuplicateCheck(
+    { name: form.name, phone: form.phone, cpf: form.cpf, email: form.email },
+    open,
+  );
+  const shownSignatureRef = useRef(duplicates.signature);
+  shownSignatureRef.current = duplicates.signature;
 
   useEffect(() => { if (open) { setForm(empty); setBirthInput(''); setSaveError(null); setSaving(false); savingRef.current = false; } }, [open]);
   const dirty = useMemo(() => birthInput.trim().length > 0 || Object.entries(form).some(([key,value]) => key !== 'photo_url' && value !== null && value !== ''), [birthInput, form]);
@@ -49,8 +62,15 @@ export function NovaClienteDrawer({ open, onClose, onCreate }: Props) {
     const validationError = validatePatientCreateData(normalized); if (validationError) { setSaveError(validationError); return; }
     const dateError = birthDateInputError(birthInput); if (dateError) { setSaveError(dateError); return; }
     const birthDate = birthInput ? parseBirthDateInput(birthInput) : null; if (birthInput && !birthDate) { setSaveError('Data de nascimento inválida. Use dd/mm/aaaa.'); return; }
-    savingRef.current = true; setSaving(true); setSaveError(null);
-    try { await onCreate({ ...normalized, birth_date: birthDate }); toast.success('Paciente cadastrada com sucesso.'); }
+    const seenSignature = shownSignatureRef.current;
+    savingRef.current = true; setSaveError(null);
+    try {
+      const fresh = await duplicates.checkNow({ name: form.name, phone: form.phone, cpf: form.cpf, email: form.email });
+      if (!fresh.unavailable && fresh.signature && fresh.signature !== seenSignature) return;
+      setSaving(true);
+      await onCreate({ ...normalized, birth_date: birthDate });
+      toast.success('Paciente cadastrada com sucesso.');
+    }
     catch (error) { setSaveError(patientCreateFriendlyError(error)); }
     finally { savingRef.current = false; setSaving(false); }
   };
@@ -82,8 +102,19 @@ export function NovaClienteDrawer({ open, onClose, onCreate }: Props) {
         <div className="field field--full"><label className="field-label">Notas / Motivo da consulta</label><textarea className="field-input" rows={3} placeholder="Motivo da consulta, observações iniciais..." value={form.notes??''} onChange={e=>set('notes',e.target.value)}/></div>
         <Field label="Data início (paciente antiga)"><input className="field-input" type="date" value={form.start_date??''} onChange={e=>set('start_date',e.target.value)}/></Field>
       </div></div>
+      {duplicates.matches.length > 0 && <div className="duplicate-warning" role="status" aria-live="polite" data-testid="duplicate-patient-warning">
+        <strong className="duplicate-warning__title">Possível cadastro existente</strong>
+        <ul className="duplicate-warning__list">
+          {duplicates.matches.map(match => <li key={match.id} className="duplicate-warning__item" data-testid="duplicate-patient-match">
+            <div><strong>{match.name}</strong><p>{duplicateMatchDetail(match)}</p></div>
+            {onOpenExisting && <button type="button" className="btn btn--ghost btn--sm" aria-label={`Abrir ficha de ${match.name}`} onClick={() => onOpenExisting(match.id)} disabled={saving}>Abrir ficha</button>}
+          </li>)}
+        </ul>
+        {duplicates.extraCount > 0 && <p className="duplicate-warning__note">E mais {duplicates.extraCount} {duplicates.extraCount === 1 ? 'cadastro' : 'cadastros'}.</p>}
+        <p className="duplicate-warning__note">Se for outra pessoa, cadastre mesmo assim.</p>
+      </div>}
       {saveError&&<div role="alert" style={{padding:'0 1.25rem 0.75rem',color:'var(--danger, #e53e3e)',fontSize:'0.85rem'}}>{saveError}</div>}
-      <div className="modal-footer"><button type="button" className="btn btn--ghost btn--md w-full" onClick={()=>void requestClose()} disabled={saving}>Cancelar</button><button type="button" className="btn btn--primary btn--md w-full" onClick={()=>void handleSave()} disabled={saving||!form.name.trim()}>{saving?'Salvando...':'Cadastrar'}</button></div>
+      <div className="modal-footer"><button type="button" className="btn btn--ghost btn--md w-full" onClick={()=>void requestClose()} disabled={saving}>Cancelar</button><button type="button" className="btn btn--primary btn--md w-full" data-testid="new-patient-save" onClick={()=>void handleSave()} disabled={saving||!form.name.trim()}>{saving?'Salvando...':duplicates.matches.length > 0 ? 'Cadastrar mesmo assim' : 'Cadastrar'}</button></div>
     </div>
   </div>;
 }
