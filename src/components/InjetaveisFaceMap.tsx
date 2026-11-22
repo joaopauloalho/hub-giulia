@@ -1,8 +1,10 @@
 import { useRef } from 'react';
 import { clampNormalized, unitLabel } from '../lib/injectablesV2';
-
-const VB_W = 300;
-const VB_H = 380;
+import {
+  FACE_MAP_HEIGHT,
+  FACE_MAP_WIDTH,
+  InjectableFaceMapBackground,
+} from './InjectableFaceMapBackground';
 
 export interface FaceMapPoint {
   id: string;
@@ -117,21 +119,13 @@ export function InjetaveisFaceMap({
     <div className="injectables-map-wrap">
       <svg
         ref={svgRef}
-        viewBox={`0 0 ${VB_W} ${VB_H}`}
+        viewBox={`0 0 ${FACE_MAP_WIDTH} ${FACE_MAP_HEIGHT}`}
         className="injectables-face-svg"
         onPointerDown={handleBackgroundPointerDown}
         role="img"
         aria-label="Mapa facial de pontos de aplicação"
       >
-        <image
-          href="/face-botox.png"
-          x="0"
-          y="0"
-          width={VB_W}
-          height={VB_H}
-          preserveAspectRatio="xMidYMid meet"
-          style={{ pointerEvents: 'none' }}
-        />
+        <InjectableFaceMapBackground />
 
         {points.map(point => {
           const selected = point.id === selectedPointId;
@@ -155,11 +149,11 @@ export function InjetaveisFaceMap({
               }}
               className="injectables-map-point"
             >
-              <circle cx={point.x * VB_W} cy={point.y * VB_H} r={12} fill="transparent" />
+              <circle cx={point.x * FACE_MAP_WIDTH} cy={point.y * FACE_MAP_HEIGHT} r={12} fill="transparent" />
               {selected && (
                 <circle
-                  cx={point.x * VB_W}
-                  cy={point.y * VB_H}
+                  cx={point.x * FACE_MAP_WIDTH}
+                  cy={point.y * FACE_MAP_HEIGHT}
                   r={8}
                   fill="none"
                   stroke={point.color}
@@ -168,8 +162,8 @@ export function InjetaveisFaceMap({
                 />
               )}
               <circle
-                cx={point.x * VB_W}
-                cy={point.y * VB_H}
+                cx={point.x * FACE_MAP_WIDTH}
+                cy={point.y * FACE_MAP_HEIGHT}
                 r={selected ? 5.8 : 5}
                 fill={point.color || activeColor}
                 stroke="white"
@@ -177,8 +171,8 @@ export function InjetaveisFaceMap({
               />
               {showQuantities && point.quantity && (
                 <text
-                  x={point.x * VB_W}
-                  y={point.y * VB_H + 0.5}
+                  x={point.x * FACE_MAP_WIDTH}
+                  y={point.y * FACE_MAP_HEIGHT + 0.5}
                   textAnchor="middle"
                   dominantBaseline="middle"
                   fontSize={4.8}
