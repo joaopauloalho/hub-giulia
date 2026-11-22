@@ -4,6 +4,11 @@ import { Document, Page, Text, View, Image, StyleSheet, pdf } from '@react-pdf/r
 import { useInjetaveis } from '../../../hooks/useInjetaveis';
 import { useToast } from '../../../hooks/useToast';
 import { FaceMapPreview } from '../../../components/FaceMapPreview';
+import {
+  FACE_MAP_HEIGHT,
+  FACE_MAP_IMAGE,
+  FACE_MAP_WIDTH,
+} from '../../../components/InjectableFaceMapBackground';
 import { FinalizedInjectableEditor } from '../FinalizedInjectableEditor';
 import { supabase } from '../../../lib/supabase';
 import { format } from 'date-fns';
@@ -84,38 +89,34 @@ function summarizeMapPoints(points: InjectablePoint[]): MapSummary[] {
   }));
 }
 
-const FACE_SVG = `<svg viewBox="0 0 300 380" xmlns="http://www.w3.org/2000/svg" fill="none">
-<ellipse cx="150" cy="198" rx="112" ry="152" fill="#FDF6F0" stroke="#D4A574" stroke-width="1.5"/>
-<ellipse cx="37" cy="202" rx="14" ry="22" fill="#FDF6F0" stroke="#D4A574" stroke-width="1.5"/>
-<ellipse cx="263" cy="202" rx="14" ry="22" fill="#FDF6F0" stroke="#D4A574" stroke-width="1.5"/>
-<path d="M 55 115 Q 100 55 150 48 Q 200 55 245 115" stroke="#B89068" stroke-width="2"/>
-<path d="M 79 128 Q 106 116 130 123" stroke="#8B6347" stroke-width="2.5" stroke-linecap="round"/>
-<path d="M 170 123 Q 194 116 221 128" stroke="#8B6347" stroke-width="2.5" stroke-linecap="round"/>
-<path d="M 80 149 Q 106 134 132 149 Q 106 164 80 149 Z" fill="white" stroke="#8B6347" stroke-width="1.5"/>
-<circle cx="106" cy="149" r="9" fill="#4A7FA5"/><circle cx="106" cy="149" r="5" fill="#1A1A1A"/><circle cx="110" cy="145" r="2.5" fill="white"/>
-<path d="M 168 149 Q 194 134 220 149 Q 194 164 168 149 Z" fill="white" stroke="#8B6347" stroke-width="1.5"/>
-<circle cx="194" cy="149" r="9" fill="#4A7FA5"/><circle cx="194" cy="149" r="5" fill="#1A1A1A"/><circle cx="198" cy="145" r="2.5" fill="white"/>
-<path d="M 136 163 L 133 204" stroke="#C4956A" stroke-width="1.2"/><path d="M 164 163 L 167 204" stroke="#C4956A" stroke-width="1.2"/>
-<path d="M 133 204 Q 135 216 145 219 Q 150 221 155 219 Q 165 216 167 204" stroke="#C4956A" stroke-width="1.5"/>
-<path d="M 116 249 Q 131 241 143 244 Q 150 241 157 244 Q 169 241 184 249 Q 168 257 150 255 Q 132 257 116 249 Z" fill="#E8A090" stroke="#C47B6A" stroke-width="1"/>
-<path d="M 116 249 Q 132 260 150 263 Q 168 260 184 249 Q 167 278 150 281 Q 133 278 116 249 Z" fill="#E8A090" stroke="#C47B6A" stroke-width="1"/>
-</svg>`;
-
 async function buildFaceDataUrl(points: InjectablePoint[]): Promise<string> {
   return new Promise((resolve, reject) => {
     const canvas = document.createElement('canvas');
-    canvas.width = 600;
-    canvas.height = 760;
-    const ctx = canvas.getContext('2d')!;
+    const canvasScale = 2;
+    canvas.width = FACE_MAP_WIDTH * canvasScale;
+    canvas.height = FACE_MAP_HEIGHT * canvasScale;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+      reject(new Error('Não foi possível preparar o mapa para o PDF.'));
+      return;
+    }
+
     const img = new window.Image();
-    const blob = new Blob([FACE_SVG], { type: 'image/svg+xml;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
     img.onload = () => {
-      ctx.drawImage(img, 0, 0, 600, 760);
-      URL.revokeObjectURL(url);
+      const scale = Math.min(canvas.width / img.naturalWidth, canvas.height / img.naturalHeight);
+      const imageWidth = img.naturalWidth * scale;
+      const imageHeight = img.naturalHeight * scale;
+      ctx.drawImage(
+        img,
+        (canvas.width - imageWidth) / 2,
+        (canvas.height - imageHeight) / 2,
+        imageWidth,
+        imageHeight,
+      );
+
       for (const point of points) {
-        const x = point.x * 600;
-        const y = point.y * 760;
+        const x = point.x * canvas.width;
+        const y = point.y * canvas.height;
         ctx.beginPath(); ctx.arc(x, y, 14, 0, Math.PI * 2); ctx.fillStyle = point.color; ctx.fill();
         ctx.strokeStyle = 'white'; ctx.lineWidth = 3; ctx.stroke();
         ctx.fillStyle = 'white'; ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
@@ -123,8 +124,8 @@ async function buildFaceDataUrl(points: InjectablePoint[]): Promise<string> {
       }
       resolve(canvas.toDataURL('image/png'));
     };
-    img.onerror = reject;
-    img.src = url;
+    img.onerror = () => reject(new Error('Não foi possível carregar a imagem do mapa.'));
+    img.src = FACE_MAP_IMAGE;
   });
 }
 
