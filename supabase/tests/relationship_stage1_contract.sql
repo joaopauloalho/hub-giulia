@@ -9,5 +9,5 @@ begin
  if has_table_privilege('authenticated','public.relationship_opportunity_sources_v1','select') then raise exception 'client can read internal source view'; end if;
  if has_function_privilege('anon','public.get_relationship_opportunity_counts_v2()','execute') then raise exception 'anon can execute relationship counts'; end if;
  if not has_function_privilege('authenticated','public.get_relationship_opportunity_counts_v2()','execute') then raise exception 'authenticated cannot execute relationship counts'; end if;
- if (select column_default::text from information_schema.columns where table_schema='public' and table_name='relationship_preferences' and column_name='reactivation_after_days') not like '%60%' then raise exception 'reactivation default not 60'; end if;
+ if (select column_default::text from information_schema.columns where table_schema='public' and table_name='relationship_preferences' and column_name='reactivation_after_days') not like '%45%' then raise exception 'reactivation default not 45'; end if;
 end $$;
