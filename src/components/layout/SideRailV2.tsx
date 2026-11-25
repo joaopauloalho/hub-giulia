@@ -1,22 +1,38 @@
 import { NavLink } from 'react-router-dom';
-import { BookOpen, CalendarDays, HeartHandshake, LayoutDashboard, LogOut, MessageCircle, RotateCcw, ShieldCheck, TrendingUp, Users, Wallet } from 'lucide-react';
+import { BookOpen, CalendarDays, Gift, HeartHandshake, LayoutDashboard, LogOut, MessageCircle, Repeat, RotateCcw, ShieldCheck, TrendingUp, Users, Wallet, type LucideIcon } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
+import { APP_NAV, visibleNav } from '../../lib/appNav';
+import { dormantModulesEnabled } from '../../lib/dormantModules';
 import './sideRail391.css';
 
-const tabs = [
-  { to: '/dashboard', icon: LayoutDashboard, label: 'Hoje', end: true },
-  { to: '/agenda', icon: CalendarDays, label: 'Agenda', end: false },
-  { to: '/comunicacao', icon: MessageCircle, label: 'Comunicação', end: false },
-  { to: '/relacionamento', icon: HeartHandshake, label: 'Relacionamento', end: false },
-  { to: '/pacientes', icon: Users, label: 'Pacientes', end: false },
-  { to: '/crm', icon: TrendingUp, label: 'CRM', end: true },
-  { to: '/retornos', icon: RotateCcw, label: 'Retornos', end: false },
-  { to: '/financeiro', icon: Wallet, label: 'Financeiro', end: false },
-  { to: '/saude', icon: ShieldCheck, label: 'Saúde', end: false },
-  { to: '/catalogo', icon: BookOpen, label: 'Catálogo', end: false },
-];
+const ICONS: Record<string, LucideIcon> = {
+  hoje: LayoutDashboard,
+  agenda: CalendarDays,
+  comunicacao: MessageCircle,
+  pacientes: Users,
+  retornos: RotateCcw,
+  indicacoes: Gift,
+  crm: TrendingUp,
+  relacionamento: HeartHandshake,
+  financeiro: Wallet,
+  retencao: Repeat,
+  saude: ShieldCheck,
+  catalogo: BookOpen,
+};
 
 export function SideRailV2() {
   const { signOut } = useAuth();
-  return <nav className="side-rail" aria-label="Navegação principal"><div className="rail-brand">hub<br />giulia</div>{tabs.map(({to,icon:Icon,label,end})=><NavLink key={to} to={to} end={end} className={({isActive})=>`rail-item${isActive?' rail-item--active':''}`}><Icon size={20} strokeWidth={1.8}/><span>{label}</span></NavLink>)}<div className="rail-spacer"/><button onClick={signOut} className="rail-item" aria-label="Sair"><LogOut size={20} strokeWidth={1.8}/><span>Sair</span></button></nav>;
+  const items = visibleNav(APP_NAV, dormantModulesEnabled());
+  return <nav className="side-rail" aria-label="Navegação principal">
+    <div className="rail-brand">hub<br />giulia</div>
+    {items.map(item => {
+      const Icon = ICONS[item.id] ?? LayoutDashboard;
+      return <NavLink key={item.id} to={item.to} end={item.end} className={({ isActive }) => `rail-item${isActive ? ' rail-item--active' : ''}`}>
+        <Icon size={20} strokeWidth={1.8} />
+        <span>{item.label}</span>
+      </NavLink>;
+    })}
+    <div className="rail-spacer" />
+    <button onClick={signOut} className="rail-item" aria-label="Sair"><LogOut size={20} strokeWidth={1.8} /><span>Sair</span></button>
+  </nav>;
 }

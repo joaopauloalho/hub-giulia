@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Clock3, Search } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { buildWhatsAppUrl } from '../../lib/whatsapp';
+import { returnWhatsappMessage } from '../../lib/returnContact';
 import { clinicTodayIso } from '../../lib/returnStatus';
 import { agendaRange, clinicLocalToIso, clinicTime } from '../../lib/agendaTime';
 import { useRetornos, type RetornoInfo } from '../../hooks/useRetornos';
@@ -87,7 +88,7 @@ export function RetornosPage() {
       setScheduleReturn(null); await refresh(); toast.success('Retorno agendado e vinculado à Agenda.');
     } catch (scheduleError) { console.error('[retornos] schedule failed', scheduleError); toast.error(scheduleError instanceof Error ? scheduleError.message : 'Não foi possível agendar o retorno.'); } finally { setScheduling(false); }
   };
-  const openWhatsApp = (item: RetornoInfo) => { if (!item.patientPhone) return; const message = item.returnType === 'clinical_return' ? `Olá ${item.patientName}! 🌷 Está chegando o período ideal para avaliarmos seu retorno de ${item.serviceName}. Quando puder, me chama por aqui para combinarmos.` : `Olá ${item.patientName}! 🌷 Está chegando o período recomendado para sua próxima sessão de ${item.serviceName}. Quando puder, me chama por aqui para combinarmos.`; window.open(buildWhatsAppUrl(item.patientPhone, message), '_blank', 'noopener,noreferrer'); };
+  const openWhatsApp = (item: RetornoInfo) => { if (!item.patientPhone) return; const url = buildWhatsAppUrl(item.patientPhone, returnWhatsappMessage(item)); if (!url) return; window.open(url, '_blank', 'noopener,noreferrer'); void runAction(() => markContacted(item.id, 'whatsapp'), 'Contato pelo WhatsApp registrado.'); };
   const card = (item: RetornoInfo) => <RetornoCard key={item.id} item={item} onPatient={() => navigate(`/pacientes?patient_id=${item.patientId}`, { state: { from: patientId ? `/retornos?patient_id=${patientId}` : '/retornos' } })} onContact={() => void runAction(() => markContacted(item.id, 'whatsapp'), 'Paciente marcada como contatada.')} onWhatsApp={() => openWhatsApp(item)} onSchedule={() => openSchedule(item)} onAgenda={() => navigate('/agenda')} onComplete={() => void runAction(() => complete(item.id), 'Retorno concluído.')} onDismiss={() => void (async () => { const ok = await confirm({ title: 'Dispensar retorno', message: 'O retorno sairá da fila ativa, mas continuará disponível no histórico.', confirmLabel: 'Dispensar', cancelLabel: 'Cancelar', tone: 'danger' }); if (ok) await runAction(() => dismiss(item.id, null), 'Retorno dispensado.'); })()} />;
 
   return <div className="page">
