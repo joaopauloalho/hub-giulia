@@ -50,7 +50,7 @@ function clinicalTimeLabel(minutes: number) {
   return rest ? `${hours}h${String(rest).padStart(2, '0')}` : `${hours}h`;
 }
 
-function ProcedureCard({ proc, contracts, treatmentSessions, settlingPaymentId, onReceive, onPhotos, onInjectables, onContract, onReturn, onEdit }: {
+function ProcedureCard({ proc, contracts, treatmentSessions, settlingPaymentId, onReceive, onPhotos, onInjectables, onContract, onReturn, onEdit, groupedSessions = [] }: {
   proc: ClinicalProcedure;
   contracts: Contract[];
   treatmentSessions: TreatmentSessionRecord[];
@@ -61,6 +61,7 @@ function ProcedureCard({ proc, contracts, treatmentSessions, settlingPaymentId, 
   onContract?: (procedureId: string) => void;
   onReturn?: (procedureId: string) => void;
   onEdit?: (procedureId: string) => void;
+  groupedSessions?: ClinicalProcedure[];
 }) {
   const [open, setOpen] = useState(false);
   const finance = getProcedureFinancials(proc);
@@ -98,6 +99,15 @@ function ProcedureCard({ proc, contracts, treatmentSessions, settlingPaymentId, 
     </button>
 
     {open && <div style={{ padding: '12px 16px 16px', borderTop: '1px solid var(--border)', display: 'grid', gap: 14 }}>
+      {groupedSessions.length > 0 && <section style={{ padding: 12, borderRadius: 10, background: '#f0fdf4', border: '1px solid #bbf7d0' }}>
+        <strong style={{ color: '#166534', fontSize: 13 }}>Sessão realizada neste dia · já paga</strong>
+        {groupedSessions.map(sessionProc => <div key={sessionProc.id} style={{ marginTop: 8, display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center' }}>
+          <div><strong style={{ fontSize: 13 }}>{procedureServiceNames(sessionProc)}</strong>
+            <div className="page-sub">Sessão do protocolo{Number(sessionProc.clinical_minutes ?? 0) > 0 ? ` · ${clinicalTimeLabel(Number(sessionProc.clinical_minutes))} clínicos` : ''}</div>
+          </div>
+          {onEdit && <button type="button" className="btn btn--secondary btn--sm" onClick={() => onEdit(sessionProc.id)}><Pencil size={13}/> Abrir sessão</button>}
+        </div>)}
+      </section>}
       {isReturn && <div style={{ padding: 10, borderRadius: 9, background: '#f0fdf4', border: '1px solid #bbf7d0', color: '#166534', fontSize: 12 }}><strong>Retorno clínico vinculado.</strong> Não gerou nova cobrança para a paciente.</div>}
       <section>
         <strong style={{ fontSize: 12, textTransform: 'uppercase', letterSpacing: '.04em' }}>Realizado neste atendimento</strong>
@@ -152,6 +162,38 @@ export function HistoricoTab({ patientId, onPhotos, onInjectables, onContract }:
   const pending = useMemo(() => clinicalProcedures.reduce((sum, proc) => sum + getProcedureFinancials(proc).pendente, 0), [clinicalProcedures]);
   const contractsByProcedure = useMemo(() => { const map = new Map<string, Contract[]>(); for (const contract of contracts) { if (!contract.procedure_id) continue; map.set(contract.procedure_id, [...(map.get(contract.procedure_id) ?? []), contract]); } return map; }, [contracts]);
   const sessionsByProcedure = useMemo(() => { const map = new Map<string, TreatmentSessionRecord[]>(); for (const session of treatmentSessions) map.set(session.procedure_id_snapshot, [...(map.get(session.procedure_id_snapshot) ?? []), session]); return map; }, [treatmentSessions]);
+  // Agrupa apenas sessões comprovadamente vinculadas à venda do mesmo protocolo,
+  // no mesmo dia. Registros de outros dias continuam visíveis individualmente.
+  const [protocolSources, setProtocolSources] = useState<Record<string, string>>({});
+  useEffect(() => {
+    let alive = true;
+    setProtocolSources({});
+    void supabase.from('patient_packages').select('id,source_procedure_id').eq('patient_id', patientId)
+      .then(({ data, error }) => {
+        if (!alive) return;
+        if (error) { console.warn('[patient-history:protocol-source]', error); return; }
+        setProtocolSources(Object.fromEntries((data ?? [])
+          .filter(row => row.source_procedure_id)
+          .map(row => [row.id, row.source_procedure_id as string])));
+      });
+    return () => { alive = false; };
+  }, [patientId]);
+  const groupedSessions = useMemo(() => {
+    const byId = new Map(clinicalProcedures.map(proc => [proc.id, proc]));
+    const merged = new Map<string, ClinicalProcedure[]>();
+    const hidden = new Set<string>();
+    for (const proc of clinicalProcedures) {
+      const sessions = sessionsByProcedure.get(proc.id) ?? [];
+      if (!sessions.length || getProcedureFinancials(proc).venda > .01 || (proc.payments ?? []).length || proc.attendance_type === 'return') continue;
+      const sourceIds = [...new Set(sessions.map(session => protocolSources[session.package_id]).filter(Boolean))];
+      if (sourceIds.length !== 1) continue;
+      const source = byId.get(sourceIds[0]);
+      if (!source || source.id === proc.id || source.performed_at.slice(0, 10) !== proc.performed_at.slice(0, 10)) continue;
+      merged.set(source.id, [...(merged.get(source.id) ?? []), proc]);
+      hidden.add(proc.id);
+    }
+    return { merged, hidden };
+  }, [clinicalProcedures, sessionsByProcedure, protocolSources]);
   const ids = useMemo(() => new Set(clinicalProcedures.map(proc => proc.id)), [clinicalProcedures]);
   const roots = useMemo(() => clinicalProcedures.filter(proc => !proc.parent_procedure_id || !ids.has(proc.parent_procedure_id)), [clinicalProcedures, ids]);
   const childrenByParent = useMemo(() => { const map = new Map<string, ClinicalProcedure[]>(); for (const proc of clinicalProcedures) { if (!proc.parent_procedure_id || !ids.has(proc.parent_procedure_id)) continue; map.set(proc.parent_procedure_id, [...(map.get(proc.parent_procedure_id) ?? []), proc]); } for (const rows of map.values()) rows.sort((a, b) => a.performed_at.localeCompare(b.performed_at)); return map; }, [clinicalProcedures, ids]);
@@ -174,13 +216,13 @@ export function HistoricoTab({ patientId, onPhotos, onInjectables, onContract }:
   };
 
   const newAttendanceButton = <button type="button" className="btn btn--primary btn--md" style={{ minHeight: 44 }} onClick={() => navigate(`/registrar?patientId=${encodeURIComponent(patientId)}`)}><Plus size={16}/> Novo atendimento</button>;
-  const renderCard = (proc: ClinicalProcedure) => <ProcedureCard key={proc.id} proc={proc} contracts={contractsByProcedure.get(proc.id) ?? []} treatmentSessions={sessionsByProcedure.get(proc.id) ?? []} settlingPaymentId={settlingPaymentId} onReceive={payment => void receivePayment(payment)} onPhotos={onPhotos} onInjectables={onInjectables} onContract={onContract} onReturn={procedureId => navigate(`/registrar?return_of=${encodeURIComponent(procedureId)}`)} onEdit={procedureId => navigate(`/registrar?edit=${encodeURIComponent(procedureId)}`)}/>;
+  const renderCard = (proc: ClinicalProcedure) => <ProcedureCard key={proc.id} proc={proc} contracts={contractsByProcedure.get(proc.id) ?? []} treatmentSessions={sessionsByProcedure.get(proc.id) ?? []} settlingPaymentId={settlingPaymentId} onReceive={payment => void receivePayment(payment)} onPhotos={onPhotos} onInjectables={onInjectables} onContract={onContract} onReturn={procedureId => navigate(`/registrar?return_of=${encodeURIComponent(procedureId)}`)} onEdit={procedureId => navigate(`/registrar?edit=${encodeURIComponent(procedureId)}`)} groupedSessions={groupedSessions.merged.get(proc.id) ?? []}/>;
 
   if (error) return <div><div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>{newAttendanceButton}</div><div className="empty-state" style={{ padding: '48px 20px' }}><p>{error}</p></div></div>;
   if (loading || loadingSessions) return <div style={{ display: 'flex', justifyContent: 'center', padding: 48 }}><Loader2 size={24} className="spin" style={{ color: 'var(--primary)' }} /></div>;
 
   return <div style={{ padding: '0 0 16px' }}>
-    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: 14, padding: '10px 14px', background: 'var(--bg-2)', borderRadius: 10, border: '1px solid var(--border)', flexWrap: 'wrap' }}><div><span className="page-sub">{clinicalProcedures.length} atendimento{clinicalProcedures.length !== 1 ? 's' : ''}</span><div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 2 }}><strong style={{ color: 'var(--primary)', fontSize: 13 }}>Total: {currency(total)}</strong>{pending > .01 && <strong style={{ color: '#b45309', fontSize: 13 }}>A receber: {currency(pending)}</strong>}</div></div>{newAttendanceButton}</div>
-    {clinicalProcedures.length === 0 ? <div className="empty-state" style={{ padding: '48px 20px' }}><ClipboardList size={48} strokeWidth={1} style={{ color: 'var(--primary-lt)' }} /><p>Nenhum atendimento realizado.</p><button type="button" className="btn btn--primary btn--md" style={{ marginTop: 10, minHeight: 44 }} onClick={() => navigate(`/registrar?patientId=${encodeURIComponent(patientId)}`)}><Plus size={16}/> Criar primeiro atendimento</button></div> : roots.map(root => <div key={root.id} style={{ marginBottom: 12 }}>{renderCard(root)}{(childrenByParent.get(root.id) ?? []).length > 0 && <div style={{ marginLeft: 26, paddingLeft: 12, borderLeft: '2px solid #bbf7d0' }}><div className="page-sub" style={{ margin: '4px 0 7px', color: '#166534', fontWeight: 700 }}>Retornos deste atendimento</div>{(childrenByParent.get(root.id) ?? []).map(renderCard)}</div>}</div>)}
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: 14, padding: '10px 14px', background: 'var(--bg-2)', borderRadius: 10, border: '1px solid var(--border)', flexWrap: 'wrap' }}><div><span className="page-sub">{clinicalProcedures.length - groupedSessions.hidden.size} atendimento{clinicalProcedures.length - groupedSessions.hidden.size !== 1 ? 's' : ''}</span><div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 2 }}><strong style={{ color: 'var(--primary)', fontSize: 13 }}>Total: {currency(total)}</strong>{pending > .01 && <strong style={{ color: '#b45309', fontSize: 13 }}>A receber: {currency(pending)}</strong>}</div></div>{newAttendanceButton}</div>
+    {clinicalProcedures.length === 0 ? <div className="empty-state" style={{ padding: '48px 20px' }}><ClipboardList size={48} strokeWidth={1} style={{ color: 'var(--primary-lt)' }} /><p>Nenhum atendimento realizado.</p><button type="button" className="btn btn--primary btn--md" style={{ marginTop: 10, minHeight: 44 }} onClick={() => navigate(`/registrar?patientId=${encodeURIComponent(patientId)}`)}><Plus size={16}/> Criar primeiro atendimento</button></div> : roots.filter(root => !groupedSessions.hidden.has(root.id)).map(root => <div key={root.id} style={{ marginBottom: 12 }}>{renderCard(root)}{(childrenByParent.get(root.id) ?? []).length > 0 && <div style={{ marginLeft: 26, paddingLeft: 12, borderLeft: '2px solid #bbf7d0' }}><div className="page-sub" style={{ margin: '4px 0 7px', color: '#166534', fontWeight: 700 }}>Retornos deste atendimento</div>{(childrenByParent.get(root.id) ?? []).map(renderCard)}</div>}</div>)}
   </div>;
 }
