@@ -12,6 +12,7 @@ import { PatientCommunicationCard } from '../../components/communications/Patien
 import { PatientNextActionCard } from '../../components/operational/PatientNextActionCard';
 import { PatientWaitlistCard } from '../agenda/AgendaRecoveryUI';
 import { PatientAcquisitionCard } from '../../components/patients/PatientAcquisitionCard';
+import { dormantModulesEnabled } from '../../lib/dormantModules';
 
 const DadosTab = lazy(() => import('./tabs/DadosTab').then(module => ({ default: module.DadosTab })));
 const AnamneseTab = lazy(() => import('./tabs/AnamneseTab').then(module => ({ default: module.AnamneseTab })));
@@ -61,6 +62,8 @@ export function PacienteView({ patient, archived = false, sourceAppointmentId, i
   const navigate = useNavigate();
   const location = useLocation();
   const { confirm, toast } = useToast();
+  const showDormant = dormantModulesEnabled();
+  const tabs = TABS.filter(([, key]) => key !== 'contracts' || showDormant);
   const [tab, setTab] = useState<TabKey>(initialTab ?? 'overview');
   const [signatureRequest, setSignatureRequest] = useState<SignatureRequest | null>(null);
   const [crmSummary, setCrmSummary] = useState<CrmPipelineCard | null>(null);
@@ -213,15 +216,15 @@ export function PacienteView({ patient, archived = false, sourceAppointmentId, i
 
       <div className="patient-360-content-shell">
         <nav className="sub-tabs patient-360-tabs" aria-label="Seções da paciente">
-          {TABS.map(([label, key]) => <button key={key} className={`sub-tab${tab === key ? ' sub-tab--active' : ''}`} aria-current={tab === key ? 'page' : undefined} onClick={() => setTab(key)}>{label}</button>)}
+          {tabs.map(([label, key]) => <button key={key} className={`sub-tab${tab === key ? ' sub-tab--active' : ''}`} aria-current={tab === key ? 'page' : undefined} onClick={() => setTab(key)}>{label}</button>)}
         </nav>
         <div className="drawer-body">
           {tab === 'overview'
             ? <div style={{ display: 'grid', gap: 12 }}>
                 <PatientAcquisitionCard patient={patient} />
                 <OverviewTab patientId={patient.id} onAgenda={schedule} onReturns={() => navigate(`/retornos?patient_id=${patient.id}`)} onHistory={() => setTab('procedures')} onFinance={() => setTab('finance')} onNotes={() => setTab('notes')} onAnamnesis={() => setTab('anamnesis')} onTimeline={() => setTab('timeline')} />
-                {!archived && <PatientWaitlistCard patient={{ id: patient.id, name: patient.name, phone: patient.phone }} />}
-                <PatientCommunicationCard patientId={patient.id} />
+                {showDormant && !archived && <PatientWaitlistCard patient={{ id: patient.id, name: patient.name, phone: patient.phone }} />}
+                {showDormant && <PatientCommunicationCard patientId={patient.id} />}
               </div>
             : <Suspense fallback={<div className="loading-state">Carregando...</div>}>
                 {tab === 'timeline' && <TimelineTab patientId={patient.id} onOpen={openTimelineEvent} />}

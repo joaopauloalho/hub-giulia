@@ -159,6 +159,7 @@ test('Patient 360 waitlist and Relationship Reagendar remain touch-usable on pho
   });
   expect(waitlist.error).toBeNull();
 
+  await page.addInitScript(() => localStorage.setItem('hub.showDormantModules', '1'));
   await browserLogin(page);
   for (const viewport of [{ width: 390, height: 844 }, { width: 1024, height: 768 }]) {
     await page.setViewportSize(viewport);
