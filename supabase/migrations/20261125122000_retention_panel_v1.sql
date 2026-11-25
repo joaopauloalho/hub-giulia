@@ -122,16 +122,16 @@ select jsonb_build_object(
   ), '[]'::jsonb),
   'cohorts', coalesce((
     select jsonb_agg(jsonb_build_object(
-      'month', month,
+      'month', cohort_month,
       'customers', customers,
-      'returning', returning,
+      'returned', returned,
       'paid_total', paid_total
-    ) order by month)
+    ) order by cohort_month)
     from (
       select
-        to_char((first_paid_at at time zone 'America/Sao_Paulo')::date, 'YYYY-MM') as month,
+        to_char((first_paid_at at time zone 'America/Sao_Paulo')::date, 'YYYY-MM') as cohort_month,
         count(*)::integer as customers,
-        count(*) filter (where visits >= 2)::integer as returning,
+        count(*) filter (where visits >= 2)::integer as returned,
         sum(paid_total) as paid_total
       from customers
       where (first_paid_at at time zone 'America/Sao_Paulo')::date >= date '2026-04-01'

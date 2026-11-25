@@ -8,7 +8,7 @@ import '../simple/simple.css';
 
 type PersonValue = { patient_id: string; name: string; paid_total: number; visits: number };
 type AtRisk = { patient_id: string; name: string; last_visit_on: string; days_since_visit: number };
-type Cohort = { month: string; customers: number; returning: number; paid_total: number };
+type Cohort = { month: string; customers: number; returned: number; paid_total: number };
 type Origin = { source: string; customers: number; paid_total: number };
 type Panel = {
   threshold_days: number;
@@ -92,7 +92,7 @@ export function RetencaoPage() {
         {panel.cohorts.length === 0 ? <div className="card simple-empty"><span className="page-sub">Sem coorte desde abril.</span></div> : <div className="card" style={{ overflowX: 'auto' }}>
           <table className="simple-table">
             <thead><tr><th>Mês</th><th>Pacientes</th><th>Voltaram</th><th>Pago</th></tr></thead>
-            <tbody>{panel.cohorts.map(row => <tr key={row.month}><td>{cohortLabel(row.month)}</td><td>{row.customers}</td><td>{row.returning}</td><td>{money(Number(row.paid_total))}</td></tr>)}</tbody>
+            <tbody>{panel.cohorts.map(row => <tr key={row.month}><td>{cohortLabel(row.month)}</td><td>{row.customers}</td><td>{row.returned}</td><td>{money(Number(row.paid_total))}</td></tr>)}</tbody>
           </table>
         </div>}
       </section>
